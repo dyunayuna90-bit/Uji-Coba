@@ -127,23 +127,7 @@ const i18n = {
         rawResTitle: "Pulihkan Data", rawResDesc: "Paste teks mentah (JSON) backup lu di kotak ini, ATAU pilih file JSON dari perangkat.", rawResFile: "Pilih File", rawResProcess: "Proses Teks", rawResClose: "Batal",
         setAiConfig: "Konfigurasi AI", geminiPlaceholder: "Gemini API Key...", geminiDesc: "Tambahkan API Key untuk mendapatkan penjelasan pintar dari AI. (Saran optimal: gunakan Gemini 2.5 Flash Lite untuk kecepatan maksimal).", keySaved: "API Key berhasil disimpan.",
 
-        statTitle: "Statistik Membaca", statTotal: "Koleksi", statReading: "Dibaca", statCompleted: "Selesai", statNotes: "Catatan",
-
-        // PDF Mode & Deteksi
-        pdfOriginalView: "Tampilan Asli",
-        pdfTextMode: "Mode Teks",
-        pdfImageLocked: "Maaf ya, PDF kamu cuma gambar — fitur ini tidak tersedia.",
-        pdfImageLockedTitle: "Fitur Terkunci",
-        pdfDetecting: "Mendeteksi tipe PDF...",
-
-        // Localization loading screen
-        loadingMd: "Membaca Markdown...",
-
-        // Welcome screen update (format baru)
-        welFormatDesc: "<b>PDF Teks:</b> Zoom, bookmark, cari, & AI lookup didukung.<br><b>PDF Gambar:</b> Tampilan asli saja (fitur teks terkunci).<br><b>EPUB:</b> Didukung penuh.<br><b>TXT / MD:</b> Didukung.",
-
-        // Wiki/Gemini language instruction
-        wikiLangLabel: "Bahasa Konten"
+        statTitle: "Statistik Membaca", statTotal: "Koleksi", statReading: "Dibaca", statCompleted: "Selesai", statNotes: "Catatan"
     },
     en: {
         libEmpty: "Library is Empty.", searchBooks: "Search books...", loadingDocs: "Reading Document...", 
@@ -165,7 +149,7 @@ const i18n = {
         bookmarkSave: "Save",
 
         extractingCover: "Extracting Cover...", readingPage: "Reading Page", formattingText: "Formatting Text...",
-        extractingEpub: "Extracting EPUB...", analyzingStructure: "Analyzing Structure...", analyzingStruct: "Analyzing Structure...", extractingChapter: "Extracting Chapter",
+        extractingEpub: "Extracting EPUB...", analyzingStructure: "Analyzing Structure...", extractingChapter: "Extracting Chapter",
         welcomeTitle: "Welcome to Baca.", welcomeDesc: "Please read these instructions for the optimal reading experience.",
         welBackup: "Data Backup", welBackupDesc: "Use the Backup feature in Settings. Data is saved as a JSON file directly to the <b>Documents</b> folder on your device's main storage (not DCIM or Downloads). To restore, simply find and select that backup file from the Documents folder.",
         welFormat: "Format Limitations", welFormatDesc: "<b>PDF:</b> Text only. Images ignored.<br><b>EPUB:</b> Fully supported.",
@@ -196,37 +180,21 @@ const i18n = {
         rawResTitle: "Restore Data", rawResDesc: "Paste your raw backup JSON text here, OR choose a JSON file from your device.", rawResFile: "Select File", rawResProcess: "Process Text", rawResClose: "Cancel",
         setAiConfig: "AI Configuration", geminiPlaceholder: "Gemini API Key...", geminiDesc: "Add your API Key to get smart definitions from AI. (Optimal setup: use Gemini 2.5 Flash Lite for maximum speed).", keySaved: "API Key saved successfully.",
 
-        statTitle: "Statistics", statTotal: "Collection", statReading: "Reading", statCompleted: "Completed", statNotes: "Notes",
-
-        // PDF Mode & Detection
-        pdfOriginalView: "Original View",
-        pdfTextMode: "Text Mode",
-        pdfImageLocked: "Sorry, your PDF is an image — this feature is not available.",
-        pdfImageLockedTitle: "Feature Locked",
-        pdfDetecting: "Detecting PDF type...",
-
-        // Localization loading screen
-        loadingMd: "Reading Markdown...",
-
-        // Welcome screen update (new format)
-        welFormatDesc: "<b>Text PDF:</b> Zoom, bookmarks, search & AI lookup supported.<br><b>Image PDF:</b> Original view only (text features locked).<br><b>EPUB:</b> Fully supported.<br><b>TXT / MD:</b> Supported.",
-
-        // Wiki/Gemini language label
-        wikiLangLabel: "Content Language"
+        statTitle: "Statistics", statTotal: "Collection", statReading: "Reading", statCompleted: "Completed", statNotes: "Notes"
     },
     es: {
-        libEmpty: "La biblioteca está vacía.", searchBooks: "Buscar libros...", loadingDocs: "Leyendo documento...",
-        booksCount: "Libros", continueReading: "Continuar leyendo", bookCollection: "Colección de libros",
-        selected: "Seleccionado", cancel: "Cancelar", delete: "Eliminar", deleteConfirm: "¿Eliminar los libros seleccionados permanentemente?",
-        optSelect: "Selección múltiple", optEdit: "Editar detalles", optDelete: "Eliminar permanentemente",
-
+        libEmpty: "La biblioteca está vacía.", searchBooks: "Buscar libros...", loadingDocs: "Leyendo documento...", 
+        booksCount: "Libros", continueReading: "Continuar leyendo", bookCollection: "Colección de libros", 
+        selected: "Seleccionado", cancel: "Cancelar", delete: "Eliminar", deleteConfirm: "¿Eliminar permanentemente los libros seleccionados?", 
+        optSelect: "Seleccionar varios", optEdit: "Editar detalles", optDelete: "Eliminar permanentemente",
+        
         pinnedBooks: "Libros fijados",
-        optPin: "Fijar libro", optUnpin: "Desanclar libro",
-
+        optPin: "Fijar libro", optUnpin: "Desfijar libro",
+        
         navBookmark: "Marcador",
         bookmarkTitle: "Panel de marcadores",
         bookmarkEmpty: "Aún no hay marcadores.",
-
+        
         bookmarkModalTitle: "Marcador",
         bookmarkTitlePlaceholder: "Título del marcador...",
         bookmarkNotePlaceholder: "Escribe una nota (opcional)...",
@@ -234,48 +202,38 @@ const i18n = {
         bookmarkSave: "Guardar",
 
         extractingCover: "Extrayendo portada...", readingPage: "Leyendo página", formattingText: "Formateando texto...",
-        extractingEpub: "Extrayendo EPUB...", analyzingStructure: "Analizando estructura...", analyzingStruct: "Analizando estructura...", extractingChapter: "Extrayendo capítulo",
-        welcomeTitle: "Bienvenido a Baca.", welcomeDesc: "Lee estas instrucciones para una experiencia de lectura óptima.",
-        welBackup: "Copia de seguridad", welBackupDesc: "Usa la función de Copia de seguridad en Ajustes. Los datos se guardan como archivo JSON en la carpeta <b>Documents</b> del almacenamiento principal (no en DCIM ni Descargas). Para restaurar, selecciona ese archivo desde la carpeta Documents.",
-        welFormat: "Limitaciones de formato", welFormatDesc: "<b>PDF de texto:</b> Zoom, marcadores, búsqueda y consulta con IA compatibles.<br><b>PDF de imagen:</b> Solo vista original (funciones de texto bloqueadas).<br><b>EPUB:</b> Totalmente compatible.<br><b>TXT / MD:</b> Compatible.",
+        extractingEpub: "Extrayendo EPUB...", analyzingStructure: "Analizando estructura...", extractingChapter: "Extrayendo capítulo",
+        welcomeTitle: "Bienvenido a Baca.", welcomeDesc: "Por favor, lee estas instrucciones para una experiencia de lectura óptima.",
+        welBackup: "Copia de seguridad", welBackupDesc: "Usa la función de copia de seguridad en Ajustes. Los datos se guardan como un archivo JSON directamente en la carpeta <b>Documentos</b> del almacenamiento principal de tu dispositivo. Para restaurar, simplemente selecciona ese archivo desde la carpeta Documentos.",
+        welFormat: "Limitaciones de formato", welFormatDesc: "<b>PDF:</b> Solo texto. Se ignoran las imágenes.<br><b>EPUB:</b> Totalmente compatible.",
         welPrivacy: "Privacidad total", welPrivacyDesc: "Procesado localmente en tu dispositivo.", welBtn: "Entendido",
-        setMainTitle: "Ajustes", setPalette: "Paleta de tema", setLang: "Idioma", setInfo: "Info y soporte",
-        btnInfo: "Ver instrucciones", btnDonate: "Invítame un café", btnClose: "Cerrar",
-        setData: "Datos de la app", btnBackup: "Hacer copia de seguridad", btnRestore: "Restaurar datos",
-
+        setMainTitle: "Ajustes", setPalette: "Paleta de temas", setLang: "Idioma", setInfo: "Información y soporte",
+        btnInfo: "Ver instrucciones", btnDonate: "Cómprame un café", btnClose: "Cerrar",
+        setData: "Datos de la app", btnBackup: "Copia de seguridad", btnRestore: "Restaurar datos",
+        
+        // Teks Sistem Cek Update
         btnUpdate: "Buscar actualizaciones",
-        updateChecking: "Verificando versión...",
-        updateLatestTitle: "Ya está actualizado",
-        updateLatestDesc: "Estás usando la versión más reciente.",
+        updateChecking: "Comprobando versión...",
+        updateLatestTitle: "Actualizado",
+        updateLatestDesc: `Estás usando la última versión.`,
         updateAvailableTitle: "¡Actualización disponible!",
-        updateAvailableDesc: "Hay una nueva versión disponible. ¿Abrir la página de descarga ahora?",
-        updateError: "Error al buscar actualizaciones. Verifica tu conexión a internet.",
+        updateAvailableDesc: "Hay una nueva versión. ¿Abrir la página de descarga ahora?",
+        updateError: "Error al comprobar actualizaciones. Revisa tu conexión a internet.",
         btnDownload: "Descargar",
 
-        navBack: "Volver", navToc: "Contenido", navSearch: "Buscar", navText: "Texto", navFull: "Completo",
-        readerLoading: "Cargando libro...", tocTitle: "Tabla de contenidos", setTitle: "Apariencia",
-        setTheme: "Modo de tema", setSize: "Tamaño de texto", setAlign: "Alineación de texto", setFont: "Tipo de fuente",
+        navBack: "Atrás", navToc: "Índice", navSearch: "Buscar", navText: "Texto", navFull: "Completo",
+        readerLoading: "Cargando libro...", tocTitle: "Índice", setTitle: "Apariencia",
+        setTheme: "Modo de tema", setSize: "Tamaño del texto", setAlign: "Alineación", setFont: "Tipo de letra",
         searchPlaceholder: "Buscar en el libro...", searchNotFound: "No encontrado.",
         aiTitle: "Definición", aiLoading: "Buscando referencias...", noInternet: "Problema de conexión a internet.",
-        deleteNoteConfirm: "¿Eliminar esta nota o subrayado?",
+        deleteNoteConfirm: "¿Eliminar esta nota/resaltado?",
         editTitle: "Editar detalles", editBookTitle: "Título del libro", editBookCover: "Imagen de portada", editBookShape: "Forma de la tarjeta", editCancel: "Cancelar", editSave: "Guardar", optCancel: "Cancelar", themeLight: "Modo claro", themeDark: "Modo oscuro", amoledLabel: "AMOLED (Negro puro)",
-        shapeDyn: "Dinámico", shapeRound: "Redondeado", shapeSquare: "Cuadrado",
-        rawBakTitle: "Datos de copia sin procesar", rawBakDesc: "Debido a restricciones del dispositivo, copia el texto a continuación y guárdalo en tus Notas o en un archivo de texto.", rawBakCopy: "Copiar texto", rawBakClose: "Cerrar",
-        rawResTitle: "Restaurar datos", rawResDesc: "Pega aquí el texto JSON de tu copia de seguridad, O elige un archivo JSON desde tu dispositivo.", rawResFile: "Seleccionar archivo", rawResProcess: "Procesar texto", rawResClose: "Cancelar",
-        setAiConfig: "Configuración de IA", geminiPlaceholder: "Clave API de Gemini...", geminiDesc: "Agrega tu clave API para obtener definiciones inteligentes de la IA. (Configuración óptima: usa Gemini 2.5 Flash Lite para máxima velocidad).", keySaved: "Clave API guardada correctamente.",
+        shapeDyn: "Dinámico", shapeRound: "Redondeado", shapeSquare: "Cuadrado",               
+        rawBakTitle: "Datos de copia de seguridad sin procesar", rawBakDesc: "Debido a restricciones del dispositivo, copia el texto a continuación y guárdalo de forma segura en tus Notas.", rawBakCopy: "Copiar texto", rawBakClose: "Cerrar",
+        rawResTitle: "Restaurar datos", rawResDesc: "Pega el texto JSON de tu copia de seguridad aquí, O elige un archivo JSON de tu dispositivo.", rawResFile: "Seleccionar archivo", rawResProcess: "Procesar texto", rawResClose: "Cancelar",
+        setAiConfig: "Configuración de IA", geminiPlaceholder: "Clave API de Gemini...", geminiDesc: "Añade tu clave API para obtener definiciones inteligentes de la IA. (Configuración óptima: usa Gemini 2.5 Flash Lite para máxima velocidad).", keySaved: "Clave API guardada con éxito.",
 
-        statTitle: "Estadísticas de lectura", statTotal: "Colección", statReading: "Leyendo", statCompleted: "Completado", statNotes: "Notas",
-
-        pdfOriginalView: "Vista original",
-        pdfTextMode: "Modo texto",
-        pdfImageLocked: "Lo sentimos, tu PDF es solo una imagen — esta función no está disponible.",
-        pdfImageLockedTitle: "Función bloqueada",
-        pdfDetecting: "Detectando tipo de PDF...",
-
-        loadingMd: "Leyendo Markdown...",
-
-        welFormatDesc: "<b>PDF de texto:</b> Zoom, marcadores, búsqueda y consulta con IA compatibles.<br><b>PDF de imagen:</b> Solo vista original (funciones de texto bloqueadas).<br><b>EPUB:</b> Totalmente compatible.<br><b>TXT / MD:</b> Compatible.",
-
-        wikiLangLabel: "Idioma del contenido"
+        statTitle: "Estadísticas", statTotal: "Colección", statReading: "Leyendo", statCompleted: "Completados", statNotes: "Notas"
     }
 };
+
