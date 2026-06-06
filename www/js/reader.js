@@ -1,4 +1,3 @@
-```javascript
 // --- READER ENGINE ---
 // File ini mengurus semua logika berat: Parsing PDF, Ekstrak EPUB, In-Book Search, Gemini AI, & Markdown.
 
@@ -659,4 +658,3 @@ window.closeAiModal = function(isFromHistory = false) {
     setTimeout(() => m.classList.add('hidden'), 300);
 }
 
-```
