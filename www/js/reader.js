@@ -90,44 +90,68 @@ document.addEventListener("DOMContentLoaded", () => {
 });
 
 // 1b. PROSES BANYAK FILE SEKALIGUS (multi-select atau folder scan)
+// Queue system: kalau ada proses yang sedang berjalan, tambahkan ke antrian
+let _importQueue = [];
+let _importRunning = false;
+let _importTotalQueued = 0;
+let _importDoneCount = 0;
+
 async function processMultipleFiles(files) {
+    // Tambahkan semua file ke queue global
+    for (const f of files) _importQueue.push(f);
+    _importTotalQueued += files.length;
+
+    // Jika sudah ada runner aktif, cukup update total — runner akan terus drain queue
+    if (_importRunning) return;
+
+    // Mulai runner
+    _importRunning = true;
+    _importDoneCount = 0;
     const failed = [];
     let imported = 0;
 
-    for (let i = 0; i < files.length; i++) {
-        const file = files[i];
+    DOM.load.classList.remove('hidden');
+
+    while (_importQueue.length > 0) {
+        const file = _importQueue.shift();
         const originalFilename = file.name;
         const ext = originalFilename.split('.').pop().toLowerCase();
         const bookTitle = originalFilename.replace(/\.[^/.]+$/, "");
 
-        // Pengecekan duplikat DIHAPUS. User bisa memasukkan buku yang sama berkali-kali.
-
-        // Update loading UI
-        DOM.load.classList.remove('hidden');
+        // Update label: tampilkan progress akurat termasuk file yang ditambahkan belakangan
+        const currentIdx = _importDoneCount + 1;
+        const totalNow = _importTotalQueued;
         DOM.loadBar.style.width = '0%';
         DOM.loadPct.textContent = '0%';
-        if (DOM.loadTxt) DOM.loadTxt.textContent = `(${i + 1}/${files.length}) ${bookTitle}`;
+        if (DOM.loadTxt) DOM.loadTxt.textContent = `(${currentIdx}/${totalNow}) ${bookTitle}`;
 
         try {
             if (ext === 'pdf') await handlePdf(file, bookTitle);
             else if (ext === 'epub') await handleEpub(file, bookTitle);
             else if (ext === 'txt') await handleTxt(file, bookTitle);
             else if (ext === 'md') await handleMd(file, bookTitle);
-            else { continue; }
+            else { _importDoneCount++; continue; }
             imported++;
         } catch (err) {
             console.error(`Gagal import: ${bookTitle}`, err);
             failed.push(bookTitle);
         }
+        _importDoneCount++;
     }
+
+    // Semua selesai — reset state
+    _importRunning = false;
+    const grandTotal = _importTotalQueued;
+    _importTotalQueued = 0;
+    _importDoneCount = 0;
 
     setTimeout(() => { DOM.load.classList.add('hidden'); }, 800);
     if (DOM.loadTxt) DOM.loadTxt.textContent = 'Reading Document...';
 
     let summary = `${imported} buku berhasil diimpor.`;
-    if (failed.length > 0) summary += `\n${failed.length} gagal.`;
+    if (failed.length > 0) summary += `\n${failed.length} gagal: ${failed.join(', ')}`;
 
-    if (files.length > 1) {
+    if (grandTotal > 1 || failed.length > 0) {
         showDialog("Selesai Import", summary, "check-circle", [{ text: "Oke", primary: true }]);
     }
 }
@@ -593,16 +617,22 @@ async function handlePdf(file, bookTitle) {
         }
 
         // Di akhir halaman, cek apakah blok terakhir kalimatnya belum selesai
-        // (tidak diakhiri tanda baca kalimat = kemungkinan lanjut ke halaman berikut)
+        // Carry-over HANYA untuk paragraf pendek yang jelas terpotong di tengah kata/kalimat
         if (currentBlock.trim().length > 0) {
             const trimmed = currentBlock.trim();
             const fontSize = currentBlockMaxFont;
+            const wordCount = trimmed.split(/\s+/).length;
 
-            // Jika ini bukan heading (ukuran normal) dan tidak diakhiri tanda kalimat selesai
-            // → carry over ke halaman berikut
-            if (fontSize <= baseFontSize * 1.08 && !trimmed.match(/[.!?:»"')\]]+$/)) {
+            // Carry-over jika: bukan heading, kalimat SANGAT pendek (< 5 kata),
+            // tidak diakhiri tanda kalimat selesai, dan tidak diakhiri titik dua/tanda kutip
+            // Batasi carry-over maksimal — jangan gabung paragraf panjang yang kebetulan tidak ada titiknya
+            const isLikelyCutOff = fontSize <= baseFontSize * 1.08
+                && wordCount < 6
+                && !trimmed.match(/[.!?:;»"')\]。！？]+$/)
+                && trimmed.length < 120;
+
+            if (isLikelyCutOff) {
                 pendingCarryOver = trimmed + ' ';
-                // Jangan flush, biarkan dibawa ke halaman berikut
             } else {
                 flushBlock();
             }
@@ -708,17 +738,19 @@ async function handlePdf(file, bookTitle) {
     }
 
     // ===================================================================
-    // PASS 5: POST-PROCESSING — GABUNG PARAGRAF PENDEK YANG TERPOTONG
-    // Paragraf yang < 80 char dan tidak diakhiri tanda baca → mungkin potongan
-    // Gabungkan dengan paragraf berikutnya jika berikutnya juga 'p'
+    // PASS 5: POST-PROCESSING — GABUNG FRAGMEN KATA YANG TERPOTONG
+    // Hanya gabungkan jika teks sangat pendek (< 4 kata) dan tidak ada tanda kalimat selesai
+    // Ini untuk menangkap kata yang terpotong antar halaman, bukan untuk menggabungkan paragraf pendek normal
     // ===================================================================
     const mergedNodes = [];
     for (let i = 0; i < parsedNodes.length; i++) {
         const node = parsedNodes[i];
+        const wordCount = node.text.split(/\s+/).length;
         if (
             node.tag === 'p' &&
-            node.text.length < 80 &&
-            !node.text.match(/[.!?:»"')\]]+$/) &&
+            wordCount < 4 &&
+            node.text.length < 40 &&
+            !node.text.match(/[.!?:;»"')\]。！？]+$/) &&
             i + 1 < parsedNodes.length &&
             parsedNodes[i + 1].tag === 'p'
         ) {
@@ -727,7 +759,7 @@ async function handlePdf(file, bookTitle) {
                 tag: 'p',
                 text: node.text.trim() + ' ' + parsedNodes[i + 1].text.trim()
             };
-            // Skip node ini (sudah digabung)
+            // Skip node ini
         } else {
             mergedNodes.push(node);
         }
@@ -812,6 +844,9 @@ async function handleEpub(file, bookTitle) {
         const htmlStr = await htmlFile.async("text");
         const doc = (new DOMParser()).parseFromString(htmlStr, "text/html");
         
+        // Guard: beberapa chapter EPUB adalah XHTML malformed tanpa <body>
+        if (!doc || !doc.body) continue;
+
         doc.querySelectorAll('script, style, nav, footer, iframe, svg, button').forEach(el => el.remove());
 
         const allElements = doc.body.querySelectorAll('*');
@@ -853,12 +888,19 @@ async function handleEpub(file, bookTitle) {
                 let text = el.textContent.trim().replace(/\s+/g, ' ');
                 if (text.length === 0) continue;
 
-                // Normalisasi karakter aneh & spasi antar huruf scatter
-                text = text.replace(/\b([A-Z])\s(?=[A-Z]\s|[A-Z]\b)/g, '$1');
+                // Normalisasi: spasi antar huruf scatter (e.g. "B A B" → "BAB")
+                // Hanya untuk huruf kapital ASCII agar tidak merusak Unicode lain
+                try {
+                    text = text.replace(/(?<=[A-Z]) (?=[A-Z]( [A-Z]|$))/g, '');
+                } catch(e) {
+                    // Fallback kalau lookbehind tidak support (older WebView)
+                    text = text.replace(/\b([A-Z]) ([A-Z])\b/g, '$1$2');
+                }
                 text = text.replace(/B\s*A\s*B/gi, 'BAB');
 
-                // Buang teks yang hanya simbol/karakter non-konten
-                if (!/[a-zA-Z0-9\u00C0-\u024F\u4E00-\u9FFF\u0600-\u06FF]/.test(text)) continue;
+                // Buang teks yang tidak mengandung karakter konten sama sekali
+                if (text.length < 2) continue;
+                if (!/\w/.test(text) && !/[\u00C0-\u024F\u0600-\u06FF\u4E00-\u9FFF]/.test(text)) continue;
 
                 let finalTag = 'p';
 
