@@ -184,10 +184,7 @@ async function handleTxt(file, bookTitle) {
     renderLibrary();
 }
 
-// 1d. SCAN FOLDER — pakai folder picker HTML (user bebas pilih folder manapun)
-window.scanFolderAndImport = function() {
-    document.getElementById('folder-scan-upload').click();
-};
+// 1d. (reserved for future folder scan feature)
 
 function clearSearchHighlights() {
     if(!DOM.inner) return;
