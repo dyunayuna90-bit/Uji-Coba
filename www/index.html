@@ -125,21 +125,82 @@
             </div>
         </div>
 
-        <div id="fab-container" class="fixed bottom-8 right-6 z-50 transition-all duration-300 flex flex-col items-end gap-3">
-            <!-- Tombol Scan Folder -->
-            <button onclick="window.scanFolderAndImport()" class="fab-capsule flex items-center gap-2 px-4 bg-m3-secondaryContainer text-m3-onSecondaryContainer cursor-pointer shadow-none overflow-hidden">
-                <i data-lucide="folder-search" class="w-5 h-5 shrink-0"></i>
-                <span class="text-xs font-black tracking-tight pr-1">Scan</span>
+        <div id="fab-container" class="fixed bottom-8 right-6 z-50 flex flex-col items-end gap-3">
+            
+            <!-- Tombol Scan Folder (tersembunyi, muncul saat FAB dibuka) -->
+            <button id="fab-folder-btn" onclick="window.scanFolderAndImport()" 
+                class="fab-capsule flex items-center gap-2 px-5 bg-m3-secondaryContainer text-m3-onSecondaryContainer cursor-pointer overflow-hidden opacity-0 pointer-events-none translate-y-4"
+                style="transition: opacity 0.3s cubic-bezier(0.34,1.56,0.64,1), transform 0.35s cubic-bezier(0.34,1.56,0.64,1);">
+                <i data-lucide="folder-open" class="w-5 h-5 shrink-0"></i>
+                <span class="text-xs font-black tracking-tight">Folder</span>
             </button>
-            <!-- Tombol Tambah Buku (multi-file) -->
-            <button onclick="document.getElementById('doc-upload').click();" class="fab-capsule flex items-center justify-center bg-m3-primary text-m3-onPrimary cursor-pointer shadow-none overflow-hidden">
-                <i data-lucide="plus" class="w-8 h-8 shrink-0"></i>
+
+            <!-- Tombol Pilih File Satuan (tersembunyi, muncul saat FAB dibuka) -->
+            <button id="fab-file-btn" onclick="document.getElementById('doc-upload').click()" 
+                class="fab-capsule flex items-center gap-2 px-5 bg-m3-surfaceVariant text-m3-onSurfaceVariant cursor-pointer overflow-hidden opacity-0 pointer-events-none translate-y-4"
+                style="transition: opacity 0.25s cubic-bezier(0.34,1.56,0.64,1), transform 0.3s cubic-bezier(0.34,1.56,0.64,1);">
+                <i data-lucide="file-plus" class="w-5 h-5 shrink-0"></i>
+                <span class="text-xs font-black tracking-tight">File</span>
             </button>
+
+            <!-- Tombol FAB Utama -->
+            <button id="fab-main-btn" onclick="toggleFabMenu()" 
+                class="fab-capsule flex items-center justify-center bg-m3-primary text-m3-onPrimary cursor-pointer overflow-hidden"
+                style="transition: all 0.4s cubic-bezier(0.34,1.56,0.64,1);">
+                <i id="fab-main-icon" data-lucide="plus" class="w-8 h-8 shrink-0" style="transition: transform 0.4s cubic-bezier(0.34,1.56,0.64,1);"></i>
+            </button>
+
             <!-- Input file biasa (multi-select, PDF/EPUB/TXT) -->
             <input type="file" id="doc-upload" accept=".epub,.pdf,.txt" multiple class="hidden">
-            <!-- Input folder picker (fallback webkitdirectory) -->
+            <!-- Input folder picker (webkitdirectory) -->
             <input type="file" id="folder-scan-upload" accept=".epub,.pdf,.txt" multiple webkitdirectory class="hidden">
         </div>
+
+        <!-- Overlay transparan buat nutup FAB kalau tap luar -->
+        <div id="fab-overlay" onclick="closeFabMenu()" class="hidden fixed inset-0 z-40"></div>
+
+        <script>
+            let fabOpen = false;
+            function toggleFabMenu() {
+                fabOpen ? closeFabMenu() : openFabMenu();
+            }
+            function openFabMenu() {
+                fabOpen = true;
+                const folderBtn = document.getElementById('fab-folder-btn');
+                const fileBtn = document.getElementById('fab-file-btn');
+                const icon = document.getElementById('fab-main-icon');
+                const overlay = document.getElementById('fab-overlay');
+
+                overlay.classList.remove('hidden');
+
+                // Muncul dari bawah ke atas dengan delay berbeda (stagger)
+                fileBtn.classList.remove('opacity-0', 'pointer-events-none', 'translate-y-4');
+                setTimeout(() => {
+                    folderBtn.classList.remove('opacity-0', 'pointer-events-none', 'translate-y-4');
+                }, 60);
+
+                // Rotate icon + jadi X
+                icon.setAttribute('data-lucide', 'x');
+                if (window.lucide) window.lucide.createIcons();
+                icon.style.transform = 'rotate(90deg)';
+            }
+            function closeFabMenu() {
+                fabOpen = false;
+                const folderBtn = document.getElementById('fab-folder-btn');
+                const fileBtn = document.getElementById('fab-file-btn');
+                const icon = document.getElementById('fab-main-icon');
+                const overlay = document.getElementById('fab-overlay');
+
+                overlay.classList.add('hidden');
+
+                folderBtn.classList.add('opacity-0', 'pointer-events-none', 'translate-y-4');
+                fileBtn.classList.add('opacity-0', 'pointer-events-none', 'translate-y-4');
+
+                icon.setAttribute('data-lucide', 'plus');
+                if (window.lucide) window.lucide.createIcons();
+                icon.style.transform = 'rotate(0deg)';
+            }
+        </script>
         
         <div id="batch-delete-bar" class="fixed bottom-6 left-1/2 -translate-x-1/2 bg-m3-surfaceVariant text-m3-onSurfaceVariant px-6 py-3 z-[60] translate-y-32 transition-transform duration-300 flex justify-between items-center rounded-full shadow-[0_8px_30px_rgba(0,0,0,0.2)] gap-4 w-max border-none pointer-events-auto">
             <span id="batch-delete-count" class="font-bold text-sm tracking-wide whitespace-nowrap">0 Terpilih</span>
