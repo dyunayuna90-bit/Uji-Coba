@@ -156,7 +156,7 @@ async function handleTxt(file, bookTitle) {
     if (parsedNodes.length === 0) throw new Error("File TXT kosong atau tidak bisa dibaca.");
 
     library.push({
-        id: Date.now().toString() + Math.floor(Math.random() * 1000), // Tambahin random biar ID duplikat bener-bener aman
+        id: Date.now().toString() + Math.floor(Math.random() * 1000), 
         type: 'txt',
         title: bookTitle,
         nodes: parsedNodes,
@@ -320,7 +320,7 @@ function renderSearchResults(results, keyword) {
     searchResEl.classList.remove('hidden');
 }
 
-// 2. FUNGSI EKSTRAK PDF (ALGORITMA CERDAS + STITCHING & HYPHENATION FIX)
+// 2. FUNGSI EKSTRAK PDF (ALGORITMA CERDAS + HYPHENATION & SPATIAL GAP FIX)
 async function handlePdf(file, bookTitle) {
     const arrayBuffer = await file.arrayBuffer(); 
     const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
@@ -357,7 +357,7 @@ async function handlePdf(file, bookTitle) {
         }
     }
 
-    // --- PHASE 2: EKSTRAKSI & STITCHING PARAGRAF ---
+    // --- PHASE 2: EKSTRAKSI & SPATIAL STITCHING ---
     for (let i = 1; i <= total; i++) {
         DOM.loadBar.style.width = `${Math.round((i / total) * 100)}%`; 
         DOM.loadPct.textContent = `${Math.round((i / total) * 100)}%`;
@@ -367,6 +367,8 @@ async function handlePdf(file, bookTitle) {
         
         let currentBlock = ""; 
         let lastY = -1; 
+        let lastX = -1;
+        let lastWidth = 0;
         let blockMaxHeight = 0;
 
         const processBlock = (text, maxHeight) => {
@@ -397,23 +399,25 @@ async function handlePdf(file, bookTitle) {
         };
 
         textContent.items.forEach(item => {
+            const x = item.transform[4];
             const y = Math.round(item.transform[5]); 
             const height = item.height;
+            const width = item.width;
             const str = item.str;
 
-            // Lewati item yang cuma berisi string kosong untuk kalkulasi posisi, tapi tetep simpen spasinya
+            // Lewati item yang stringnya cuma spasi/kosong, tapi tetap hitung koordinat dan gabungkan.
             if (str.trim() === '') {
                 currentBlock += str;
+                lastX = x; lastY = y; lastWidth = width;
                 return;
             }
             
             if (lastY !== -1) {
-                const gap = Math.abs(lastY - y);
-                // Logika Pemisahan Paragraf:
-                // Pisah jika gap > 1.6x baseFont (jarak enter yang jauh)
-                // ATAU gap > 0.8x baseFont (baris baru normal) TAPI baris sebelumnya diakhiri titik, tanda tanya, atau seru.
-                const isBigGap = gap > (baseFontSize * 1.6);
-                const isEndOfSentence = gap > (baseFontSize * 0.8) && currentBlock.trim().match(/[.!?]$/);
+                const gapY = Math.abs(lastY - y);
+                // Pisah jika gap > 1.6x baseFont (jarak antar paragraf yang jauh)
+                // ATAU gap > 0.8x baseFont (baris baru) TAPI baris sebelumnya diakhiri titik, tanya, seru.
+                const isBigGap = gapY > (baseFontSize * 1.6);
+                const isEndOfSentence = gapY > (baseFontSize * 0.8) && currentBlock.trim().match(/[.!?]$/);
 
                 if (isBigGap || isEndOfSentence) {
                     if (currentBlock.trim().length > 0) { 
@@ -421,24 +425,38 @@ async function handlePdf(file, bookTitle) {
                     }
                     currentBlock = ""; 
                     blockMaxHeight = 0;
+                    lastX = -1; // Reset koordinat X buat blok baru
                 }
             }
             
             if (height > blockMaxHeight) blockMaxHeight = height;
             
-            // Logika Penyambungan (Stitching) & Pemenggalan Kata (Hyphenation)
-            let cbTrimmed = currentBlock.trim();
-            if (cbTrimmed.endsWith('-')) {
-                // Hapus strip, dan gabungkan tanpa spasi (cth: "se-" + "jarah" = "sejarah")
-                currentBlock = cbTrimmed.slice(0, -1) + str.trimStart();
+            // Logika Penyambungan (Stitching), Hyphenation, & Spatial Gap
+            if (currentBlock.match(/-\s*$/)) {
+                // Hapus strip di akhir, lalu gabungkan kata yang terpenggal TANPA spasi (e.g. se- jarah -> sejarah)
+                currentBlock = currentBlock.replace(/-\s*$/, '') + str.trimStart();
             } else {
-                // Normal append. Kasih spasi buat gabungin kata antar baris.
-                if (currentBlock.length > 0 && !currentBlock.endsWith(" ")) {
-                    currentBlock += " ";
+                if (currentBlock.length > 0 && lastX !== -1) {
+                    const gapY = Math.abs(lastY - y);
+                    if (gapY < (baseFontSize * 0.5)) { 
+                        // Baris yang sama: Analisa koordinat X
+                        const gapX = x - (lastX + lastWidth);
+                        // Jika jarak X lebih besar dari 22% ukuran font, artinya ini spasinya asli, BUKAN kerning doang.
+                        if (gapX > (baseFontSize * 0.22) && !currentBlock.endsWith(" ") && !currentBlock.endsWith("\n")) {
+                            currentBlock += " ";
+                        }
+                    } else { 
+                        // Baris beda, biasa wrap kalimat normal, kita butuh spasi
+                        if (!currentBlock.endsWith(" ") && !currentBlock.endsWith("\n")) {
+                            currentBlock += " ";
+                        }
+                    }
                 }
                 currentBlock += str;
             }
 
+            lastX = x;
+            lastWidth = width;
             lastY = y;
         });
 
@@ -605,7 +623,7 @@ function resolveRelativePath(base, relative) {
     return stack.join('/');
 }
 
-// 4. LOOKUP DICTIONARY — Orchestrator Wikipedia + Gemini (Support EN/ID/ES)
+// 4. LOOKUP DICTIONARY — Orchestrator Wikipedia + Gemini
 window.lookupDictionary = function() {
     const savedText = currentSelection.text;
     if (!savedText) return;
@@ -684,7 +702,6 @@ window.lookupDictionary = function() {
     // Fetch Gemini (kalau ada API key)
     if (apiKey) {
         const modelVersion = localStorage.getItem('gemini_model') || 'gemini-2.5-flash-preview-05-20';
-        
         let langInstruction = 'Use English. Explain the meaning, context, and provide a short example sentence. Write in plain paragraphs, no bullet points. No introductory phrases, go straight to the explanation.';
         if (wikiLang === 'id') {
             langInstruction = 'Gunakan bahasa Indonesia. Jelaskan arti, konteks, dan berikan contoh kalimat singkat. Tulis dalam paragraf biasa, tanpa poin atau bullet. Langsung ke penjelasan tanpa kata pembuka.';
@@ -731,4 +748,5 @@ window.closeAiModal = function(isFromHistory = false) {
     m.classList.add('opacity-0');
     setTimeout(() => m.classList.add('hidden'), 300);
 }
+
 
