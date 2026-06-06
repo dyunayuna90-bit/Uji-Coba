@@ -347,10 +347,17 @@ function syncWikiLangUI() {
     const wid = document.getElementById('wiki-lang-id');
     const wen = document.getElementById('wiki-lang-en');
     const wes = document.getElementById('wiki-lang-es');
-    const allBtns = [wid, wen, wes].filter(Boolean);
-    allBtns.forEach(el => { el.classList.remove('bg-m3-primary', 'text-m3-onPrimary'); el.classList.add('text-m3-onSurfaceVariant'); });
-    const activeBtn = wikiLang === 'id' ? wid : wikiLang === 'es' ? wes : wen;
-    if (activeBtn) { activeBtn.classList.add('bg-m3-primary', 'text-m3-onPrimary'); activeBtn.classList.remove('text-m3-onSurfaceVariant'); }
+    if(wid && wen) {
+        [wid, wen, wes].forEach(el => { 
+            if(el) {
+                el.classList.remove('bg-m3-primary', 'text-m3-onPrimary'); 
+                el.classList.add('text-m3-onSurfaceVariant'); 
+            }
+        });
+        if (wikiLang === 'id') { wid.classList.add('bg-m3-primary', 'text-m3-onPrimary'); wid.classList.remove('text-m3-onSurfaceVariant'); }
+        else if (wikiLang === 'es') { if (wes) { wes.classList.add('bg-m3-primary', 'text-m3-onPrimary'); wes.classList.remove('text-m3-onSurfaceVariant'); } }
+        else { wen.classList.add('bg-m3-primary', 'text-m3-onPrimary'); wen.classList.remove('text-m3-onSurfaceVariant'); }
+    }
 }
 
 // 5. CUSTOM DIALOG & MODALS
@@ -508,13 +515,13 @@ window.exportData = async function() {
     try {
         const data = await localforage.getItem('pdf_epub_master');
         if (!data || data.length === 0) {
-            showDialog("Info", wikiLang === 'id' ? "Ga ada buku untuk di-backup." : "No books to backup.", "info", [{ text: "Oke", primary: true }]);
+            showDialog("Info", wikiLang === 'id' ? "Ga ada buku untuk di-backup." : (wikiLang === 'es' ? "No hay libros para hacer copia de seguridad." : "No books to backup."), "info", [{ text: "Oke", primary: true }]);
             return;
         }
 
         showDialog(
-            wikiLang === 'id' ? "Memproses Backup" : "Processing Backup",
-            wikiLang === 'id' ? "Mohon tunggu sebentar, menyiapkan file lu..." : "Please wait, preparing your file...",
+            wikiLang === 'id' ? "Memproses Backup" : (wikiLang === 'es' ? "Procesando copia de seguridad" : "Processing Backup"),
+            wikiLang === 'id' ? "Mohon tunggu sebentar, menyiapkan file lu..." : (wikiLang === 'es' ? "Por favor espera, preparando tu archivo..." : "Please wait, preparing your file..."),
             "loader", 
             []
         );
@@ -544,8 +551,8 @@ window.exportData = async function() {
                         });
                         
                         showDialog(
-                            wikiLang === 'id' ? "Backup Sukses" : "Backup Success", 
-                            wikiLang === 'id' ? `File backup berhasil disimpan di folder Documents HP lu.\nNama file: ${displayFileName}` : `Backup file saved in your device's Documents folder.\nFile name: ${displayFileName}`, 
+                            wikiLang === 'id' ? "Backup Sukses" : (wikiLang === 'es' ? "Copia de seguridad exitosa" : "Backup Success"), 
+                            wikiLang === 'id' ? `File backup berhasil disimpan di folder Documents HP lu.\nNama file: ${displayFileName}` : (wikiLang === 'es' ? `Archivo de copia de seguridad guardado en la carpeta Documentos.\nNombre del archivo: ${displayFileName}` : `Backup file saved in your device's Documents folder.\nFile name: ${displayFileName}`), 
                             "check-circle", 
                             [{ text: "Mantap", primary: true }]
                         );
@@ -573,7 +580,7 @@ window.exportData = async function() {
                         showDialog("Info Fallback", 
                             wikiLang === 'id' ? 
                             "Simpan file native gagal. Ini adalah teks mentahnya.\n\nCATATAN: Demi menghindari error sistem (ukuran file terlalu besar), data Sampul Buku otomatis DIHAPUS pada versi ini. Data teks buku tetap aman." : 
-                            "Native file save failed. This is the raw text.\n\nNOTE: To prevent system memory errors, Book Covers are REMOVED in this version. Text data is safe.", 
+                            (wikiLang === 'es' ? "Error al guardar el archivo nativo. Este es el texto sin procesar.\n\nNOTA: Para evitar errores de memoria del sistema, las portadas de los libros se ELIMINAN en esta versión. Los datos de texto están seguros." : "Native file save failed. This is the raw text.\n\nNOTE: To prevent system memory errors, Book Covers are REMOVED in this version. Text data is safe."), 
                             "info", [{ text: "Mengerti", primary: true }]);
                     }, 400);
                 }, 350);
@@ -599,7 +606,7 @@ window.copyRawBackup = function() {
         document.execCommand('copy');
         const btnSpan = document.getElementById('str-raw-bak-btn-copy');
         const originalText = btnSpan.innerText;
-        btnSpan.innerText = wikiLang === 'id' ? "Berhasil Disalin!" : "Copied!";
+        btnSpan.innerText = wikiLang === 'id' ? "Berhasil Disalin!" : (wikiLang === 'es' ? "¡Copiado!" : "Copied!");
         setTimeout(() => { btnSpan.innerText = originalText; }, 2000);
     } catch (err) {
         showDialog("Error", "Gagal menyalin otomatis. Silakan blok semua teks secara manual dan salin.", "alert-circle", [{ text: "Tutup", primary: true }]);
@@ -614,7 +621,7 @@ window.openRestoreOptions = function() {
 window.processRawRestore = function() {
     const val = document.getElementById('raw-restore-textarea').value.trim();
     if(!val) {
-        showDialog("Info", wikiLang === 'id' ? "Kotak teks masih kosong." : "Text box is empty.", "info", [{ text: "Oke", primary: true }]);
+        showDialog("Info", wikiLang === 'id' ? "Kotak teks masih kosong." : (wikiLang === 'es' ? "El cuadro de texto está vacío." : "Text box is empty."), "info", [{ text: "Oke", primary: true }]);
         return;
     }
     executeRestoreLogic(val);
@@ -640,8 +647,8 @@ function executeRestoreLogic(jsonString) {
         if (!isValid) throw new Error("Data backup rusak atau tidak kompatibel.");
         
         showDialog(
-            wikiLang === 'id' ? "Konfirmasi Restore" : "Confirm Restore",
-            wikiLang === 'id' ? "PERINGATAN: Semua data buku saat ini akan ketimpa total. Yakin mau lanjut?" : "WARNING: Current books will be completely replaced. Continue?",
+            wikiLang === 'id' ? "Konfirmasi Restore" : (wikiLang === 'es' ? "Confirmar restauración" : "Confirm Restore"),
+            wikiLang === 'id' ? "PERINGATAN: Semua data buku saat ini akan ketimpa total. Yakin mau lanjut?" : (wikiLang === 'es' ? "ADVERTENCIA: Los libros actuales serán reemplazados completamente. ¿Continuar?" : "WARNING: Current books will be completely replaced. Continue?"),
             "alert-triangle",
             [
                 { text: "Batal", primary: false },
@@ -658,8 +665,8 @@ function executeRestoreLogic(jsonString) {
                     
                     setTimeout(() => {
                         showDialog(
-                            wikiLang === 'id' ? "Restore Berhasil!" : "Restore Success!",
-                            wikiLang === 'id' ? "Data aplikasi lu udah berhasil dipulihin." : "Your data has been successfully restored.",
+                            wikiLang === 'id' ? "Restore Berhasil!" : (wikiLang === 'es' ? "¡Restauración exitosa!" : "Restore Success!"),
+                            wikiLang === 'id' ? "Data aplikasi lu udah berhasil dipulihin." : (wikiLang === 'es' ? "Tus datos han sido restaurados con éxito." : "Your data has been successfully restored."),
                             "check-circle",
                             [{ text: "Oke", primary: true }]
                         );
@@ -669,7 +676,7 @@ function executeRestoreLogic(jsonString) {
         );
     } catch (err) {
         console.error("Restore failed:", err);
-        showDialog("Error", (wikiLang === 'id' ? "Gagal memulihkan: " : "Failed to restore: ") + err.message, "alert-circle", [{ text: "Tutup", primary: true }]);
+        showDialog("Error", (wikiLang === 'id' ? "Gagal memulihkan: " : (wikiLang === 'es' ? "Error al restaurar: " : "Failed to restore: ")) + err.message, "alert-circle", [{ text: "Tutup", primary: true }]);
     }
 }
 
@@ -1152,7 +1159,6 @@ window.changeTypo = function(type, value) { typoPrefs[type] = value; applyTypo()
 // 10. READER INTERACTIONS
 window.openBook = function(book) {
     activeBookId = book.id; pushAppHistory(`reader-${book.id}`);
-    _isOriginalViewActive = false;
     DOM.libView.style.transform = 'scale(0.95)'; DOM.readView.classList.remove('translate-y-full');
     DOM.title.textContent = book.title; 
     
@@ -1163,54 +1169,6 @@ window.openBook = function(book) {
     if (observer) observer.disconnect();
 
     DOM.progBar.style.width = `${book.progressPct || 0}%`; DOM.progTxt.textContent = `${book.progressPct || 0}%`;
-
-    // Sembunyikan/tampilkan tombol Original View di settings berdasarkan pdfType
-    const btnOriginalView = document.getElementById('btn-original-view');
-    const btnOriginalViewLabel = document.getElementById('str-btn-original-view');
-    const d0 = typeof i18n !== 'undefined' ? (i18n[wikiLang] || i18n['id']) : {};
-    if (btnOriginalView) {
-        if (book.pdfType === 'text') {
-            btnOriginalView.classList.remove('hidden');
-            // Reset label & style ke state default (mode teks aktif)
-            if (btnOriginalViewLabel) btnOriginalViewLabel.textContent = d0.pdfOriginalView || 'Mode Kanvas';
-            const btn = btnOriginalView.querySelector('button');
-            if (btn) { btn.style.background = ''; btn.style.color = ''; }
-        } else {
-            btnOriginalView.classList.add('hidden');
-        }
-    }
-
-    // PDF GAMBAR: langsung ke original view, lock fitur teks
-    if (book.pdfType === 'image') {
-        const pdfOriginalContainer = document.getElementById('pdf-original-view-container');
-        if (pdfOriginalContainer) {
-            DOM.readContent.classList.add('hidden');
-            pdfOriginalContainer.classList.remove('hidden');
-            pdfOriginalContainer.style.height = '100%';
-            window.renderPdfOriginalView(book, pdfOriginalContainer);
-
-            // Apply dark mode filter jika aktif
-            if (isDark) window.togglePdfOriginalDark(true);
-        }
-
-        // Lock tombol bookmark, copy, AI
-        const lockTargets = ['btn-bookmarks', 'selection-menu'];
-        lockTargets.forEach(id => {
-            const el = document.getElementById(id);
-            if (el) el.onclick = (e) => { e.stopPropagation(); showLockedFeatureAlert(); };
-        });
-
-        const header = document.getElementById('reader-floating-header');
-        if (header) { header.classList.remove('-translate-y-[150%]', 'opacity-0'); header.classList.add('translate-y-0', 'opacity-100'); }
-
-        setTimeout(() => { loader.classList.add('opacity-0'); setTimeout(() => loader.classList.add('hidden'), 300); }, 400);
-        return;
-    }
-
-    // PDF TEKS atau format lain: tampilkan container teks, sembunyikan pdf container
-    const pdfOriginalContainer = document.getElementById('pdf-original-view-container');
-    if (pdfOriginalContainer) pdfOriginalContainer.classList.add('hidden');
-    DOM.readContent.classList.remove('hidden');
 
     setTimeout(() => {
         let hCounter = 0; const fragment = document.createDocumentFragment(); let currentHeadingId = null;
@@ -1281,73 +1239,8 @@ window._closeReaderAction = function(isFromHistory = false) {
     window.getSelection().removeAllRanges();
     const menu = document.getElementById('selection-menu');
     if(menu) { menu.classList.add('opacity-0', 'scale-75'); setTimeout(() => menu.classList.add('hidden'), 200); }
-
-    // Reset PDF original view container saat reader ditutup
-    const pdfOriginalContainer = document.getElementById('pdf-original-view-container');
-    if (pdfOriginalContainer) { pdfOriginalContainer.classList.add('hidden'); pdfOriginalContainer.innerHTML = ''; }
-    DOM.readContent.classList.remove('hidden');
-
     updateBottomNavUI(null);
 }
-
-// Alert untuk fitur yang di-lock di PDF Gambar
-window.showLockedFeatureAlert = function() {
-    const d = typeof i18n !== 'undefined' ? (i18n[wikiLang] || i18n['id']) : {};
-    const msg = d.pdfImageLocked || (
-        wikiLang === 'es' ? 'Lo siento, tu PDF es solo una imagen. Esta función no está disponible.' :
-        wikiLang === 'en' ? 'Sorry, your PDF is image-only. This feature is not available.' :
-        'Maaf ya, PDF kamu cuma gambar. Fitur ini tidak tersedia.'
-    );
-    showDialog(
-        d.pdfImageLockedTitle || (wikiLang === 'es' ? 'PDF Solo Imagen' : wikiLang === 'en' ? 'Image-Only PDF' : 'PDF Hanya Gambar'),
-        msg,
-        'image',
-        [{ text: 'Oke', primary: true }]
-    );
-};
-
-// Toggle Canvas/Teks — hanya untuk PDF teks
-let _isOriginalViewActive = false;
-window.toggleOriginalView = function() {
-    const book = library.find(b => b.id === activeBookId);
-    if (!book || book.pdfType !== 'text') return;
-
-    const pdfOriginalContainer = document.getElementById('pdf-original-view-container');
-    if (!pdfOriginalContainer) return;
-
-    const d = typeof i18n !== 'undefined' ? (i18n[wikiLang] || i18n['id']) : {};
-    const btnLabel = document.getElementById('str-btn-original-view');
-    const btnWrapper = document.getElementById('btn-original-view');
-
-    _isOriginalViewActive = !_isOriginalViewActive;
-
-    if (_isOriginalViewActive) {
-        // Switch ke mode canvas
-        DOM.readContent.classList.add('hidden');
-        pdfOriginalContainer.classList.remove('hidden');
-        window.renderPdfOriginalView(book, pdfOriginalContainer);
-        if (isDark) window.togglePdfOriginalDark(true);
-
-        // Update label & style tombol jadi "aktif"
-        if (btnLabel) btnLabel.textContent = d.pdfText || 'Tampilan Teks';
-        if (btnWrapper) {
-            const btn = btnWrapper.querySelector('button');
-            if (btn) { btn.style.background = 'var(--md-sys-color-primary)'; btn.style.color = 'var(--md-sys-color-on-primary)'; }
-        }
-    } else {
-        // Switch balik ke mode teks
-        pdfOriginalContainer.classList.add('hidden');
-        pdfOriginalContainer.innerHTML = '';
-        DOM.readContent.classList.remove('hidden');
-
-        // Update label & style tombol jadi "non-aktif"
-        if (btnLabel) btnLabel.textContent = d.pdfOriginalView || 'Mode Kanvas';
-        if (btnWrapper) {
-            const btn = btnWrapper.querySelector('button');
-            if (btn) { btn.style.background = ''; btn.style.color = ''; }
-        }
-    }
-};
 
 if(document.getElementById('btn-back')) {
     document.getElementById('btn-back').addEventListener('click', () => history.back());
@@ -1595,7 +1488,7 @@ window.copySelection = function() {
     if (!text) return;
     window.hideSelectionMenu();
     window.getSelection().removeAllRanges();
-    showToast(wikiLang === 'id' ? 'Tersalin!' : 'Copied!');
+    showToast(wikiLang === 'id' ? 'Tersalin!' : (wikiLang === 'es' ? '¡Copiado!' : 'Copied!'));
     if (navigator.clipboard && navigator.clipboard.writeText) {
         navigator.clipboard.writeText(text).catch(() => {
             const ta = document.createElement('textarea');
@@ -1663,7 +1556,7 @@ window.saveBookmarkAnnotation = function() {
         const totalNodes = book.nodes.length;
         const pct = Math.round(((currentSelection.nodeIdx + 1) / totalNodes) * 100);
 
-        let closestChapterName = wikiLang === 'id' ? "Bagian Buku" : "Book Section";
+        let closestChapterName = wikiLang === 'id' ? "Bagian Buku" : (wikiLang === 'es' ? "Sección del libro" : "Book Section");
         for (let i = currentSelection.nodeIdx; i >= 0; i--) {
             if (book.nodes[i].tag === 'h1' || book.nodes[i].tag === 'h2') {
                 closestChapterName = book.nodes[i].text;
@@ -1679,7 +1572,7 @@ window.saveBookmarkAnnotation = function() {
             endOff: currentSelection.endOff,
             text: currentSelection.text, 
             color: activeNoteColor, 
-            title: titleVal || (wikiLang === 'id' ? "Bookmark Baru" : "New Bookmark"), 
+            title: titleVal || (wikiLang === 'id' ? "Bookmark Baru" : (wikiLang === 'es' ? "Nuevo marcador" : "New Bookmark")), 
             note: noteVal,
             meta: `${chapterPreview} — ${pct}%`
         };
@@ -1969,5 +1862,3 @@ document.addEventListener("DOMContentLoaded", () => {
         }
     }, 500);
 });
-
-
