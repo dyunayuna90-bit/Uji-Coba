@@ -1,935 +1,1992 @@
-// --- READER ENGINE ---
-// File ini mengurus semua logika berat: Parsing PDF, Ekstrak EPUB, In-Book Search, & Gemini AI.
+// --- APP LOGIC ---
+// Mengurus interaksi UI, Tema, Render Library, & Fitur In-Book Bookmark Berwarna
 
-if (typeof pdfjsLib !== 'undefined') {
-    pdfjsLib.GlobalWorkerOptions.workerSrc = 'libs/pdf.worker.min.js';
-}
+// 1. GLOBAL STATE & DOM REFERENCES
+let library = []; 
+let activeBookId = null; 
+let observer = null; 
+let activePanel = null;
+let activeOptsId = null; 
+let currentSelection = { text: "", nodeIdx: -1, startOff: 0, endOff: 0 }; 
+let isBatchDeleteMode = false;
+let selectedForDelete = [];
+let activeNoteColor = 'yellow';
+let editingAnnotId = null;
 
-// 1. EVENT LISTENER UNTUK UPLOAD BUKU & PENCARIAN
-let inbookSearchTimeout;
+let isDark = localStorage.getItem('theme') !== 'light'; 
+let currentThemeKey = localStorage.getItem('m3-key') || 'orchid';
+let isAmoled = localStorage.getItem('amoled') === 'true';
+let wikiLang = localStorage.getItem('wiki_lang') || 'en';
+
+const DOM = {};
+
 document.addEventListener("DOMContentLoaded", () => {
-    // Listener Upload File (PDF/EPUB/TXT) — support multi-file
-    const fileInput = document.getElementById('doc-upload');
-    if (fileInput) {
-        fileInput.addEventListener('change', async (e) => {
-            const files = Array.from(e.target.files);
-            if (!files.length) return;
-            await processMultipleFiles(files);
-            e.target.value = '';
-        });
+    // Inisialisasi DOM Elements
+    Object.assign(DOM, {
+        libView: document.getElementById('library-view'), 
+        readView: document.getElementById('reader-view'),
+        mainHeader: document.getElementById('main-header'),
+        grid: document.getElementById('book-grid'), 
+        empty: document.getElementById('empty-state'),
+        topSection: document.getElementById('continue-reading-section'), 
+        topSlider: document.getElementById('top-books-slider'),
+        load: document.getElementById('loading-state'), 
+        loadTxt: document.getElementById('loading-text'), 
+        loadBar: document.getElementById('loading-bar'), 
+        loadPct: document.getElementById('loading-percent'),
+        file: document.getElementById('doc-upload'), 
+        backBtn: document.getElementById('btn-back'),
+        tocBtn: document.getElementById('btn-toc'), 
+        setBtn: document.getElementById('btn-settings'),
+        inner: document.getElementById('reader-inner'), 
+        title: document.getElementById('reader-title'), 
+        count: document.getElementById('library-count'),
+        tocPanel: document.getElementById('toc-panel'), 
+        tocList: document.getElementById('toc-list'),
+        setPanel: document.getElementById('settings-panel'),
+        bookmarkPanel: document.getElementById('bookmark-panel'),
+        bookmarkList: document.getElementById('bookmark-list'),
+        readContent: document.getElementById('reader-content'), 
+        progBar: document.getElementById('reading-progress-bar'), 
+        progTxt: document.getElementById('reader-progress-text'),
+        searchInput: document.getElementById('inbook-search-input'), 
+        searchRes: document.getElementById('search-results-panel'),
+        globalSearch: document.getElementById('global-search')
+    });
+
+    setupScrollListeners();
+    setupSearchListeners();
+    syncWikiLangUI();
+    applyLanguage();
+    applyTypo();
+    applyThemeToDOM();
+    loadLibrary();
+    setupSwipeToDismiss(); // Nyalain Gestur Aman
+
+    if (!localStorage.getItem('first_time_seen_v5')) {
+        setTimeout(() => { openModal('welcome-modal', 'welcome-sheet', true); }, 500);
     }
+    
+    const savedKey = localStorage.getItem('gemini_api_key');
+    if (savedKey && document.getElementById('gemini-api-key')) document.getElementById('gemini-api-key').value = savedKey;
+    const savedModel = localStorage.getItem('gemini_model');
+    if(savedModel && document.getElementById('gemini-model-select')) document.getElementById('gemini-model-select').value = savedModel;
 
-    // Listener Scan Folder (input folder picker)
-    const folderInput = document.getElementById('folder-scan-upload');
-    if (folderInput) {
-        folderInput.addEventListener('change', async (e) => {
-            const files = Array.from(e.target.files).filter(f => {
-                const ext = f.name.split('.').pop().toLowerCase();
-                return ['pdf', 'epub', 'txt', 'md'].includes(ext);
-            });
-            if (!files.length) {
-                showDialog("Info", "Tidak ada file PDF, EPUB, TXT, atau MD di folder ini.", "info", [{text: "Oke", primary: true}]);
-                return;
-            }
-            await processMultipleFiles(files);
-            e.target.value = '';
-        });
-    }
-
-    // Listener Pencarian dalam Buku
-    // Pakai getElementById langsung buat hindari race condition dengan app.js
-    const searchInputEl = document.getElementById('inbook-search-input');
-    const searchResEl = document.getElementById('search-results-panel');
-
-    if(searchInputEl) {
-        searchInputEl.addEventListener('input', (e) => {
-            clearTimeout(inbookSearchTimeout);
-            const val = e.target.value.trim().toLowerCase();
-            if (!val || val.length < 2) { 
-                if(searchResEl) searchResEl.classList.add('hidden'); 
-                clearSearchHighlights();
-                return; 
-            }
-            
-            inbookSearchTimeout = setTimeout(() => {
-                const lib = typeof library !== 'undefined' ? library : [];
-                const currentBookId = typeof activeBookId !== 'undefined' ? activeBookId : null;
-                const book = lib.find(b => b.id === currentBookId);
-                if (!book || !book.nodes) return;
-                
-                const results = [];
-                const regex = new RegExp(`(${val.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi');
-                
-                book.nodes.forEach((node, i) => {
-                    if (node.tag !== 'img' && node.text && node.text.toLowerCase().includes(val)) {
-                        let snippet = node.text;
-                        const matchIdx = snippet.toLowerCase().indexOf(val);
-                        let start = Math.max(0, matchIdx - 40);
-                        let end = Math.min(snippet.length, matchIdx + val.length + 40);
-                        let preview = snippet.substring(start, end);
-                        if(start > 0) preview = "..." + preview;
-                        if(end < snippet.length) preview = preview + "...";
-                        
-                        preview = preview.replace(regex, '<mark class="bg-m3-primary text-m3-onPrimary rounded px-0.5">$1</mark>');
-                        
-                        let contextStr = "Chapter / Section";
-                        for(let j=i; j>=0; j--){
-                            if(book.nodes[j].tag === 'h1' || book.nodes[j].tag === 'h2') {
-                                contextStr = book.nodes[j].text.length > 25 ? book.nodes[j].text.substring(0,25)+'...' : book.nodes[j].text;
-                                break;
-                            }
-                        }
-                        
-                        results.push({ nodeIdx: i, preview: preview, context: contextStr });
-                    }
-                });
-
-                renderSearchResults(results, val);
-            }, 400);
-        });
-    }
+    // Update versi app di layar pengaturan
+    const verDisplay = document.getElementById('app-version-display');
+    if (verDisplay && window.APP_VERSION) verDisplay.textContent = `v${window.APP_VERSION}`;
 });
 
-// 1b. PROSES BANYAK FILE SEKALIGUS (multi-select atau folder scan)
-async function processMultipleFiles(files) {
-    const skipped = [];
-    const failed = [];
-    let imported = 0;
+// [FITUR BARU]: Fungsi buat update UI Statistik
+window.updateStatistics = function() {
+    let totalBooks = library.length;
+    let readingBooks = 0;
+    let completedBooks = 0;
+    let totalNotes = 0;
 
-    for (let i = 0; i < files.length; i++) {
-        const file = files[i];
-        const originalFilename = file.name;
-        const ext = originalFilename.split('.').pop().toLowerCase();
-        const bookTitle = originalFilename.replace(/\.[^/.]+$/, "");
-
-        // Cek duplikat by judul
-        if (library.some(b => b.title.toLowerCase() === bookTitle.toLowerCase())) {
-            skipped.push(bookTitle);
-            continue;
+    library.forEach(book => {
+        let pct = parseInt(book.progressPct) || 0;
+        
+        if (pct > 0 && pct < 100) readingBooks++;
+        else if (pct === 100) completedBooks++;
+        
+        if (book.annotations && Array.isArray(book.annotations)) {
+            totalNotes += book.annotations.length;
         }
-
-        // Update loading UI — tampilkan nama file + progress index
-        DOM.load.classList.remove('hidden');
-        DOM.loadBar.style.width = '0%';
-        DOM.loadPct.textContent = '0%';
-        if (DOM.loadTxt) DOM.loadTxt.textContent = `(${i + 1}/${files.length}) ${bookTitle}`;
-
-        try {
-            if (ext === 'pdf') await handlePdf(file, bookTitle);
-            else if (ext === 'epub') await handleEpub(file, bookTitle);
-            else if (ext === 'txt') await handleTxt(file, bookTitle);
-            else if (ext === 'md') await handleMd(file, bookTitle);
-            else { skipped.push(bookTitle); continue; }
-            imported++;
-        } catch (err) {
-            console.error(`Gagal import: ${bookTitle}`, err);
-            failed.push(bookTitle);
-        }
-    }
-
-    setTimeout(() => { DOM.load.classList.add('hidden'); }, 800);
-    if (DOM.loadTxt) DOM.loadTxt.textContent = 'Reading Document...';
-
-    // Ringkasan hasil
-    let summary = `${imported} buku berhasil diimpor.`;
-    if (skipped.length > 0) summary += `\n${skipped.length} dilewati (sudah ada).`;
-    if (failed.length > 0) summary += `\n${failed.length} gagal.`;
-
-    if (files.length > 1) {
-        showDialog("Selesai Import", summary, "check-circle", [{ text: "Oke", primary: true }]);
-    }
-}
-
-// 1c. HANDLER TXT
-async function handleTxt(file, bookTitle) {
-    const text = await file.text();
-    const parsedNodes = [];
-
-    // Coba split by baris kosong dulu (paragraf standar)
-    let paragraphs = text.split(/\n\s*\n/).map(p => p.trim().replace(/\s+/g, ' ')).filter(p => p.length > 0);
-
-    // Kalau hasilnya cuma 1 blok (tidak ada baris kosong), fallback ke split per baris
-    if (paragraphs.length <= 1) {
-        paragraphs = text.split('\n').map(p => p.trim()).filter(p => p.length > 0);
-    }
-
-    paragraphs.forEach(para => {
-        // Deteksi heading sederhana: pendek, huruf kapital, atau diawali angka bab
-        const isHeading = para.length < 80 && (
-            /^(bab|chapter|bagian|part|section)\s/i.test(para) ||
-            /^[IVX]+\./i.test(para) ||
-            /^\d+[\.\)]\s/.test(para) ||
-            para === para.toUpperCase()
-        );
-        parsedNodes.push({ tag: isHeading ? 'h2' : 'p', text: para });
     });
 
-    if (parsedNodes.length === 0) throw new Error("File TXT kosong atau tidak bisa dibaca.");
+    const valTotal = document.getElementById('stat-val-total');
+    const valReading = document.getElementById('stat-val-reading');
+    const valCompleted = document.getElementById('stat-val-completed');
+    const valNotes = document.getElementById('stat-val-notes');
+    
+    if(valTotal) valTotal.textContent = totalBooks;
+    if(valReading) valReading.textContent = readingBooks;
+    if(valCompleted) valCompleted.textContent = completedBooks;
+    if(valNotes) valNotes.textContent = totalNotes;
+};
 
-    // Cover placeholder untuk TXT (tidak ada gambar)
-    const coverBase64 = null;
+// 2. SCROLL & NAVIGATION LISTENERS
+function setupScrollListeners() {
+    const libScroll = document.getElementById('library-content-scroll');
+    if(libScroll && DOM.mainHeader) {
+        libScroll.addEventListener('scroll', () => {
+            if (libScroll.scrollTop > 5) { DOM.mainHeader.classList.add('shadow-[0_2px_10px_rgba(0,0,0,0.05)]'); } 
+            else { DOM.mainHeader.classList.remove('shadow-[0_2px_10px_rgba(0,0,0,0.05)]'); }
+        });
+    }
 
-    library.push({
-        id: Date.now().toString(),
-        type: 'txt',
-        title: bookTitle,
-        nodes: parsedNodes,
-        pages: Math.ceil(parsedNodes.length / 10),
-        progressPct: 0,
-        lastReadId: null,
-        coverBase64: coverBase64,
-        shape: 'square'
-    });
+    let lastScrollTop = 0;
+    if(DOM.readContent) {
+        DOM.readContent.addEventListener('scroll', () => {
+            const bottomBar = document.getElementById('reader-bottom-bar');
+            if (bottomBar && bottomBar.classList.contains('hidden')) return;
 
-    await localforage.setItem('pdf_epub_master', library);
-    renderLibrary();
-}
-
-// 1e. HANDLER MARKDOWN (.md)
-async function handleMd(file, bookTitle) {
-    const lang = typeof wikiLang !== 'undefined' ? wikiLang : 'id';
-    const d = typeof i18n !== 'undefined' ? (i18n[lang] || i18n['id']) : {};
-    if (DOM.loadTxt) DOM.loadTxt.textContent = d.loadingMd || 'Reading Markdown...';
-
-    const text = await file.text();
-    const parsedNodes = [];
-
-    // Gunakan marked.js jika tersedia, fallback ke parser sederhana
-    if (typeof marked !== 'undefined') {
-        const tokens = marked.lexer(text);
-
-        function processTokens(tokens) {
-            tokens.forEach(token => {
-                if (token.type === 'heading') {
-                    const tag = token.depth <= 2 ? (token.depth === 1 ? 'h1' : 'h2') : 'h2';
-                    parsedNodes.push({ tag, text: token.text.replace(/\*\*|__|`/g, '') });
-                } else if (token.type === 'paragraph') {
-                    const cleanText = token.text.replace(/\*\*(.*?)\*\*/g, '$1').replace(/\*(.*?)\*/g, '$1').replace(/`(.*?)`/g, '$1').replace(/\[(.*?)\]\(.*?\)/g, '$1').replace(/\n/g, ' ').trim();
-                    if (cleanText.length > 0) parsedNodes.push({ tag: 'p', text: cleanText });
-                } else if (token.type === 'list') {
-                    token.items.forEach(item => {
-                        const cleanText = item.text.replace(/\*\*(.*?)\*\*/g, '$1').replace(/\*(.*?)\*/g, '$1').replace(/`(.*?)`/g, '$1').trim();
-                        if (cleanText.length > 0) parsedNodes.push({ tag: 'p', text: '• ' + cleanText });
-                    });
-                } else if (token.type === 'blockquote') {
-                    if (token.tokens) processTokens(token.tokens);
-                } else if (token.type === 'code') {
-                    parsedNodes.push({ tag: 'p', text: token.text });
-                } else if (token.type === 'space') {
-                    // skip
-                }
-            });
-        }
-
-        processTokens(tokens);
-    } else {
-        // Fallback: parse manual baris per baris
-        const lines = text.split('\n');
-        let buffer = '';
-
-        const flushBuffer = () => {
-            const t = buffer.trim().replace(/\s+/g, ' ');
-            if (t.length > 0) parsedNodes.push({ tag: 'p', text: t });
-            buffer = '';
-        };
-
-        lines.forEach(line => {
-            const trimmed = line.trim();
-            if (/^#{1,2}\s/.test(trimmed)) {
-                flushBuffer();
-                parsedNodes.push({ tag: trimmed.startsWith('# ') ? 'h1' : 'h2', text: trimmed.replace(/^#+\s/, '') });
-            } else if (/^#{3,6}\s/.test(trimmed)) {
-                flushBuffer();
-                parsedNodes.push({ tag: 'h2', text: trimmed.replace(/^#+\s/, '') });
-            } else if (trimmed === '') {
-                flushBuffer();
+            const currentScroll = DOM.readContent.scrollTop;
+            const header = document.getElementById('reader-floating-header');
+            
+            if (currentScroll > lastScrollTop && currentScroll > 50) {
+                header.classList.add('-translate-y-[150%]', 'opacity-0');
+                header.classList.remove('translate-y-0', 'opacity-100');
             } else {
-                buffer += (buffer ? ' ' : '') + trimmed.replace(/\*\*(.*?)\*\*/g, '$1').replace(/\*(.*?)\*/g, '$1').replace(/`(.*?)`/g, '$1');
+                header.classList.remove('-translate-y-[150%]', 'opacity-0');
+                header.classList.add('translate-y-0', 'opacity-100');
+            }
+            lastScrollTop = currentScroll <= 0 ? 0 : currentScroll;
+        }, { passive: true });
+    }
+}
+
+function updateBottomNavUI(activeId) {
+    const btns = ['btn-toc', 'btn-bookmarks', 'btn-settings'];
+    btns.forEach(id => {
+        const b = document.getElementById(id);
+        if(b) {
+            b.classList.remove('bg-m3-primary', 'text-m3-onPrimary', 'nav-active');
+            b.classList.add('text-m3-onSurfaceVariant');
+        }
+    });
+    if(activeId) {
+        const act = document.getElementById(activeId);
+        if(act) {
+            act.classList.add('bg-m3-primary', 'text-m3-onPrimary', 'nav-active');
+            act.classList.remove('text-m3-onSurfaceVariant');
+        }
+    }
+}
+
+// 3. HARDWARE BACK BUTTON & HISTORY ROUTING
+window.addEventListener('popstate', (e) => {
+    if (!document.getElementById('raw-backup-modal').classList.contains('opacity-0')) { _closeModalAction('raw-backup-modal', 'raw-backup-sheet', true, true); }
+    else if (!document.getElementById('raw-restore-modal').classList.contains('opacity-0')) { _closeModalAction('raw-restore-modal', 'raw-restore-sheet', true, true); }
+    else if (!document.getElementById('custom-dialog').classList.contains('opacity-0')) { window.closeDialog(true); }
+    else if (!document.getElementById('ai-modal').classList.contains('opacity-0')) { closeAiModal(true); }
+    else if (!document.getElementById('bookmark-modal').classList.contains('opacity-0')) { _closeModalAction('bookmark-modal', 'bookmark-sheet', true, true); }
+    else if (!document.getElementById('b-opt-modal').classList.contains('opacity-0')) { _closeModalAction('b-opt-modal', 'b-opt-sheet', false, true); }
+    else if (!document.getElementById('edit-modal').classList.contains('opacity-0')) { _closeModalAction('edit-modal', 'edit-sheet', true, true); }
+    else if (!document.getElementById('global-settings-modal').classList.contains('opacity-0')) { _closeModalAction('global-settings-modal', 'global-settings-sheet', false, true); }
+    else if (!document.getElementById('welcome-modal').classList.contains('opacity-0')) { closeWelcome(true); }
+    else if (isBatchDeleteMode) { window.toggleBatchDelete(true); }
+    else if (activePanel) { _closeSidePanelsAction(true); } 
+    else if (document.getElementById('search-area').classList.contains('search-active')) { closeSearch(true); }
+    else if (document.getElementById('reader-bottom-bar') && document.getElementById('reader-bottom-bar').classList.contains('hidden')) { window.toggleFullscreenReading(true); }
+    else if (DOM.readView && !DOM.readView.classList.contains('translate-y-full')) { _closeReaderAction(true); }
+});
+
+function pushAppHistory(stateName) { history.pushState({ state: stateName }, '', `#${stateName}`); }
+
+// 4. SEARCH & I18N
+function setupSearchListeners() {
+    const searchArea = document.getElementById('search-area');
+    const searchCapsule = document.querySelector('.search-capsule');
+    
+    document.addEventListener('click', (e) => {
+        if (searchArea && searchArea.classList.contains('search-active') && !searchArea.contains(e.target)) {
+            window.closeSearch(false);
+        }
+    });
+
+    if(DOM.globalSearch) {
+        DOM.globalSearch.addEventListener('focus', () => {
+            if (!searchArea.classList.contains('search-active')) {
+                searchArea.classList.add('search-active');
+                if (window.location.hash !== '#search') pushAppHistory('search');
             }
         });
-        flushBuffer();
-    }
-
-    if (parsedNodes.length === 0) throw new Error("File MD kosong atau tidak bisa dibaca.");
-
-    library.push({
-        id: Date.now().toString(),
-        type: 'md',
-        title: bookTitle,
-        nodes: parsedNodes,
-        pages: Math.ceil(parsedNodes.length / 10),
-        progressPct: 0,
-        lastReadId: null,
-        coverBase64: null,
-        shape: 'square'
-    });
-
-    await localforage.setItem('pdf_epub_master', library);
-    renderLibrary();
-}
-
-function clearSearchHighlights() {
-    if(!DOM.inner) return;
-    const marks = DOM.inner.querySelectorAll('mark.search-hl');
-    marks.forEach(m => {
-        const parent = m.parentNode;
-        parent.replaceChild(document.createTextNode(m.textContent), m);
-        parent.normalize();
-    });
-}
-
-function renderSearchResults(results, keyword) {
-    const searchResEl = document.getElementById('search-results-panel');
-    const readContentEl = document.getElementById('reader-content');
-    if(!searchResEl) return;
-    searchResEl.innerHTML = '';
-    const lang = typeof wikiLang !== 'undefined' ? wikiLang : 'id';
-    const d = (typeof i18n !== 'undefined' ? (i18n[lang] || i18n['id']) : {});
-    
-    if(results.length === 0) {
-        searchResEl.innerHTML = `<div class="p-6 text-center text-sm opacity-60 font-medium">${d.searchNotFound || 'Tidak ditemukan'}</div>`;
-        searchResEl.classList.remove('hidden');
-        return;
-    }
-    
-    const countHeader = document.createElement('div');
-    countHeader.className = "px-4 pt-3 pb-2 text-xs font-bold uppercase tracking-wider text-m3-primary/80 border-b border-m3-surfaceVariant";
-    countHeader.textContent = `${results.length} Found`;
-    searchResEl.appendChild(countHeader);
-
-    results.forEach(res => {
-        const item = document.createElement('div');
-        item.className = "p-4 border-b border-m3-surfaceVariant hover:bg-m3-surface transition-colors cursor-pointer";
-        item.innerHTML = `
-            <div class="text-[10px] font-bold text-m3-primary mb-1 uppercase tracking-widest">${res.context}</div>
-            <div class="text-sm text-m3-onSurface leading-relaxed line-clamp-3">${res.preview}</div>
-        `;
-        
-        item.onclick = () => {
-            const lib = typeof library !== 'undefined' ? library : [];
-            const currentBookId = typeof activeBookId !== 'undefined' ? activeBookId : null;
-            const book = lib.find(b => b.id === currentBookId);
-            if(!book) return;
-            
-            searchResEl.classList.add('hidden');
-            const targetEl = document.getElementById(`node-${res.nodeIdx}`);
-            const container = readContentEl;
-            
-            if(targetEl && container) {
-                clearSearchHighlights();
-                
-                const regex = new RegExp(`(${keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi');
-                
-                const walker = document.createTreeWalker(targetEl, NodeFilter.SHOW_TEXT, null, false);
-                const textNodes = [];
-                let n;
-                while(n = walker.nextNode()) textNodes.push(n);
-                
-                textNodes.forEach(node => {
-                    const text = node.nodeValue;
-                    if(regex.test(text)) {
-                        const span = document.createElement('span');
-                        span.innerHTML = text.replace(regex, '<mark class="search-hl transition-colors duration-1000">$1</mark>');
-                        node.parentNode.replaceChild(span, node);
-                    }
-                });
-
-                const cRect = container.getBoundingClientRect();
-                const tRect = targetEl.getBoundingClientRect();
-                const offset = tRect.top - cRect.top + container.scrollTop - (cRect.height / 2) + (tRect.height / 2);
-                
-                container.scrollTo({ top: offset, behavior: 'smooth' });
-                
-                setTimeout(() => {
-                    const marks = targetEl.querySelectorAll('mark.search-hl');
-                    marks.forEach(m => {
-                        m.style.backgroundColor = 'transparent';
-                        m.style.color = 'inherit';
-                    });
-                    setTimeout(() => clearSearchHighlights(), 1500);
-                }, 2000);
+        DOM.globalSearch.addEventListener('input', (e) => {
+            // [MODIFIKASI] Auto-hide statistik saat search
+            const statSection = document.getElementById('statistics-section');
+            if(statSection) {
+                if(e.target.value.trim().length > 0) {
+                    statSection.style.height = '0px';
+                    statSection.style.opacity = '0';
+                    statSection.style.marginBottom = '0px';
+                } else {
+                    statSection.style.height = '';
+                    statSection.style.opacity = '1';
+                    statSection.style.marginBottom = '';
+                }
             }
-        };
-        
-        searchResEl.appendChild(item);
-    });
-    searchResEl.classList.remove('hidden');
+            renderLibrary(e.target.value);
+        });
+    }
+
+    if(searchCapsule) {
+        searchCapsule.addEventListener('click', (e) => {
+            if (searchArea.classList.contains('search-active')) {
+                if (e.target !== DOM.globalSearch) { window.closeSearch(false); }
+            } else { DOM.globalSearch.focus(); }
+        });
+    }
 }
 
-// 2. FUNGSI EKSTRAK PDF
-async function handlePdf(file, bookTitle) {
-    const arrayBuffer = await file.arrayBuffer();
-    const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
-    let parsedNodes = [];
-    const total = pdf.numPages;
+window.closeSearch = function(fromHistory = false) {
+    const searchArea = document.getElementById('search-area');
+    const statSection = document.getElementById('statistics-section');
 
-    // Render cover dari halaman pertama
-    const coverCanvas = document.createElement('canvas'); const coverCtx = coverCanvas.getContext('2d');
-    const firstPage = await pdf.getPage(1); const viewport = firstPage.getViewport({ scale: 0.5 });
-    coverCanvas.width = viewport.width; coverCanvas.height = viewport.height;
-    await firstPage.render({ canvasContext: coverCtx, viewport: viewport }).promise;
-    const coverBase64 = coverCanvas.toDataURL('image/jpeg', 0.8);
+    if (searchArea && searchArea.classList.contains('search-active')) {
+        searchArea.classList.remove('search-active');
+        DOM.globalSearch.blur(); DOM.globalSearch.value = ''; 
+        
+        // [MODIFIKASI] Tampilkan kembali statistik saat search ditutup
+        if(statSection) {
+             statSection.style.height = '';
+             statSection.style.opacity = '1';
+             statSection.style.marginBottom = '';
+        }
 
-    // --- DETEKSI PDF TYPE (teks vs gambar) ---
-    // Hitung halaman yang punya teks ekstraktabel
-    let pagesWithText = 0;
-    const sampleSize = Math.min(total, 5); // sampling 5 halaman pertama
-    for (let i = 1; i <= sampleSize; i++) {
-        const pg = await pdf.getPage(i);
-        const tc = await pg.getTextContent();
-        const pageText = tc.items.map(it => it.str).join('').trim();
-        if (pageText.length > 20) pagesWithText++;
-    }
-    // Jika kurang dari 40% halaman sample punya teks, anggap PDF gambar
-    const pdfType = (pagesWithText / sampleSize) >= 0.4 ? 'text' : 'image';
-
-    // Untuk PDF gambar: simpan semua halaman sebagai base64 canvas
-    // Untuk PDF teks: ekstrak teks seperti biasa
-    let pdfPages = null; // array base64 per halaman (hanya untuk PDF image & original view)
-
-    if (pdfType === 'image') {
-        // PDF gambar: TIDAK di-scan saat import
-        // Simpan file sebagai base64 string, render halaman saat dibuka (lazy)
-        DOM.loadBar.style.width = '100%';
-        DOM.loadPct.textContent = '100%';
-        const uint8 = new Uint8Array(arrayBuffer);
-        let binary = '';
-        for (let i = 0; i < uint8.length; i++) binary += String.fromCharCode(uint8[i]);
-        const pdfFileBase64 = 'data:application/pdf;base64,' + btoa(binary);
-        parsedNodes.push({ tag: 'p', text: '[PDF Gambar]' });
-
-        library.push({
-            id: Date.now().toString(),
-            type: 'pdf',
-            pdfType: 'image',
-            pdfFileBase64: pdfFileBase64,
-            pdfTotalPages: total,
-            title: bookTitle,
-            nodes: parsedNodes,
-            pages: total,
-            progressPct: 0,
-            lastReadId: null,
-            pdfOriginalPage: 0,
-            coverBase64: coverBase64,
-            shape: 'square'
-        });
-        await localforage.setItem('pdf_epub_master', library);
         renderLibrary();
-        return;
-    } else {
-        // Ekstrak teks
-        for (let i = 1; i <= total; i++) {
-            DOM.loadBar.style.width = `${Math.round((i / total) * 100)}%`;
-            DOM.loadPct.textContent = `${Math.round((i / total) * 100)}%`;
-
-            const page = await pdf.getPage(i);
-            const textContent = await page.getTextContent();
-            let currentBlock = ""; let lastY = -1; let isTitle = false;
-
-            textContent.items.forEach(item => {
-                const y = Math.round(item.transform[5]); const height = item.height;
-                if (lastY !== -1 && Math.abs(y - lastY) > height * 1.5) {
-                    if (currentBlock.trim().length > 0) {
-                        let cleanText = currentBlock.trim().replace(/\s+/g, ' ');
-                        parsedNodes.push({ tag: isTitle ? 'h2' : 'p', text: cleanText });
-                    }
-                    currentBlock = ""; isTitle = false;
-                }
-                if (height > 18) isTitle = true;
-                currentBlock += item.str + " "; lastY = y;
-            });
-
-            if (currentBlock.trim().length > 0) {
-                let cleanText = currentBlock.trim().replace(/\s+/g, ' ');
-                parsedNodes.push({ tag: isTitle ? 'h2' : 'p', text: cleanText });
-            }
-        }
-    }
-
-    const newBookId = Date.now().toString();
-    library.push({
-        id: newBookId,
-        type: 'pdf',
-        pdfType: pdfType,
-        pdfTotalPages: total,
-        title: bookTitle,
-        nodes: parsedNodes,
-        pages: total,
-        progressPct: 0,
-        lastReadId: null,
-        pdfOriginalPage: 0,
-        coverBase64: coverBase64,
-        shape: 'square'
-    });
-
-    // Cache pdfjsLib doc untuk mode kanvas (sesi ini saja, hilang saat app restart)
-    window._pdfDocCache = { bookId: newBookId, doc: pdf };
-
-    await localforage.setItem('pdf_epub_master', library);
-    renderLibrary();
-}
-
-// 3. FUNGSI EKSTRAK EPUB (REVISI ALGORITMA: ANTI-LAG & ANTI-DUPLIKAT MURNI)
-async function handleEpub(file, bookTitle) {
-    const zip = await JSZip.loadAsync(file); 
-    let parsedNodes = []; 
-    let coverBase64 = null;
-
-    const containerXml = await zip.file("META-INF/container.xml").async("text");
-    const opfPath = (new DOMParser()).parseFromString(containerXml, "text/xml").getElementsByTagName("rootfile")[0].getAttribute("full-path");
-    const opfDir = opfPath.includes('/') ? opfPath.substring(0, opfPath.lastIndexOf('/') + 1) : "";
-    const opfXml = await zip.file(opfPath).async("text");
-    const opfDoc = (new DOMParser()).parseFromString(opfXml, "text/xml");
-
-    const titleEl = opfDoc.getElementsByTagName("dc:title")[0]; 
-    if (titleEl && titleEl.textContent) bookTitle = titleEl.textContent;
-
-    const manifest = {};
-    Array.from(opfDoc.getElementsByTagName("item")).forEach(item => { 
-        manifest[item.getAttribute("id")] = { href: item.getAttribute("href"), mediaType: item.getAttribute("media-type") }; 
-    });
-
-    const metaCover = opfDoc.querySelector("meta[name='cover']");
-    if (metaCover) {
-        const coverId = metaCover.getAttribute("content");
-        if (manifest[coverId]) {
-            let coverPath = opfDir + manifest[coverId].href;
-            const coverFile = zip.file(coverPath);
-            if (coverFile) {
-                const b64 = await coverFile.async("base64");
-                coverBase64 = "data:" + manifest[coverId].mediaType + ";base64," + b64;
-            }
-        }
-    }
-
-    if (!coverBase64) {
-        const potentialCover = Object.values(manifest).find(m => m.href.toLowerCase().includes('cover') && m.mediaType.startsWith('image/'));
-        if (potentialCover) {
-            let coverPath = opfDir + potentialCover.href;
-            const coverFile = zip.file(coverPath);
-            if (coverFile) {
-                const b64 = await coverFile.async("base64");
-                coverBase64 = "data:" + potentialCover.mediaType + ";base64," + b64;
-            }
-        }
-    }
-
-    const spine = Array.from(opfDoc.getElementsByTagName("itemref")).map(item => item.getAttribute("idref"));
-    let order = 0;
-    
-    // Tag yang sah buat dijadiin blok paragraf / heading
-    const validBlockTags = ['p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'li', 'blockquote', 'div', 'section', 'article', 'header'];
-
-    for (const idref of spine) {
-        order++;
-        DOM.loadBar.style.width = `${Math.round((order / spine.length) * 100)}%`;
-        DOM.loadPct.textContent = `${Math.round((order / spine.length) * 100)}%`;
-
-        if (!manifest[idref]) continue;
-        const htmlPath = opfDir + manifest[idref].href; 
-        const htmlFile = zip.file(htmlPath);
-        if (!htmlFile) continue;
-
-        const htmlStr = await htmlFile.async("text");
-        const doc = (new DOMParser()).parseFromString(htmlStr, "text/html");
-        
-        // Bersihin sampah yang bikin layout kotor
-        doc.querySelectorAll('script, style, nav, footer, iframe, svg, button').forEach(el => el.remove());
-
-        // Scan semua elemen secara berurutan dari atas ke bawah (Pre-order Traversal)
-        const allElements = doc.body.querySelectorAll('*');
-
-        for (let el of allElements) {
-            let tag = el.tagName.toLowerCase();
-            
-            // 1. Eksekusi Gambar
-            if (tag === 'img' || tag === 'image') {
-                let src = el.getAttribute('src') || el.getAttribute('href');
-                if (src && !src.startsWith('http') && !src.startsWith('data:')) {
-                    let absPath = resolveRelativePath(htmlPath, src); 
-                    const imgFile = zip.file(absPath);
-                    if (imgFile) { 
-                        const b64 = await imgFile.async("base64"); 
-                        let mime = "image/jpeg";
-                        if(absPath.toLowerCase().endsWith('.png')) mime = "image/png";
-                        else if(absPath.toLowerCase().endsWith('.gif')) mime = "image/gif";
-                        parsedNodes.push({ tag: 'img', src: `data:${mime};base64,${b64}` }); 
-                    }
-                } else if (src && src.startsWith('data:')) {
-                    parsedNodes.push({ tag: 'img', src: src });
-                }
-                continue;
-            }
-
-            // 2. Eksekusi Blok Teks
-            if (validBlockTags.includes(tag)) {
-                // Cek apakah elemen ini punya anak blok lain di dalamnya (Kalo punya, ini cuma Wrapper, lewatin aja)
-                let hasBlockChild = false;
-                const descendants = el.querySelectorAll('*');
-                for (let i = 0; i < descendants.length; i++) {
-                    if (validBlockTags.includes(descendants[i].tagName.toLowerCase())) {
-                        hasBlockChild = true;
-                        break;
-                    }
-                }
-                
-                if (hasBlockChild) continue; // Jangan ambil teksnya, tunggu iterasi sampai ke anak terdalamnya
-                
-                let text = el.textContent.trim().replace(/\s+/g, ' ');
-                if (text.length === 0) continue;
-                
-                let finalTag = 'p';
-                if (['h1', 'h2', 'h3', 'h4'].includes(tag)) finalTag = tag === 'h1' ? 'h1' : 'h2';
-                
-                // Pembersihan kasus Bab spasi alay ("B a B", "B A B")
-                text = text.replace(/B\s*A\s*B/gi, 'BAB');
-
-                // Kalau teks h1/h2 tapi panjangnya ngotak (kayak paragraf utuh), turunin pangkas jadi paragraf
-                if ((finalTag === 'h1' || finalTag === 'h2') && text.length > 150) finalTag = 'p';
-
-                parsedNodes.push({ tag: finalTag, text: text });
-            }
-        }
-    }
-    
-    library.push({ id: Date.now().toString(), type: 'epub', title: bookTitle, nodes: parsedNodes, pages: spine.length, progressPct: 0, lastReadId: null, coverBase64: coverBase64, shape: 'square' });
-    await localforage.setItem('pdf_epub_master', library); 
-    renderLibrary();
-}
-
-function resolveRelativePath(base, relative) {
-    const stack = base.split('/'); stack.pop(); 
-    const parts = relative.split('/');
-    for (const part of parts) { 
-        if (part === '.') continue; 
-        if (part === '..') stack.pop(); 
-        else stack.push(part); 
-    }
-    return stack.join('/');
-}
-
-// 4. LOOKUP DICTIONARY — Orchestrator Wikipedia + Gemini
-window.lookupDictionary = function() {
-    const savedText = currentSelection.text;
-    if (!savedText) return;
-
-    const apiKey = localStorage.getItem('gemini_api_key');
-
-    window.hideSelectionMenu();
-    window.getSelection().removeAllRanges();
-
-    const modal = document.getElementById('ai-modal');
-    const termEl = document.getElementById('ai-term');
-    const wikiCard = document.getElementById('wiki-card');
-    const wikiContent = document.getElementById('wiki-content');
-    const wikiLoading = document.getElementById('wiki-loading');
-    const geminiCard = document.getElementById('gemini-card');
-    const geminiContent = document.getElementById('gemini-content');
-    const geminiLoading = document.getElementById('gemini-loading');
-
-    termEl.textContent = savedText.length > 40 ? savedText.substring(0, 40) + '...' : savedText;
-
-    if (wikiCard) wikiCard.classList.remove('hidden');
-    if (wikiLoading) wikiLoading.classList.remove('hidden');
-    if (wikiContent) { wikiContent.innerHTML = ''; wikiContent.classList.add('hidden'); }
-
-    if (geminiCard) {
-        if (apiKey) {
-            geminiCard.classList.remove('hidden');
-            if (geminiLoading) geminiLoading.classList.remove('hidden');
-            if (geminiContent) { geminiContent.innerHTML = ''; geminiContent.classList.add('hidden'); }
-        } else {
-            geminiCard.classList.add('hidden');
-        }
-    }
-
-    pushAppHistory('ai-modal');
-    modal.classList.remove('hidden');
-    requestAnimationFrame(() => {
-        modal.classList.remove('opacity-0');
-        document.getElementById('ai-sheet').classList.remove('translate-y-full');
-    });
-
-    // Fetch Wikipedia
-    const wikiLangCode = wikiLang === 'id' ? 'id' : wikiLang === 'es' ? 'es' : 'en';
-    const wikiQuery = encodeURIComponent(savedText.split(' ').slice(0, 4).join(' '));
-    fetch(`https://${wikiLangCode}.wikipedia.org/api/rest_v1/page/summary/${wikiQuery}`)
-        .then(r => r.json())
-        .then(data => {
-            if (wikiLoading) wikiLoading.classList.add('hidden');
-            if (!wikiContent) return;
-            const extract = (data.extract || '').trim();
-            if (extract) {
-                wikiContent.innerHTML = `
-                    <p class="text-sm leading-relaxed text-m3-onSurfaceVariant font-medium">${extract}</p>
-                    ${data.content_urls ? `<a href="${data.content_urls.mobile.page}" target="_blank" class="mt-3 inline-flex items-center gap-1 text-xs font-bold text-m3-primary opacity-80">Wikipedia <i data-lucide="external-link" class="w-3 h-3"></i></a>` : ''}
-                `;
-                if (window.lucide) window.lucide.createIcons();
-            } else {
-                const notFound = wikiLang === 'id' ? 'Tidak ditemukan di Wikipedia.' : wikiLang === 'es' ? 'No encontrado en Wikipedia.' : 'Not found on Wikipedia.';
-                wikiContent.innerHTML = `<p class="text-sm opacity-50 font-medium">${notFound}</p>`;
-            }
-            wikiContent.classList.remove('hidden');
-        })
-        .catch(() => {
-            if (wikiLoading) wikiLoading.classList.add('hidden');
-            if (wikiContent) {
-                const failMsg = wikiLang === 'id' ? 'Gagal memuat Wikipedia.' : wikiLang === 'es' ? 'Error al cargar Wikipedia.' : 'Failed to load Wikipedia.';
-                wikiContent.innerHTML = `<p class="text-sm opacity-50 font-medium">${failMsg}</p>`;
-                wikiContent.classList.remove('hidden');
-            }
-        });
-
-    // Fetch Gemini (kalau ada API key)
-    if (apiKey) {
-        const modelVersion = localStorage.getItem('gemini_model') || 'gemini-2.5-flash-preview-05-20';
-        let langInstruction;
-        if (wikiLang === 'id') {
-            langInstruction = 'Gunakan bahasa Indonesia. Jelaskan arti, konteks, dan berikan contoh kalimat singkat. Tulis dalam paragraf biasa, tanpa poin atau bullet. Langsung ke penjelasan tanpa kata pembuka.';
-        } else if (wikiLang === 'es') {
-            langInstruction = 'Usa español. Explica el significado, el contexto y proporciona una oración de ejemplo breve. Escribe en párrafos normales, sin puntos ni viñetas. Ve directo a la explicación sin frases introductorias.';
-        } else {
-            langInstruction = 'Use English. Explain the meaning, context, and provide a short example sentence. Write in plain paragraphs, no bullet points. No introductory phrases, go straight to the explanation.';
-        }
-        let promptText = `Provide a concise dictionary definition and explanation for: "${savedText}". ${langInstruction}`;
-
-        fetch(`https://generativelanguage.googleapis.com/v1beta/models/${modelVersion}:generateContent?key=${apiKey}`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ contents: [{ parts: [{ text: promptText }] }] })
-        })
-        .then(r => { if (!r.ok) throw new Error(`API Error: ${r.status}`); return r.json(); })
-        .then(data => {
-            if (geminiLoading) geminiLoading.classList.add('hidden');
-            if (!geminiContent) return;
-            const rawText = data.candidates[0].content.parts[0].text;
-            const formatted = rawText
-                .replace(/\*\*(.*?)\*\*/g, '<strong class="text-m3-primary font-bold">$1</strong>')
-                .replace(/\*(.*?)\*/g, '<em class="italic opacity-90">$1</em>')
-                .replace(/\n\n/g, '<br><br>')
-                .replace(/\n/g, '<br>');
-            geminiContent.innerHTML = formatted;
-            geminiContent.classList.remove('hidden');
-        })
-        .catch((err) => {
-            if (geminiLoading) geminiLoading.classList.add('hidden');
-            if (geminiContent) {
-                geminiContent.innerHTML = `<div class="text-red-500 text-sm font-bold">Error: ${err.message}</div>`;
-                geminiContent.classList.remove('hidden');
-            }
-        });
+        if (!fromHistory && window.location.hash === '#search') history.back();
     }
 };
 
-window.closeAiModal = function(isFromHistory = false) {
-    if (!isFromHistory) { history.back(); return; }
-    const m = document.getElementById('ai-modal');
-    const s = document.getElementById('ai-sheet');
+const setElementText = (id, text) => { const el = document.getElementById(id); if (el) el.innerText = text; };
+
+function applyLanguage() {
+    const d = typeof i18n !== 'undefined' ? (i18n[wikiLang] || i18n['id']) : {};
+    if (!Object.keys(d).length) return;
+
+    setElementText('str-lib-empty', d.libEmpty); setElementText('str-continue-reading', d.continueReading);
+    setElementText('str-book-collection', d.bookCollection); setElementText('loading-text', d.loadingDocs);
+    setElementText('btn-batch-cancel', d.cancel); setElementText('btn-batch-exec', d.delete);
+    setElementText('str-opt-select', d.optSelect); setElementText('str-opt-edit', d.optEdit);
+    setElementText('str-opt-delete', d.optDelete); setElementText('str-opt-cancel', d.optCancel);
     
-    s.classList.add('translate-y-full');
+    setElementText('str-pinned-books', d.pinnedBooks);
+    setElementText('str-nav-bookmark', d.navBookmark);
+    if (document.getElementById('str-bookmark-title')) { document.getElementById('str-bookmark-title').innerHTML = `<i data-lucide="bookmark"></i> ${d.bookmarkTitle}`; }
+    setElementText('str-bookmark-empty', d.bookmarkEmpty);
+    
+    setElementText('str-bookmark-cancel', d.bookmarkCancel); setElementText('str-bookmark-save', d.bookmarkSave);
+    if (document.getElementById('str-bookmark-modal-title')) { document.getElementById('str-bookmark-modal-title').innerHTML = `<i data-lucide="bookmark" class="w-5 h-5"></i> ${d.bookmarkModalTitle}`; }
+    if (document.getElementById('bookmark-input-title')) document.getElementById('bookmark-input-title').placeholder = d.bookmarkTitlePlaceholder;
+    if (document.getElementById('bookmark-input-text')) document.getElementById('bookmark-input-text').placeholder = d.bookmarkNotePlaceholder;
+    
+    setElementText('str-wel-title', d.welcomeTitle); setElementText('str-wel-desc', d.welcomeDesc);
+    setElementText('str-wel-backup', d.welBackup); 
+    if(document.getElementById('str-wel-backup-desc')) document.getElementById('str-wel-backup-desc').innerHTML = d.welBackupDesc;
+    setElementText('str-wel-format', d.welFormat); 
+    if(document.getElementById('str-wel-format-desc')) document.getElementById('str-wel-format-desc').innerHTML = d.welFormatDesc;
+    setElementText('str-wel-privacy', d.welPrivacy); setElementText('str-wel-privacy-desc', d.welPrivacyDesc);
+    setElementText('str-wel-btn', d.welBtn);
+    
+    setElementText('str-set-main-title', d.setMainTitle); setElementText('str-set-palette', d.setPalette);
+    setElementText('str-set-lang', d.setLang); setElementText('str-set-info', d.setInfo);
+    setElementText('str-set-data', d.setData); setElementText('str-btn-backup', d.btnBackup); setElementText('str-btn-restore', d.btnRestore);
+    setElementText('str-btn-info', d.btnInfo); setElementText('str-btn-donate', d.btnDonate);
+    setElementText('str-btn-close', d.btnClose);
+    
+    setElementText('str-set-ai-config', d.setAiConfig);
+    if(document.getElementById('gemini-api-key')) document.getElementById('gemini-api-key').placeholder = d.geminiPlaceholder;
+    setElementText('gemini-desc', d.geminiDesc);
+    
+    // Teks Cek Update
+    setElementText('str-btn-update', d.btnUpdate);
+
+    setElementText('str-nav-back', d.navBack); setElementText('str-nav-toc', d.navToc);
+    setElementText('str-nav-text', d.navText); setElementText('str-nav-full', d.navFull);
+    setElementText('str-set-search', d.navSearch);
+    
+    setElementText('str-reader-loading', d.readerLoading); setElementText('str-toc-title', d.tocTitle);
+    setElementText('str-set-title', d.setTitle); setElementText('str-set-theme', d.setTheme);
+    setElementText('str-set-size', d.setSize); setElementText('str-set-align', d.setAlign);
+    setElementText('str-set-font', d.setFont);
+    
+    setElementText('str-ai-title', d.aiTitle); setElementText('str-ai-loading', d.aiLoading);
+    
+    setElementText('str-edit-title', d.editTitle); setElementText('str-edit-book-title', d.editBookTitle);
+    setElementText('str-edit-book-cover', d.editBookCover); setElementText('str-edit-book-shape', d.editBookShape);
+    setElementText('str-edit-cancel', d.editCancel); setElementText('str-edit-save', d.editSave);
+    setElementText('str-amoled-label', d.amoledLabel);
+    
+    setElementText('shape-default', d.shapeDyn);
+    setElementText('shape-rounded', d.shapeRound);
+    setElementText('shape-square', d.shapeSquare);
+   
+    setElementText('str-raw-bak-title', d.rawBakTitle); setElementText('str-raw-bak-desc', d.rawBakDesc);
+    setElementText('str-raw-bak-btn-close', d.rawBakClose); setElementText('str-raw-bak-btn-copy', d.rawBakCopy);
+    setElementText('str-raw-res-title', d.rawResTitle); setElementText('str-raw-res-desc', d.rawResDesc);
+    setElementText('str-raw-res-btn-file', d.rawResFile); setElementText('str-raw-res-btn-process', d.rawResProcess);
+    setElementText('str-raw-res-btn-close', d.rawResClose);
+
+    if(DOM.globalSearch) DOM.globalSearch.placeholder = d.searchBooks;
+    if(DOM.searchInput) DOM.searchInput.placeholder = d.searchPlaceholder;
+    if(DOM.count) DOM.count.textContent = `${(library.length)} ${d.booksCount}`;
+    
+    const themeLabel = document.getElementById('theme-label-text');
+    if (themeLabel) themeLabel.textContent = isDark ? d.themeDark : d.themeLight;
+
+    updateBatchSelectionUI();
+
+    // Menerjemahkan Label Statistik
+    setElementText('str-stat-title', d.statTitle || "Statistik");
+    setElementText('str-stat-total', d.statTotal || "Koleksi");
+    setElementText('str-stat-reading', d.statReading || "Dibaca");
+    setElementText('str-stat-completed', d.statCompleted || "Selesai");
+    setElementText('str-stat-notes', d.statNotes || "Catatan");
+}
+
+window.setWikiLang = function(lang) {
+    wikiLang = lang; localStorage.setItem('wiki_lang', lang); syncWikiLangUI(); applyLanguage();
+    if(activeBookId) renderBookmarkPanel(); 
+};
+
+window.saveGeminiModel = function() {
+    const model = document.getElementById('gemini-model-select').value;
+    localStorage.setItem('gemini_model', model);
+};
+
+window.saveGeminiKey = function() {
+    const key = document.getElementById('gemini-api-key').value.trim();
+    localStorage.setItem('gemini_api_key', key);
+    const d = i18n[wikiLang] || i18n['id'];
+    showDialog('Info', d.keySaved || "API Key berhasil disimpan.", 'check-circle', [{text: 'Oke', primary: true}]);
+};
+
+function syncWikiLangUI() {
+    const wid = document.getElementById('wiki-lang-id');
+    const wen = document.getElementById('wiki-lang-en');
+    const wes = document.getElementById('wiki-lang-es');
+    const allBtns = [wid, wen, wes].filter(Boolean);
+    allBtns.forEach(el => { el.classList.remove('bg-m3-primary', 'text-m3-onPrimary'); el.classList.add('text-m3-onSurfaceVariant'); });
+    const activeBtn = wikiLang === 'id' ? wid : wikiLang === 'es' ? wes : wen;
+    if (activeBtn) { activeBtn.classList.add('bg-m3-primary', 'text-m3-onPrimary'); activeBtn.classList.remove('text-m3-onSurfaceVariant'); }
+}
+
+// 5. CUSTOM DIALOG & MODALS
+window.showDialog = function(title, message, iconStr, buttons) {
+    pushAppHistory('custom-dialog');
+    const m = document.getElementById('custom-dialog');
+    const s = document.getElementById('custom-dialog-sheet');
+    
+    document.getElementById('dialog-title').innerText = title;
+    document.getElementById('dialog-message').innerText = message;
+    
+    const iconContainer = document.getElementById('dialog-icon-container');
+    if(iconContainer) iconContainer.classList.remove('animate-spin');
+
+    const iconEl = document.getElementById('dialog-icon');
+    if(iconEl) iconEl.setAttribute('data-lucide', iconStr);
+    
+    const actionsContainer = document.getElementById('dialog-actions');
+    actionsContainer.innerHTML = '';
+    
+    buttons.forEach(btn => {
+        const b = document.createElement('button');
+        b.innerText = btn.text;
+        if (btn.primary) {
+            b.className = "px-6 py-2 bg-m3-primary text-m3-onPrimary font-bold rounded-full btn-morph tracking-wide";
+        } else {
+            b.className = "px-4 py-2 bg-transparent text-m3-onSurfaceVariant font-bold rounded-full btn-morph tracking-wide";
+        }
+        b.onclick = () => {
+            if(btn.action) btn.action();
+            else window.closeDialog();
+        };
+        actionsContainer.appendChild(b);
+    });
+    
+    if(window.lucide) window.lucide.createIcons();
+
+    m.classList.remove('hidden');
+    requestAnimationFrame(() => {
+        m.classList.remove('opacity-0');
+        s.classList.remove('scale-75');
+    });
+};
+
+window.closeDialog = function(isFromHistory = false) {
+    if (!isFromHistory) { history.back(); return; }
+    const m = document.getElementById('custom-dialog');
+    const s = document.getElementById('custom-dialog-sheet');
+    
+    s.classList.add('scale-75');
     m.classList.add('opacity-0');
     setTimeout(() => m.classList.add('hidden'), 300);
+};
+
+window.openModal = function(modalId, sheetId, isScale = false) {
+    pushAppHistory(`modal-${modalId}`);
+    const m = document.getElementById(modalId); const s = document.getElementById(sheetId);
+    if(m && s) {
+        m.classList.remove('hidden'); 
+        requestAnimationFrame(() => { 
+            m.classList.remove('opacity-0'); 
+            if(isScale) { s.classList.remove('scale-75', 'translate-y-12'); } 
+            else { s.classList.remove('translate-y-full'); } 
+        });
+    }
 }
 
-// 5. PDF CANVAS RENDERER
-// Render PDF halaman per halaman, horizontal swipe/tap, pinch+pan zoom
-// Dipanggil dari app.js: PDF image saat openBook, PDF teks saat toggle kanvas
+window._closeModalAction = function(modalId, sheetId, isScale = false, isFromHistory = false) {
+    if (!isFromHistory) { history.back(); return; }
+    const m = document.getElementById(modalId); const s = document.getElementById(sheetId);
+    if(m && s) {
+        if(isScale) { s.classList.add('scale-75', 'translate-y-12'); } 
+        else { s.classList.add('translate-y-full'); }
+        m.classList.add('opacity-0'); setTimeout(() => m.classList.add('hidden'), 300);
+    }
+}
 
-window.renderPdfOriginalView = async function(book, containerEl) {
-    if (!containerEl) return;
-    containerEl.innerHTML = '';
+window.closeWelcome = function(isFromHistory = false) {
+    _closeModalAction('welcome-modal', 'welcome-sheet', true, isFromHistory || (window.location.hash !== '#modal-welcome'));
+    localStorage.setItem('first_time_seen_v5', 'true');
+};
 
-    const lang = typeof wikiLang !== 'undefined' ? wikiLang : 'id';
+// 6. LOGIKA CEK PEMBARUAN (GITHUB CHECKER)
+function compareVersions(v1, v2) {
+    const p1 = v1.split('.').map(Number);
+    const p2 = v2.split('.').map(Number);
+    for (let i = 0; i < Math.max(p1.length, p2.length); i++) {
+        const num1 = p1[i] || 0;
+        const num2 = p2[i] || 0;
+        if (num1 > num2) return 1; // v1 lebih gede
+        if (num1 < num2) return -1; // v2 lebih gede
+    }
+    return 0; // sama
+}
 
-    // Tentukan sumber PDF
-    let pdfDoc = null;
+window.checkForUpdate = async function() {
+    const icon = document.getElementById('icon-update-app');
+    const d = typeof i18n !== 'undefined' ? (i18n[wikiLang] || i18n['id']) : {};
+    
+    if(!window.UPDATE_URL) return;
+
+    // Puter icon
+    if(icon) icon.classList.add('animate-spin');
+    
     try {
-        if (book.pdfFileBase64) {
-            // PDF image: load dari base64 yang disimpan saat import
-            pdfDoc = await pdfjsLib.getDocument({ url: book.pdfFileBase64 }).promise;
-        } else if (window._pdfDocCache && window._pdfDocCache.bookId === book.id) {
-            // PDF teks: pakai cache pdfjsLib doc yang disimpan saat import
-            pdfDoc = window._pdfDocCache.doc;
+        // Pake parameter ?t buat nembus cache GitHub Raw
+        const res = await fetch(window.UPDATE_URL + '?t=' + new Date().getTime());
+        if (!res.ok) throw new Error("Gagal terhubung ke GitHub");
+        
+        const data = await res.json();
+        const latestVersion = data.version;
+        const currentVersion = window.APP_VERSION;
+
+        if(icon) icon.classList.remove('animate-spin');
+
+        // Komparasi Semver
+        const isNewer = compareVersions(latestVersion, currentVersion) > 0;
+
+        if (isNewer) {
+            showDialog(
+                d.updateAvailableTitle || "Update Tersedia!",
+                (d.updateAvailableDesc || "Versi {v} udah rilis nih. Mau buka halaman download sekarang?").replace('{v}', latestVersion),
+                "arrow-up-circle",
+                [
+                    { text: d.cancel || "Batal", primary: false },
+                    { text: d.btnDownload || "Download", primary: true, action: () => {
+                        window.closeDialog();
+                        if(window.RELEASES_URL) window.open(window.RELEASES_URL, '_blank');
+                    }}
+                ]
+            );
         } else {
-            // Tidak ada sumber — minta import ulang
-            containerEl.innerHTML = `<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;gap:12px;padding:24px;text-align:center;color:var(--md-sys-color-on-surface);">
-                <svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-                <p style="font-weight:700;font-size:13px;">${lang === 'id' ? 'Import ulang PDF untuk mode kanvas.' : lang === 'es' ? 'Reimporta el PDF para el modo canvas.' : 'Re-import PDF to use canvas mode.'}</p>
-            </div>`;
+            showDialog(
+                d.updateLatestTitle || "Sudah Versi Terbaru",
+                d.updateLatestDesc || `Aplikasi lu udah pakai versi paling baru (v${currentVersion}).`,
+                "check-circle",
+                [{ text: "Oke", primary: true }]
+            );
+        }
+    } catch (err) {
+        console.error("Cek update gagal:", err);
+        if(icon) icon.classList.remove('animate-spin');
+        showDialog(
+            "Error",
+            d.updateError || "Gagal ngecek update. Pastiin internet lu nyala.",
+            "wifi-off",
+            [{ text: "Tutup", primary: true }]
+        );
+    }
+};
+
+// 7. BACKUP & RESTORE DATA
+window.exportData = async function() {
+    const d = typeof i18n !== 'undefined' ? (i18n[wikiLang] || i18n['id']) : {};
+    try {
+        const data = await localforage.getItem('pdf_epub_master');
+        if (!data || data.length === 0) {
+            showDialog("Info", wikiLang === 'id' ? "Ga ada buku untuk di-backup." : "No books to backup.", "info", [{ text: "Oke", primary: true }]);
             return;
         }
-    } catch(e) {
-        console.error('PDF load error', e);
+
+        showDialog(
+            wikiLang === 'id' ? "Memproses Backup" : "Processing Backup",
+            wikiLang === 'id' ? "Mohon tunggu sebentar, menyiapkan file lu..." : "Please wait, preparing your file...",
+            "loader", 
+            []
+        );
+        
+        const iconContainer = document.getElementById('dialog-icon-container');
+        if(iconContainer) iconContainer.classList.add('animate-spin');
+
+        setTimeout(async () => {
+            try {
+                if (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.Filesystem) {
+                    const dt = new Date();
+                    const fileName = `Baca_Backup_${dt.getFullYear()}${('0'+(dt.getMonth()+1)).slice(-2)}${('0'+dt.getDate()).slice(-2)}_${dt.getTime()}.json`;
+                    
+                    let displayFileName = fileName;
+                    if (fileName.length > 25) {
+                        displayFileName = fileName.substring(0, 16) + "..." + fileName.slice(-10);
+                    }
+                    
+                    const fullDataStr = JSON.stringify(data);
+                    
+                    try {
+                        await window.Capacitor.Plugins.Filesystem.writeFile({
+                            path: fileName,
+                            data: fullDataStr,
+                            directory: 'DOCUMENTS',
+                            encoding: 'utf8'
+                        });
+                        
+                        showDialog(
+                            wikiLang === 'id' ? "Backup Sukses" : "Backup Success", 
+                            wikiLang === 'id' ? `File backup berhasil disimpan di folder Documents HP lu.\nNama file: ${displayFileName}` : `Backup file saved in your device's Documents folder.\nFile name: ${displayFileName}`, 
+                            "check-circle", 
+                            [{ text: "Mantap", primary: true }]
+                        );
+                        return; 
+                    } catch (fsError) {
+                        console.log("Capacitor write gagal, beralih ke teks raw.", fsError);
+                    }
+                }
+                
+                const textOnlyData = data.map(book => {
+                    let strippedBook = { ...book };
+                    delete strippedBook.coverBase64; 
+                    return strippedBook;
+                });
+                
+                const rawStr = JSON.stringify(textOnlyData);
+                document.getElementById('raw-backup-textarea').value = rawStr;
+                
+                window.closeDialog(true);
+                
+                setTimeout(() => {
+                    openModal('raw-backup-modal', 'raw-backup-sheet', true);
+                    
+                    setTimeout(() => {
+                        showDialog("Info Fallback", 
+                            wikiLang === 'id' ? 
+                            "Simpan file native gagal. Ini adalah teks mentahnya.\n\nCATATAN: Demi menghindari error sistem (ukuran file terlalu besar), data Sampul Buku otomatis DIHAPUS pada versi ini. Data teks buku tetap aman." : 
+                            "Native file save failed. This is the raw text.\n\nNOTE: To prevent system memory errors, Book Covers are REMOVED in this version. Text data is safe.", 
+                            "info", [{ text: "Mengerti", primary: true }]);
+                    }, 400);
+                }, 350);
+                
+            } catch (err) {
+                console.error("Backup failed:", err);
+                showDialog("Error", "Backup gagal: " + err.message, "alert-triangle", [{ text: "Tutup", primary: true }]);
+            }
+        }, 150);
+
+    } catch (err) {
+        console.error("Backup failed:", err);
+        showDialog("Error", "Backup gagal: " + err.message, "alert-triangle", [{ text: "Tutup", primary: true }]);
+    }
+};
+
+window.copyRawBackup = function() {
+    const textarea = document.getElementById('raw-backup-textarea');
+    textarea.select();
+    textarea.setSelectionRange(0, 9999999); 
+    
+    try {
+        document.execCommand('copy');
+        const btnSpan = document.getElementById('str-raw-bak-btn-copy');
+        const originalText = btnSpan.innerText;
+        btnSpan.innerText = wikiLang === 'id' ? "Berhasil Disalin!" : "Copied!";
+        setTimeout(() => { btnSpan.innerText = originalText; }, 2000);
+    } catch (err) {
+        showDialog("Error", "Gagal menyalin otomatis. Silakan blok semua teks secara manual dan salin.", "alert-circle", [{ text: "Tutup", primary: true }]);
+    }
+};
+
+window.openRestoreOptions = function() {
+    document.getElementById('raw-restore-textarea').value = '';
+    openModal('raw-restore-modal', 'raw-restore-sheet', true);
+};
+
+window.processRawRestore = function() {
+    const val = document.getElementById('raw-restore-textarea').value.trim();
+    if(!val) {
+        showDialog("Info", wikiLang === 'id' ? "Kotak teks masih kosong." : "Text box is empty.", "info", [{ text: "Oke", primary: true }]);
+        return;
+    }
+    executeRestoreLogic(val);
+};
+
+window.importDataFile = function(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = function(e) {
+        executeRestoreLogic(e.target.result);
+        event.target.value = ''; 
+    };
+    reader.readAsText(file);
+};
+
+function executeRestoreLogic(jsonString) {
+    try {
+        const parsedData = JSON.parse(jsonString);
+        if (!Array.isArray(parsedData)) throw new Error("Format file/teks tidak valid.");
+        
+        const isValid = parsedData.every(b => b.id && b.title && b.nodes);
+        if (!isValid) throw new Error("Data backup rusak atau tidak kompatibel.");
+        
+        showDialog(
+            wikiLang === 'id' ? "Konfirmasi Restore" : "Confirm Restore",
+            wikiLang === 'id' ? "PERINGATAN: Semua data buku saat ini akan ketimpa total. Yakin mau lanjut?" : "WARNING: Current books will be completely replaced. Continue?",
+            "alert-triangle",
+            [
+                { text: "Batal", primary: false },
+                { text: "Lanjut", primary: true, action: async () => {
+                    window.closeDialog();
+                    await localforage.setItem('pdf_epub_master', parsedData);
+                    library = parsedData;
+                    renderLibrary(DOM.globalSearch.value);
+                    
+                    if (!document.getElementById('raw-restore-modal').classList.contains('hidden')) history.back();
+                    setTimeout(() => {
+                        if (!document.getElementById('global-settings-modal').classList.contains('hidden')) history.back();
+                    }, 300);
+                    
+                    setTimeout(() => {
+                        showDialog(
+                            wikiLang === 'id' ? "Restore Berhasil!" : "Restore Success!",
+                            wikiLang === 'id' ? "Data aplikasi lu udah berhasil dipulihin." : "Your data has been successfully restored.",
+                            "check-circle",
+                            [{ text: "Oke", primary: true }]
+                        );
+                    }, 700);
+                }}
+            ]
+        );
+    } catch (err) {
+        console.error("Restore failed:", err);
+        showDialog("Error", (wikiLang === 'id' ? "Gagal memulihkan: " : "Failed to restore: ") + err.message, "alert-circle", [{ text: "Tutup", primary: true }]);
+    }
+}
+
+// 8. LIBRARY & BOOK MANAGEMENT
+async function loadLibrary() { 
+    try { 
+        library = await localforage.getItem('pdf_epub_master') || []; 
+        renderLibrary(); 
+    } catch (e) { console.error(e); } 
+}
+
+function renderLibrary(filterText = "") {
+    if(!DOM.grid || !DOM.topSlider) return;
+    
+    DOM.grid.innerHTML = ''; 
+    DOM.topSlider.innerHTML = '';
+    const pinnedGrid = document.getElementById('pinned-book-grid');
+    if(pinnedGrid) pinnedGrid.innerHTML = '';
+    
+    let filteredLib = library;
+    if(filterText) filteredLib = library.filter(b => b.title.toLowerCase().includes(filterText.toLowerCase()));
+    
+    const d = i18n[wikiLang] || i18n['id'];
+    if(DOM.count) DOM.count.textContent = `${filteredLib.length} ${d.booksCount}`;
+    
+    const pinnedBooks = filteredLib.filter(b => b.isPinned);
+    const regularBooks = filteredLib.filter(b => !b.isPinned);
+
+    let topBooks = [];
+    if (!filterText) { topBooks = library.filter(b => b.progressPct > 0).sort((a,b) => b.progressPct - a.progressPct).slice(0, 4); }
+    if (topBooks.length > 0) {
+        DOM.topSection.classList.remove('hidden');
+        topBooks.forEach((book, idx) => { DOM.topSlider.appendChild(createBookCard(book, true, idx)); });
+        const spacer = document.createElement('div'); spacer.className = "w-2 shrink-0 snap-align-none"; DOM.topSlider.appendChild(spacer);
+    } else { DOM.topSection.classList.add('hidden'); }
+    
+    const pinnedSection = document.getElementById('pinned-books-section');
+    if (pinnedBooks.length > 0) {
+        if(pinnedSection) pinnedSection.classList.remove('hidden');
+        pinnedBooks.forEach((book, idx) => { if(pinnedGrid) pinnedGrid.appendChild(createBookCard(book, false, idx)); });
+    } else {
+        if(pinnedSection) pinnedSection.classList.add('hidden');
+    }
+
+    if (regularBooks.length === 0) { 
+        DOM.empty.classList.remove('hidden'); DOM.grid.classList.add('hidden'); 
+        if(document.getElementById('collection-heading')) document.getElementById('collection-heading').classList.add('hidden');
+    } else {
+        DOM.empty.classList.add('hidden'); DOM.grid.classList.remove('hidden');
+        if(document.getElementById('collection-heading')) document.getElementById('collection-heading').classList.remove('hidden');
+        regularBooks.forEach((book, index) => { DOM.grid.appendChild(createBookCard(book, false, index)); });
+    }
+
+    updateStatistics(); // PANGGIL STATISTIK SETIAP LIBRARY SELESAI RENDER
+    
+    if(window.lucide) window.lucide.createIcons();
+    window.updateBatchSelectionUI();
+}
+
+function createBookCard(book, isSlider = false, index = 0) {
+    const progress = book.progressPct || 0; 
+    const card = document.createElement('div');
+    
+    let shapeClass = "";
+    let shp = book.shape || 'square';
+    if (shp === 'rounded') shapeClass = 'rounded-[24px]';
+    else if (shp === 'square') shapeClass = 'rounded-xl';
+    else shapeClass = index % 2 === 0 ? 'rounded-tl-[32px] rounded-br-[32px] rounded-tr-lg rounded-bl-lg' : 'rounded-tr-[32px] rounded-bl-[32px] rounded-tl-lg rounded-br-lg';
+
+    let bgStyle = ""; let textOverlay = ""; let baseClass = "";
+    if(book.coverBase64) {
+        bgStyle = `background-image: url('${book.coverBase64}'); background-size: cover; background-position: top center;`;
+        baseClass = "text-white border-none outline-none ring-0 shadow-lg"; 
+        textOverlay = `<div class="absolute inset-x-0 bottom-0 h-[80%] bg-gradient-to-t from-black via-black/40 to-transparent pointer-events-none z-0 rounded-b-inherit border-none outline-none"></div>`;
+    } else {
+        const colors = [
+            'bg-m3-primaryContainer text-m3-onPrimaryContainer', 
+            'bg-m3-secondaryContainer text-m3-onSecondaryContainer', 
+            'bg-m3-tertiaryContainer text-m3-onTertiaryContainer',
+            'bg-m3-surfaceVariant text-m3-onSurfaceVariant'
+        ];
+        baseClass = colors[index % colors.length];
+    }
+
+    const dimensionClass = isSlider ? "w-64 h-40 shrink-0 snap-start" : "aspect-[3/4.5] w-full shadow-md hover:shadow-xl transition-shadow";
+
+    let pressTimer = null; let isPressing = false; let hasLongPressed = false;
+    const handleStart = (e) => {
+        if (isBatchDeleteMode) return;
+        isPressing = true; hasLongPressed = false;
+        pressTimer = setTimeout(() => { if (isPressing) { hasLongPressed = true; window.openBookOptions(book.id); } }, 400);
+    };
+    const handleEnd = () => { isPressing = false; clearTimeout(pressTimer); };
+    const handleMove = () => { isPressing = false; clearTimeout(pressTimer); };
+
+    card.addEventListener('mousedown', handleStart); card.addEventListener('touchstart', handleStart, {passive: true});
+    card.addEventListener('mouseup', handleEnd); card.addEventListener('touchend', handleEnd);
+    card.addEventListener('mouseleave', handleMove); card.addEventListener('touchmove', handleMove, {passive: true});
+    
+    card.addEventListener('click', (e) => { 
+        if (hasLongPressed) { e.preventDefault(); e.stopPropagation(); return; } 
+        if (isBatchDeleteMode && !isSlider) {
+            e.preventDefault(); e.stopPropagation();
+            const strId = String(book.id);
+            const idx = selectedForDelete.findIndex(id => String(id) === strId);
+            if (idx > -1) {
+                selectedForDelete.splice(idx, 1);
+            } else {
+                selectedForDelete.push(strId);
+            }
+            window.updateBatchSelectionUI();
+            return;
+        }
+        window.openBook(book); 
+    });
+
+    card.className = `${baseClass} ${shapeClass} ${dimensionClass} p-4 relative cursor-pointer card-morph flex flex-col justify-between overflow-hidden border-none outline-none ring-0`;
+    card.style = bgStyle;
+
+    let batchOverlayHTML = '';
+    if (!isSlider) {
+        batchOverlayHTML = `
+            <div class="batch-overlay absolute inset-0 z-20 transition-all duration-300 pointer-events-none rounded-inherit" data-book-id="${book.id}" style="display: none; opacity: 0; background-color: transparent;">
+                <div class="batch-icon-box absolute top-3 left-3 w-7 h-7 rounded-full flex items-center justify-center transition-colors"></div>
+            </div>
+        `;
+    }
+
+    const titleShadow = book.coverBase64 ? 'text-white' : '';
+    const barBase = book.coverBase64 ? 'bg-white' : 'bg-m3-primary dark:bg-m3-primaryContainer';
+
+    let indicators = '';
+    if(!isSlider) {
+        if(book.isPinned) indicators += `<i data-lucide="pin" class="w-3.5 h-3.5 opacity-90 fill-current"></i>`;
+    }
+
+    if (isSlider) {
+        card.innerHTML = `
+            ${textOverlay}
+            <div class="relative z-10 flex flex-col h-full justify-between pointer-events-none border-none">
+                <div class="flex justify-between w-full items-start">
+                    <span class="inline-block text-[0.65rem] font-bold px-2 py-0.5 bg-black/40 rounded-full text-white uppercase tracking-widest">${book.type}</span>
+                </div>
+                <div class="mt-auto flex flex-col border-none">
+                    <h3 class="font-bold text-sm leading-tight line-clamp-2 drop-shadow-md ${titleShadow}">${book.title}</h3>
+                    <div class="w-full mt-2 border-none">
+                        <div class="flex justify-between text-[0.65rem] font-bold opacity-90 mb-1 ${titleShadow}"><span>${progress}%</span></div>
+                        <div class="h-1.5 w-full bg-black/20 dark:bg-white/20 rounded-full overflow-hidden border-none">
+                            <div class="h-full ${barBase} rounded-full border-none" style="width: ${progress}%"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+    } else {
+        card.innerHTML = `
+            ${batchOverlayHTML}
+            ${textOverlay}
+            <div class="relative z-10 flex flex-col h-full justify-between pointer-events-none border-none">
+                <div class="flex justify-end w-full gap-1 drop-shadow-md ${titleShadow}">${indicators}</div>
+                <div class="mt-auto flex flex-col border-none">
+                    ${book.coverBase64 ? '' : '<i data-lucide="book" class="w-6 h-6 mb-2 opacity-80"></i>'}
+                    <h3 class="font-bold text-sm leading-tight mt-1 line-clamp-3 drop-shadow-md ${titleShadow}">${book.title}</h3>
+                    <span class="inline-block mt-2 mb-2 text-[0.6rem] font-bold px-2 py-0.5 bg-black/40 rounded-full text-white uppercase tracking-widest self-start">${book.type}</span>
+                    <div class="w-full border-none">
+                        <div class="flex justify-between text-[0.6rem] font-bold opacity-90 mb-1 ${titleShadow}">
+                            <span>${progress}%</span>
+                        </div>
+                        <div class="h-1.5 w-full bg-black/20 dark:bg-white/20 rounded-full overflow-hidden border-none">
+                            <div class="h-full ${barBase} rounded-full border-none" style="width: ${progress}%"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+    return card;
+}
+
+window.openBookOptions = function(id) {
+    activeOptsId = id; const book = library.find(b => b.id === id);
+    document.getElementById('opt-title').textContent = book.title;
+
+    const d = i18n[wikiLang] || i18n['id'];
+    const pinIcon = document.getElementById('icon-opt-pin');
+    const pinText = document.getElementById('str-opt-pin');
+
+    if(book.isPinned) {
+        pinText.textContent = d.optUnpin || 'Lepas Sematan';
+        pinIcon.setAttribute('data-lucide', 'pin-off');
+    } else {
+        pinText.textContent = d.optPin || 'Sematkan Buku';
+        pinIcon.setAttribute('data-lucide', 'pin');
+    }
+
+    if(window.lucide) window.lucide.createIcons();
+    openModal('b-opt-modal', 'b-opt-sheet', false); 
+}
+
+window.togglePinBook = async function() {
+    if(!activeOptsId) return;
+    const bookIndex = library.findIndex(b => b.id === activeOptsId);
+    if(bookIndex > -1) {
+        library[bookIndex].isPinned = !library[bookIndex].isPinned;
+        await localforage.setItem('pdf_epub_master', library);
+        history.back(); 
+        setTimeout(() => renderLibrary(DOM.globalSearch ? DOM.globalSearch.value : ""), 300);
+    }
+}
+
+window.triggerSelectMode = function() {
+    if(!activeOptsId) return;
+    const targetId = activeOptsId;
+    history.back(); 
+    setTimeout(() => { window.toggleBatchDelete(false, targetId); }, 350); 
+}
+
+window.toggleBatchDelete = function(isFromHistory = false, initialSelectId = null) {
+    if(library.length === 0 && !isBatchDeleteMode) return;
+    isBatchDeleteMode = !isBatchDeleteMode;
+    
+    if (!isBatchDeleteMode) { selectedForDelete = []; } 
+    else {
+        selectedForDelete = [];
+        if (initialSelectId) selectedForDelete.push(String(initialSelectId));
+    }
+    
+    const bar = document.getElementById('batch-delete-bar');
+    const fab = document.getElementById('fab-container');
+    
+    if (isBatchDeleteMode) {
+        if(!isFromHistory) pushAppHistory('batch-delete');
+        bar.classList.remove('translate-y-32');
+        fab.classList.add('translate-y-32', 'opacity-0');
+    } else {
+        if(!isFromHistory && window.location.hash === '#batch-delete') history.back();
+        bar.classList.add('translate-y-32');
+        fab.classList.remove('translate-y-32', 'opacity-0');
+    }
+    
+    window.updateBatchSelectionUI();
+};
+
+window.updateBatchSelectionUI = function() {
+    const countEl = document.getElementById('batch-delete-count');
+    const d = typeof i18n !== 'undefined' ? (i18n[wikiLang] || i18n['id']) : {};
+    if(countEl) countEl.textContent = `${selectedForDelete.length} ${d.selected || 'Selected'}`;
+
+    document.querySelectorAll('.batch-overlay').forEach(el => {
+        const id = String(el.dataset.bookId);
+        const idx = selectedForDelete.findIndex(selId => String(selId) === id);
+        const icBox = el.querySelector('.batch-icon-box');
+        
+        if (isBatchDeleteMode) {
+            el.style.display = 'block';
+            if (idx > -1) {
+                el.style.opacity = '1';
+                el.style.backgroundColor = 'rgba(0, 0, 0, 0.4)';
+                icBox.className = 'batch-icon-box absolute top-3 left-3 w-7 h-7 rounded-full flex items-center justify-center transition-colors bg-m3-primary text-m3-onPrimary font-bold text-xs shadow-md border-none';
+                icBox.innerHTML = (idx + 1);
+            } else {
+                el.style.opacity = '1';
+                el.style.backgroundColor = 'transparent';
+                icBox.className = 'batch-icon-box absolute top-3 left-3 w-7 h-7 rounded-full border-2 border-white/50 flex items-center justify-center transition-colors bg-black/20 shadow-sm font-bold text-xs text-transparent';
+                icBox.innerHTML = '';
+            }
+        } else {
+            el.style.opacity = '0';
+            setTimeout(() => el.style.display = 'none', 300);
+        }
+    });
+};
+
+window.executeBatchDelete = async function() {
+    if(selectedForDelete.length === 0) return;
+    const d = i18n[wikiLang] || i18n['id'];
+    
+    showDialog("Hapus Buku", d.deleteConfirm, "trash-2", [
+        { text: "Batal", primary: false },
+        { text: "Hapus", primary: true, action: async () => {
+            window.closeDialog();
+            const toDeleteSet = new Set(selectedForDelete.map(String));
+            library = library.filter(b => !toDeleteSet.has(String(b.id)));
+            await localforage.setItem('pdf_epub_master', library);
+            window.toggleBatchDelete(); 
+            renderLibrary(DOM.globalSearch ? DOM.globalSearch.value : ""); 
+        }}
+    ]);
+};
+
+window.triggerDeleteView = async function() {
+    if(!activeOptsId) return;
+    const d = i18n[wikiLang] || i18n['id'];
+    showDialog("Hapus Permanen", d.deleteConfirm, "trash-2", [
+        { text: "Batal", primary: false },
+        { text: "Hapus", primary: true, action: async () => {
+            window.closeDialog();
+            library = library.filter(b => !selectedForDelete.includes(b.id) && b.id !== activeOptsId); 
+            await localforage.setItem('pdf_epub_master', library); 
+            history.back(); setTimeout(() => renderLibrary(DOM.globalSearch ? DOM.globalSearch.value : ""), 350);
+        }}
+    ]);
+};
+
+window.triggerEditView = function() {
+    if(!activeOptsId) return;
+    const book = library.find(b => b.id === activeOptsId);
+    document.getElementById('edit-book-id').value = activeOptsId; 
+    document.getElementById('edit-book-title').value = book.title; 
+    document.getElementById('edit-book-cover').value = '';
+    
+    window.selectShape(book.shape || 'square');
+    history.back(); setTimeout(() => { openModal('edit-modal', 'edit-sheet', true); }, 400); 
+}
+
+window.selectShape = function(shape) {
+    document.getElementById('edit-book-shape').value = shape;
+    const btns = document.querySelectorAll('#edit-sheet .btn-morph');
+    btns.forEach(b => {
+        if(b.id && b.id.startsWith('shape-')) {
+            b.classList.remove('bg-m3-primaryContainer', 'text-m3-onPrimaryContainer');
+            b.classList.add('bg-m3-surfaceVariant', 'text-m3-onSurfaceVariant');
+        }
+    });
+    const sel = document.getElementById('shape-' + shape);
+    if(sel) {
+        sel.classList.remove('bg-m3-surfaceVariant', 'text-m3-onSurfaceVariant');
+        sel.classList.add('bg-m3-primaryContainer', 'text-m3-onPrimaryContainer');
+    }
+}
+
+window.closeEditModal = function() { history.back(); }
+
+window.saveBookEdit = async function() {
+    const id = document.getElementById('edit-book-id').value; 
+    const newTitle = document.getElementById('edit-book-title').value; 
+    const coverFile = document.getElementById('edit-book-cover').files[0];
+    const newShape = document.getElementById('edit-book-shape').value;
+    const bookIndex = library.findIndex(b => b.id === id);
+    
+    if(bookIndex > -1) {
+        library[bookIndex].title = newTitle; library[bookIndex].shape = newShape;
+        if (coverFile) { 
+            const reader = new FileReader(); 
+            reader.onload = async function(e) { 
+                library[bookIndex].coverBase64 = e.target.result; await localforage.setItem('pdf_epub_master', library); 
+                history.back(); renderLibrary(); 
+            }; 
+            reader.readAsDataURL(coverFile); 
+        } else { await localforage.setItem('pdf_epub_master', library); history.back(); renderLibrary(); }
+    }
+}
+
+// 9. TEMA & TIPOGRAFI
+function applyThemeToDOM() {
+    document.documentElement.classList.toggle('dark', isDark);
+    
+    if(typeof M3_PALETTES !== 'undefined') {
+        let rootVars = M3_PALETTES[currentThemeKey][isDark ? 'dark' : 'light'];
+        if (isDark && isAmoled) {
+            rootVars += `--md-sys-color-background:#000000;--md-sys-color-surface:#000000;`;
+        }
+        const dynamicTheme = document.getElementById('dynamic-theme');
+        if(dynamicTheme) dynamicTheme.innerHTML = `:root { ${rootVars} }`;
+    }
+    
+    const metaTheme = document.querySelector('meta[name="theme-color"]');
+    if(metaTheme) {
+        if(isDark && isAmoled) metaTheme.setAttribute("content", "#000000");
+        else if (isDark) metaTheme.setAttribute("content", "#0B0314");
+        else metaTheme.setAttribute("content", "#FAF5FF");
+    }
+
+    const bg = document.getElementById('theme-switch-bg');
+    const knob = document.getElementById('theme-switch-knob');
+    const icon = document.getElementById('theme-switch-icon');
+    const dLabel = document.getElementById('theme-label-text');
+    const d = typeof i18n !== 'undefined' ? (i18n[wikiLang] || i18n['id']) : {};
+    
+    if (bg && knob && icon && dLabel) {
+        dLabel.textContent = isDark ? d.themeDark : d.themeLight;
+        if (isDark) {
+            bg.classList.replace('bg-m3-onSurfaceVariant/20', 'bg-m3-primary');
+            knob.classList.add('translate-x-[32px]');
+            icon.setAttribute('data-lucide', 'moon');
+            icon.classList.replace('text-m3-onSurface', 'text-m3-primary');
+        } else {
+            bg.classList.replace('bg-m3-primary', 'bg-m3-onSurfaceVariant/20');
+            knob.classList.remove('translate-x-[32px]');
+            icon.setAttribute('data-lucide', 'sun');
+            icon.classList.replace('text-m3-primary', 'text-m3-onSurface');
+        }
+    }
+
+    const amoContainer = document.getElementById('amoled-toggle-container');
+    const amoBg = document.getElementById('amoled-switch-bg');
+    const amoKnob = document.getElementById('amoled-switch-knob');
+    if (isDark) {
+        if (amoContainer) amoContainer.classList.remove('hidden');
+        if (isAmoled && amoBg && amoKnob) {
+            amoBg.classList.add('bg-m3-primary');
+            amoKnob.classList.add('translate-x-[32px]');
+            amoKnob.classList.replace('bg-m3-onSurface', 'bg-m3-onPrimary');
+        } else if (amoBg && amoKnob) {
+            amoBg.classList.remove('bg-m3-primary');
+            amoKnob.classList.remove('translate-x-[32px]');
+            amoKnob.classList.replace('bg-m3-onPrimary', 'bg-m3-onSurface');
+        }
+    } else {
+        if (amoContainer) amoContainer.classList.add('hidden');
+    }
+
+    const tl = document.getElementById('theme-btn-light');
+    const td = document.getElementById('theme-btn-dark');
+    const ta = document.getElementById('theme-btn-amoled');
+    if (tl && td && ta) {
+        [tl, td, ta].forEach(el => {
+            el.classList.remove('bg-m3-primary', 'text-m3-onPrimary');
+            el.classList.add('text-m3-onSurfaceVariant');
+        });
+        if (!isDark) { tl.classList.add('bg-m3-primary', 'text-m3-onPrimary'); tl.classList.remove('text-m3-onSurfaceVariant'); }
+        else if (isDark && !isAmoled) { td.classList.add('bg-m3-primary', 'text-m3-onPrimary'); td.classList.remove('text-m3-onSurfaceVariant'); }
+        else if (isDark && isAmoled) { ta.classList.add('bg-m3-primary', 'text-m3-onPrimary'); ta.classList.remove('text-m3-onSurfaceVariant'); }
+    }
+
+    if(window.lucide) window.lucide.createIcons();
+    localStorage.setItem('theme', isDark ? 'dark' : 'light'); 
+    localStorage.setItem('m3-key', currentThemeKey);
+    localStorage.setItem('amoled', isAmoled);
+}
+
+window.setTheme = function(key) { currentThemeKey = key; applyThemeToDOM(); };
+window.toggleThemeState = function() { isDark = !isDark; applyThemeToDOM(); };
+window.toggleAmoled = function() { isAmoled = !isAmoled; applyThemeToDOM(); };
+window.setReaderTheme = function(mode) {
+    if (mode === 'light') { isDark = false; isAmoled = false; }
+    else if (mode === 'dark') { isDark = true; isAmoled = false; }
+    else if (mode === 'amoled') { isDark = true; isAmoled = true; }
+    applyThemeToDOM();
+};
+
+let typoPrefs = JSON.parse(localStorage.getItem('typo_prefs')) || { size: '1.2rem', align: 'left', font: 'Lora' };
+function applyTypo() {
+    document.documentElement.style.setProperty('--reader-size', typoPrefs.size);
+    document.documentElement.style.setProperty('--reader-align', typoPrefs.align);
+    
+    let fontCss = 'serif';
+    if(typoPrefs.font === 'Merriweather') fontCss = "'Merriweather', serif";
+    else if(typoPrefs.font === 'Playfair Display') fontCss = "'Playfair Display', serif";
+    else if(typoPrefs.font === 'Space Mono') fontCss = "'Space Mono', monospace";
+    else if(typoPrefs.font === 'Inter') fontCss = "'Inter', sans-serif";
+    else if(typoPrefs.font === 'Google Sans Flex') fontCss = "'Google Sans Flex', sans-serif";
+    else fontCss = "'Lora', serif";
+
+    document.documentElement.style.setProperty('--reader-font', fontCss);
+    localStorage.setItem('typo_prefs', JSON.stringify(typoPrefs)); syncTypoUI();
+}
+function syncTypoUI() {
+    const maps = { size: { '1rem': 'typo-sz-sm', '1.2rem': 'typo-sz-md', '1.5rem': 'typo-sz-lg' }, align: { 'left': 'typo-al-left', 'center': 'typo-al-center', 'justify': 'typo-al-justify' }, font: { 'Lora': 'typo-fn-lora','Merriweather':'typo-fn-merri','Playfair Display':'typo-fn-playfair', 'Inter': 'typo-fn-inter', 'Space Mono': 'typo-fn-mono', 'Google Sans Flex': 'typo-fn-google' } };
+    
+    Object.values(maps.size).forEach(id => { const el = document.getElementById(id); if(el){ el.classList.remove('bg-m3-primary', 'text-m3-onPrimary'); el.classList.add('text-m3-onSurfaceVariant'); }});
+    Object.values(maps.align).forEach(id => { const el = document.getElementById(id); if(el){ el.classList.remove('bg-m3-primary', 'text-m3-onPrimary'); el.classList.add('text-m3-onSurfaceVariant'); }});
+    Object.values(maps.font).forEach(id => { const el = document.getElementById(id); if(el){ el.classList.remove('bg-m3-primaryContainer', 'text-m3-onPrimaryContainer'); }});
+    
+    if(document.getElementById(maps.size[typoPrefs.size])) {
+        document.getElementById(maps.size[typoPrefs.size]).classList.add('bg-m3-primary', 'text-m3-onPrimary');
+        document.getElementById(maps.size[typoPrefs.size]).classList.remove('text-m3-onSurfaceVariant');
+    }
+    if(document.getElementById(maps.align[typoPrefs.align])) {
+        document.getElementById(maps.align[typoPrefs.align]).classList.add('bg-m3-primary', 'text-m3-onPrimary');
+        document.getElementById(maps.align[typoPrefs.align]).classList.remove('text-m3-onSurfaceVariant');
+    }
+    if(document.getElementById(maps.font[typoPrefs.font])) {
+        document.getElementById(maps.font[typoPrefs.font]).classList.add('bg-m3-primaryContainer', 'text-m3-onPrimaryContainer');
+    }
+}
+window.changeTypo = function(type, value) { typoPrefs[type] = value; applyTypo(); }
+
+
+// 10. READER INTERACTIONS
+window.openBook = function(book) {
+    activeBookId = book.id; pushAppHistory(`reader-${book.id}`);
+    _isOriginalViewActive = false;
+    DOM.libView.style.transform = 'scale(0.95)'; DOM.readView.classList.remove('translate-y-full');
+    DOM.title.textContent = book.title; 
+    
+    const loader = document.getElementById('reader-loading-overlay');
+    loader.classList.remove('hidden'); requestAnimationFrame(() => loader.classList.remove('opacity-0'));
+    
+    DOM.inner.innerHTML = ''; DOM.tocList.innerHTML = '';
+    if (observer) observer.disconnect();
+
+    DOM.progBar.style.width = `${book.progressPct || 0}%`; DOM.progTxt.textContent = `${book.progressPct || 0}%`;
+
+    // Fallback pdfType untuk buku lama yang belum punya field ini
+    // Kalau type pdf tapi tidak ada pdfType, anggap 'text' (aman)
+    if (book.type === 'pdf' && !book.pdfType) book.pdfType = 'text';
+
+    // Sembunyikan/tampilkan tombol Mode Kanvas di settings
+    const btnOriginalView = document.getElementById('btn-original-view');
+    const btnOriginalViewLabel = document.getElementById('str-btn-original-view');
+    const d0 = typeof i18n !== 'undefined' ? (i18n[wikiLang] || i18n['id']) : {};
+    if (btnOriginalView) {
+        if (book.pdfType === 'text') {
+            btnOriginalView.classList.remove('hidden');
+            if (btnOriginalViewLabel) btnOriginalViewLabel.textContent = d0.pdfOriginalView || 'Mode Kanvas';
+            const btn = btnOriginalView.querySelector('button');
+            if (btn) { btn.style.background = ''; btn.style.color = ''; }
+        } else {
+            btnOriginalView.classList.add('hidden');
+        }
+    }
+
+    // Reset onclick tombol bookmark/AI (bisa terkunci dari buku PDF image sebelumnya)
+    ['btn-bookmarks'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.onclick = null;
+    });
+
+    // PDF GAMBAR: langsung ke canvas, lock fitur teks
+    if (book.pdfType === 'image') {
+        const pdfOriginalContainer = document.getElementById('pdf-original-view-container');
+        if (pdfOriginalContainer) {
+            DOM.readContent.classList.add('hidden');
+            pdfOriginalContainer.classList.remove('hidden');
+            window.renderPdfOriginalView(book, pdfOriginalContainer);
+        }
+
+        // Lock tombol bookmark & copy
+        ['btn-bookmarks'].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.onclick = (e) => { e.stopPropagation(); showLockedFeatureAlert(); };
+        });
+
+        const header = document.getElementById('reader-floating-header');
+        if (header) { header.classList.remove('-translate-y-[150%]', 'opacity-0'); header.classList.add('translate-y-0', 'opacity-100'); }
+
+        setTimeout(() => { loader.classList.add('opacity-0'); setTimeout(() => loader.classList.add('hidden'), 300); }, 400);
         return;
     }
 
-    _renderPdfCanvas(pdfDoc, containerEl, book);
-};
+    // PDF TEKS / EPUB / TXT / MD: tampilkan container teks
+    const pdfOriginalContainer = document.getElementById('pdf-original-view-container');
+    if (pdfOriginalContainer) { pdfOriginalContainer.classList.add('hidden'); pdfOriginalContainer.innerHTML = ''; }
+    DOM.readContent.classList.remove('hidden');
 
-async function _renderPdfCanvas(pdfDoc, containerEl, book) {
-    const totalPages = pdfDoc.numPages;
-    let currentPage = (book.pdfOriginalPage || 0);
-    if (currentPage >= totalPages) currentPage = 0;
+    setTimeout(() => {
+        let hCounter = 0; const fragment = document.createDocumentFragment(); let currentHeadingId = null;
 
-    // State zoom & pan
-    let scale = 1;
-    let panX = 0;
-    let panY = 0;
+        book.nodes.forEach((node, i) => {
+            let el; const annots = (book.annotations || []).filter(a => a.nodeIdx === i);
 
-    // Layout: container full, satu canvas ditampilkan
-    containerEl.style.cssText = 'position:relative;width:100%;height:100%;overflow:hidden;background:#1a1a1a;display:flex;align-items:center;justify-content:center;';
-
-    const canvas = document.createElement('canvas');
-    canvas.style.cssText = 'display:block;max-width:100%;max-height:100%;object-fit:contain;touch-action:none;';
-    canvas.classList.add('pdf-original-page');
-    containerEl.appendChild(canvas);
-
-    // Counter halaman
-    const counter = document.createElement('div');
-    counter.style.cssText = 'position:absolute;bottom:10px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,0.5);color:#fff;font-size:11px;font-weight:700;padding:3px 12px;border-radius:99px;pointer-events:none;z-index:5;';
-    containerEl.appendChild(counter);
-
-    // Render halaman ke canvas
-    async function renderPage(idx) {
-        scale = 1; panX = 0; panY = 0;
-        applyTransform();
-        const page = await pdfDoc.getPage(idx + 1);
-        const vp = page.getViewport({ scale: 1.5 });
-        canvas.width = vp.width;
-        canvas.height = vp.height;
-        await page.render({ canvasContext: canvas.getContext('2d'), viewport: vp }).promise;
-        counter.textContent = `${idx + 1} / ${totalPages}`;
-
-        // Simpan progress
-        if (typeof library !== 'undefined' && typeof activeBookId !== 'undefined') {
-            const bIdx = library.findIndex(b => b.id === activeBookId);
-            if (bIdx > -1) { library[bIdx].pdfOriginalPage = idx; localforage.setItem('pdf_epub_master', library); }
-        }
-
-        // Dark mode
-        if (typeof isDark !== 'undefined' && isDark) {
-            canvas.style.filter = 'invert(1) hue-rotate(180deg)';
-        } else {
-            canvas.style.filter = '';
-        }
-    }
-
-    function applyTransform() {
-        canvas.style.transform = `translate(${panX}px, ${panY}px) scale(${scale})`;
-        canvas.style.transformOrigin = 'center center';
-    }
-
-    function goTo(idx) {
-        if (idx < 0 || idx >= totalPages) return;
-        currentPage = idx;
-        renderPage(currentPage);
-    }
-
-    await renderPage(currentPage);
-
-    // --- GESTURE ---
-    let touchStartX = 0, touchStartY = 0, touchStartTime = 0;
-    let pinchStartDist = 0, pinchStartScale = 1;
-    let panStartX = 0, panStartY = 0, panStartPanX = 0, panStartPanY = 0;
-    let isPinching = false, isSwiping = false, isPanning = false;
-
-    containerEl.addEventListener('touchstart', (e) => {
-        if (e.touches.length === 2) {
-            isPinching = true; isSwiping = false; isPanning = false;
-            pinchStartDist = Math.hypot(
-                e.touches[1].clientX - e.touches[0].clientX,
-                e.touches[1].clientY - e.touches[0].clientY
-            );
-            pinchStartScale = scale;
-            panStartX = (e.touches[0].clientX + e.touches[1].clientX) / 2;
-            panStartY = (e.touches[0].clientY + e.touches[1].clientY) / 2;
-            panStartPanX = panX; panStartPanY = panY;
-        } else if (e.touches.length === 1) {
-            touchStartX = e.touches[0].clientX;
-            touchStartY = e.touches[0].clientY;
-            touchStartTime = Date.now();
-            panStartPanX = panX; panStartPanY = panY;
-            isSwiping = false; isPanning = false;
-        }
-    }, { passive: true });
-
-    containerEl.addEventListener('touchmove', (e) => {
-        if (e.touches.length === 2 && isPinching) {
-            const dist = Math.hypot(
-                e.touches[1].clientX - e.touches[0].clientX,
-                e.touches[1].clientY - e.touches[0].clientY
-            );
-            scale = Math.min(5, Math.max(1, pinchStartScale * (dist / pinchStartDist)));
-            // Pan saat pinch
-            const mx = (e.touches[0].clientX + e.touches[1].clientX) / 2;
-            const my = (e.touches[0].clientY + e.touches[1].clientY) / 2;
-            panX = panStartPanX + (mx - panStartX);
-            panY = panStartPanY + (my - panStartY);
-            if (scale <= 1) { panX = 0; panY = 0; }
-            applyTransform();
-            if (e.cancelable) e.preventDefault();
-            return;
-        }
-
-        if (e.touches.length === 1 && !isPinching) {
-            const dx = e.touches[0].clientX - touchStartX;
-            const dy = e.touches[0].clientY - touchStartY;
-
-            if (scale > 1) {
-                // Mode pan
-                isPanning = true;
-                panX = panStartPanX + dx;
-                panY = panStartPanY + dy;
-                applyTransform();
-                if (e.cancelable) e.preventDefault();
+            if (node.tag === 'img') {
+                el = document.createElement('img'); el.src = node.src; el.id = `node-${i}`;
+                el.className = "w-full max-w-lg mx-auto rounded-2xl my-8 object-contain shadow-sm"; el.loading = "lazy";
             } else {
-                // Mode swipe ganti halaman
-                if (Math.abs(dx) > 8 && Math.abs(dx) > Math.abs(dy)) {
-                    isSwiping = true;
-                    if (e.cancelable) e.preventDefault();
-                }
+                el = document.createElement(node.tag); 
+                el.innerHTML = window.renderNodeText ? window.renderNodeText(node.text, annots) : node.text; 
+                el.id = `node-${i}`;
+                if (node.tag === 'h1' || node.tag === 'h2') {
+                    hCounter++; currentHeadingId = el.id; 
+                    el.className = node.tag === 'h1' ? "text-3xl font-bold tracking-tight mt-12 mb-6 text-m3-primary leading-snug break-words" : "text-xl font-bold mt-10 mb-4 text-m3-onSurfaceVariant border-b border-m3-surfaceVariant pb-2 break-words";
+                    const tocItem = document.createElement('button'); tocItem.id = `toc-btn-${el.id}`;
+                    tocItem.className = `text-left text-sm p-3 rounded-2xl hover:bg-m3-surface transition-all duration-300 ${node.tag==='h1'?'font-bold text-m3-primary':'ml-4 opacity-80'}`;
+                    tocItem.textContent = node.text;
+                    tocItem.onclick = () => { el.scrollIntoView({ behavior: 'smooth', block: 'start' }); history.back(); };
+                    DOM.tocList.appendChild(tocItem);
+                } else { el.className = "text-m3-onSurface opacity-90 mb-5 tracking-wide"; }
             }
-        }
-    }, { passive: false });
+            el.dataset.headingId = currentHeadingId; fragment.appendChild(el);
+        });
+        DOM.inner.appendChild(fragment);
+        
+        if(hCounter === 0) DOM.tocList.innerHTML = "<p class='text-sm opacity-50 block p-3'>No Table of Contents.</p>";
+        DOM.searchRes.classList.add('hidden'); DOM.searchInput.value = '';
 
-    containerEl.addEventListener('touchend', (e) => {
-        if (isPinching && e.touches.length < 2) { isPinching = false; return; }
-        if (isPanning) { isPanning = false; return; }
-        if (!isSwiping) {
-            // Tap — cek kiri atau kanan layar
-            const tapX = e.changedTouches[0].clientX;
-            const w = containerEl.offsetWidth;
-            if (tapX < w * 0.3) goTo(currentPage - 1);
-            else if (tapX > w * 0.7) goTo(currentPage + 1);
-            return;
-        }
-        isSwiping = false;
-        const dx = e.changedTouches[0].clientX - touchStartX;
-        const dt = Date.now() - touchStartTime;
-        const isFlick = dt < 300 && Math.abs(dx) > 40;
-        const isSlide = Math.abs(dx) > containerEl.offsetWidth * 0.25;
-        if (isFlick || isSlide) {
-            if (dx < 0) goTo(currentPage + 1);
-            else goTo(currentPage - 1);
-        }
-    }, { passive: true });
+        const header = document.getElementById('reader-floating-header');
+        header.classList.remove('-translate-y-[150%]', 'opacity-0');
+        header.classList.add('translate-y-0', 'opacity-100');
 
-    // Double tap reset zoom
-    let lastTap = 0;
-    containerEl.addEventListener('touchend', (e) => {
-        const now = Date.now();
-        if (now - lastTap < 300) { scale = 1; panX = 0; panY = 0; applyTransform(); }
-        lastTap = now;
-    }, { passive: true });
+        renderBookmarkPanel(); 
+
+        requestAnimationFrame(() => {
+            
+            if (book.lastReadId) { 
+                const target = document.getElementById(book.lastReadId); 
+                const container = DOM.readContent;
+                if (target && container) {
+                    const cRect = container.getBoundingClientRect();
+                    const tRect = target.getBoundingClientRect();
+                    const offset = tRect.top - cRect.top + container.scrollTop - (cRect.height / 2) + (tRect.height / 2);
+                    container.scrollTo({ top: offset, behavior: 'auto' });
+                } 
+            } else { 
+                DOM.readContent.scrollTo({ top: 0, behavior: 'auto' }); 
+            }
+            
+            setTimeout(() => {
+                loader.classList.add('opacity-0'); 
+                setTimeout(() => loader.classList.add('hidden'), 300);
+                window.setupIntersectionObserver(); 
+            }, 150);
+            
+        });
+
+    }, 600); 
 }
 
-// Toggle dark mode filter untuk PDF Canvas
-window.togglePdfOriginalDark = function(enable) {
-    const pages = document.querySelectorAll('.pdf-original-page');
-    pages.forEach(el => { el.style.filter = enable ? 'invert(1) hue-rotate(180deg)' : ''; });
-    localStorage.setItem('pdf_original_dark', enable ? '1' : '0');
+window._closeReaderAction = function(isFromHistory = false) {
+    if (!isFromHistory) { history.back(); return; }
+    DOM.readView.classList.add('translate-y-full'); DOM.libView.style.transform = 'scale(1)';
+    if(observer) observer.disconnect(); renderLibrary(DOM.globalSearch.value); activeBookId = null;
+    window.getSelection().removeAllRanges();
+    const menu = document.getElementById('selection-menu');
+    if(menu) { menu.classList.add('opacity-0', 'scale-75'); setTimeout(() => menu.classList.add('hidden'), 200); }
+
+    // Reset PDF original view container saat reader ditutup
+    const pdfOriginalContainer = document.getElementById('pdf-original-view-container');
+    if (pdfOriginalContainer) { pdfOriginalContainer.classList.add('hidden'); pdfOriginalContainer.innerHTML = ''; }
+    DOM.readContent.classList.remove('hidden');
+
+    updateBottomNavUI(null);
+}
+
+// Alert untuk fitur yang di-lock di PDF Gambar
+window.showLockedFeatureAlert = function() {
+    const d = typeof i18n !== 'undefined' ? (i18n[wikiLang] || i18n['id']) : {};
+    const msg = d.pdfImageLocked || (
+        wikiLang === 'es' ? 'Lo siento, tu PDF es solo una imagen. Esta función no está disponible.' :
+        wikiLang === 'en' ? 'Sorry, your PDF is image-only. This feature is not available.' :
+        'Maaf ya, PDF kamu cuma gambar. Fitur ini tidak tersedia.'
+    );
+    showDialog(
+        d.pdfImageLockedTitle || (wikiLang === 'es' ? 'PDF Solo Imagen' : wikiLang === 'en' ? 'Image-Only PDF' : 'PDF Hanya Gambar'),
+        msg,
+        'image',
+        [{ text: 'Oke', primary: true }]
+    );
 };
 
+// Toggle Canvas/Teks — hanya untuk PDF teks
+let _isOriginalViewActive = false;
+window.toggleOriginalView = function() {
+    const book = library.find(b => b.id === activeBookId);
+    if (!book || book.pdfType !== 'text') return;
 
+    const pdfOriginalContainer = document.getElementById('pdf-original-view-container');
+    if (!pdfOriginalContainer) return;
+
+    const d = typeof i18n !== 'undefined' ? (i18n[wikiLang] || i18n['id']) : {};
+    const btnLabel = document.getElementById('str-btn-original-view');
+    const btnWrapper = document.getElementById('btn-original-view');
+
+    // Kalau mau switch ke kanvas, cek dulu apakah ada cache atau pdfFileBase64
+    if (!_isOriginalViewActive) {
+        const hasCache = window._pdfDocCache && window._pdfDocCache.bookId === book.id;
+        const hasFile = !!book.pdfFileBase64;
+        if (!hasCache && !hasFile) {
+            // Buku lama — tidak ada sumber untuk render kanvas
+            const msg = wikiLang === 'es'
+                ? 'Para usar el modo canvas, elimina este libro e impórtalo de nuevo.'
+                : wikiLang === 'en'
+                ? 'To use canvas mode, delete this book and import it again.'
+                : 'Untuk mode kanvas, hapus buku ini lalu import ulang.';
+            showDialog(
+                wikiLang === 'es' ? 'Reimportar PDF' : wikiLang === 'en' ? 'Re-import PDF' : 'Import Ulang PDF',
+                msg, 'refresh-cw',
+                [{ text: 'Oke', primary: true }]
+            );
+            return;
+        }
+    }
+
+    _isOriginalViewActive = !_isOriginalViewActive;
+
+    if (_isOriginalViewActive) {
+        DOM.readContent.classList.add('hidden');
+        pdfOriginalContainer.classList.remove('hidden');
+        window.renderPdfOriginalView(book, pdfOriginalContainer);
+
+        if (btnLabel) btnLabel.textContent = d.pdfText || 'Mode Teks';
+        if (btnWrapper) {
+            const btn = btnWrapper.querySelector('button');
+            if (btn) { btn.style.background = 'var(--md-sys-color-primary)'; btn.style.color = 'var(--md-sys-color-on-primary)'; }
+        }
+    } else {
+        pdfOriginalContainer.classList.add('hidden');
+        pdfOriginalContainer.innerHTML = '';
+        DOM.readContent.classList.remove('hidden');
+
+        if (btnLabel) btnLabel.textContent = d.pdfOriginalView || 'Mode Kanvas';
+        if (btnWrapper) {
+            const btn = btnWrapper.querySelector('button');
+            if (btn) { btn.style.background = ''; btn.style.color = ''; }
+        }
+    }
+};
+
+if(document.getElementById('btn-back')) {
+    document.getElementById('btn-back').addEventListener('click', () => history.back());
+}
+
+window._closeSidePanelsAction = function(isFromHistory = false) { 
+    if (!isFromHistory) { history.back(); return; }
+    if(DOM.tocPanel) DOM.tocPanel.classList.add('translate-x-full', 'opacity-0'); 
+    if(DOM.setPanel) DOM.setPanel.classList.add('translate-x-full', 'opacity-0'); 
+    if(DOM.bookmarkPanel) DOM.bookmarkPanel.classList.add('translate-x-full', 'opacity-0');
+    const overlay = document.getElementById('side-panel-overlay'); if(overlay) overlay.classList.add('hidden');
+    activePanel = null;
+    updateBottomNavUI(null);
+}
+
+window.togglePanel = function(panelEl, name, btnId) { 
+    if(activePanel === name) { history.back(); return; } 
+    if(activePanel) { 
+        _closeSidePanelsAction(true); 
+        history.replaceState({ state: `panel-${name}` }, '', `#panel-${name}`); 
+    } else { 
+        pushAppHistory(`panel-${name}`); 
+    }
+    panelEl.classList.remove('translate-x-full', 'opacity-0'); 
+    const overlay = document.getElementById('side-panel-overlay'); if(overlay) overlay.classList.remove('hidden');
+    activePanel = name; 
+    updateBottomNavUI(btnId);
+
+    if (name === 'toc' && DOM.tocList) {
+        setTimeout(() => {
+            const activeTocItem = DOM.tocList.querySelector('.bg-m3-primaryContainer');
+            if (activeTocItem) {
+                const offset = activeTocItem.offsetTop - (DOM.tocList.clientHeight / 2) + (activeTocItem.clientHeight / 2);
+                DOM.tocList.scrollTo({ top: Math.max(0, offset), behavior: 'smooth' });
+            }
+        }, 250);
+    }
+}
+
+if(document.getElementById('btn-toc')) document.getElementById('btn-toc').onclick = () => togglePanel(DOM.tocPanel, 'toc', 'btn-toc'); 
+if(document.getElementById('btn-settings')) document.getElementById('btn-settings').onclick = () => togglePanel(DOM.setPanel, 'set', 'btn-settings');
+
+window.toggleFullscreenReading = function(isFromHistory = false) {
+    const bottomBar = document.getElementById('reader-bottom-bar');
+    const progContainer = document.getElementById('progress-container');
+    const floatHeader = document.getElementById('reader-floating-header');
+    
+    if (bottomBar.classList.contains('hidden')) {
+        if (!isFromHistory && window.location.hash === '#immersive') { history.back(); }
+        bottomBar.classList.remove('hidden'); 
+        progContainer.classList.remove('hidden');
+        floatHeader.classList.remove('-translate-y-[150%]', 'opacity-0');
+        floatHeader.classList.add('translate-y-0', 'opacity-100');
+    } else {
+        if (!isFromHistory) { pushAppHistory('immersive'); }
+        bottomBar.classList.add('hidden'); 
+        floatHeader.classList.add('-translate-y-[150%]', 'opacity-0');
+        floatHeader.classList.remove('translate-y-0', 'opacity-100');
+        progContainer.classList.add('hidden');
+        updateBottomNavUI(null);
+        if(activePanel) { _closeSidePanelsAction(); } 
+    }
+};
+
+window.setupIntersectionObserver = function() {
+    if (observer) observer.disconnect(); const totalNodes = DOM.inner.children.length;
+    observer = new IntersectionObserver((entries) => {
+        let visibleEntry = entries.find(e => e.isIntersecting);
+        if (visibleEntry) {
+            const el = visibleEntry.target; const id = el.id; const index = parseInt(id.split('-')[1]);
+            const pct = Math.round(((index + 1) / totalNodes) * 100);
+            DOM.progBar.style.width = `${pct}%`; DOM.progTxt.textContent = `${pct}%`;
+
+            const activeHeadingId = el.dataset.headingId;
+            Array.from(DOM.tocList.children).forEach(btn => { btn.classList.remove('bg-m3-primaryContainer', 'text-m3-onPrimaryContainer', 'font-bold', 'translate-x-2', '!opacity-100', '!text-m3-onPrimaryContainer'); });
+            if(activeHeadingId) { 
+                const tocActiveBtn = document.getElementById(`toc-btn-${activeHeadingId}`); 
+                if (tocActiveBtn) { tocActiveBtn.classList.add('bg-m3-primaryContainer', '!text-m3-onPrimaryContainer', 'font-bold', 'translate-x-2', '!opacity-100'); }
+            }
+            updateBookProgress(activeBookId, id, pct);
+        }
+    }, { root: DOM.readContent, rootMargin: '-45% 0px -45% 0px', threshold: 0 }); 
+    Array.from(DOM.inner.children).forEach(el => observer.observe(el));
+}
+
+let progressSaveTimeout = null;
+async function updateBookProgress(bookId, lastNodeId, pct) {
+    let bookIndex = library.findIndex(b => b.id === bookId);
+    if(bookIndex > -1) { 
+        library[bookIndex].lastReadId = lastNodeId; library[bookIndex].progressPct = pct; 
+        if (progressSaveTimeout) clearTimeout(progressSaveTimeout);
+        progressSaveTimeout = setTimeout(() => { localforage.setItem('pdf_epub_master', library); updateStatistics(); }, 1500);
+    }
+}
+
+// 11. ANNOTATIONS & IN-BOOK BOOKMARK LOGIC
+
+function getAbsoluteOffsets(element) {
+    const sel = window.getSelection();
+    if (sel.rangeCount === 0) return { start: 0, end: 0 };
+    const range = sel.getRangeAt(0);
+    
+    function getTextOffset(node, offset) {
+        let len = 0;
+        const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT, null, false);
+        let n;
+        while ((n = walker.nextNode())) {
+            if (n === node) { len += offset; break; }
+            len += n.nodeValue.length;
+        }
+        return len;
+    }
+
+    let start = getTextOffset(range.startContainer, range.startOffset);
+    let end = getTextOffset(range.endContainer, range.endOffset);
+    
+    if (start > end) { let t = start; start = end; end = t; }
+    return { start, end };
+}
+
+window.renderNodeText = function(text, annots) {
+    if (!text) return "";
+    let html = text;
+    
+    if (annots && annots.length > 0) {
+        let validAnnots = [...annots].filter(a => typeof a.startOff !== 'undefined').sort((a,b) => b.startOff - a.startOff);
+        
+        validAnnots.forEach(a => {
+            const s = Math.min(a.startOff, html.length);
+            const e = Math.min(a.endOff, html.length);
+            const before = html.substring(0, s);
+            const middle = html.substring(s, e);
+            const after = html.substring(e);
+            html = before + `|||ST_${a.id}|||` + middle + `|||EN_${a.id}|||` + after;
+        });
+
+        let legacyAnnots = [...annots].filter(a => typeof a.startOff === 'undefined').sort((a,b) => b.text.length - a.text.length);
+        legacyAnnots.forEach(a => {
+            const esc = a.text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            html = html.replace(new RegExp(esc, ''), `|||ST_${a.id}|||${a.text}|||EN_${a.id}|||`);
+        });
+    }
+
+    html = html.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    html = html.replace(/"([^"]+)"/g, '<i class="italic font-serif opacity-90">"$1"</i>');
+
+    if (annots && annots.length > 0) {
+        annots.forEach(a => {
+            let colorClass = "";
+            if(a.color === 'yellow') colorClass = "text-yellow-600 bg-yellow-400/20 dark:text-yellow-400 dark:bg-yellow-400/20";
+            else if(a.color === 'green') colorClass = "text-green-600 bg-green-500/20 dark:text-green-400 dark:bg-green-400/20";
+            else if(a.color === 'pink') colorClass = "text-pink-600 bg-pink-500/20 dark:text-pink-400 dark:bg-pink-400/20";
+            else colorClass = "text-m3-primary bg-m3-primary/10";
+
+            let markHtml = `<mark class="annot-hl ${colorClass} font-medium cursor-pointer transition-all hover:opacity-80 px-1 mx-0.5 rounded-md" data-id="${a.id}" onclick="window.showAnnotationDetails('${a.id}')">`;
+            html = html.replace(`|||ST_${a.id}|||`, markHtml).replace(`|||EN_${a.id}|||`, '</mark>');
+        });
+    }
+    return html;
+}
+
+let _selChangeDebounce = null;
+let _isTouchDragging = false;
+
+// Di HP: pakai touchstart/touchend buat deteksi kapan user lagi drag
+document.addEventListener('touchstart', () => { _isTouchDragging = true; }, { passive: true });
+document.addEventListener('touchend', () => {
+    _isTouchDragging = false;
+    // Waktu jari diangkat, baru tampilkan menu
+    if (activeBookId) {
+        clearTimeout(_selChangeDebounce);
+        _selChangeDebounce = setTimeout(_handleSelectionChange, 80);
+    }
+}, { passive: true });
+
+function _handleSelectionChange() {
+    if(!activeBookId) return;
+    const sel = window.getSelection(); const text = sel.toString().trim(); const menu = document.getElementById('selection-menu');
+
+    if (text.length > 0 && sel.rangeCount > 0 && DOM.inner) {
+        const range = sel.getRangeAt(0);
+        if (!DOM.inner.contains(range.commonAncestorContainer)) return;
+
+        let curr = range.commonAncestorContainer;
+        if (curr.nodeType === 3) curr = curr.parentNode;
+        const nodeEl = curr.closest('[id^="node-"]'); if (!nodeEl) return;
+
+        const nodeIdx = parseInt(nodeEl.id.split('-')[1]);
+        const offsets = getAbsoluteOffsets(nodeEl);
+        currentSelection = { text: text, nodeIdx: nodeIdx, startOff: offsets.start, endOff: offsets.end };
+
+        menu.classList.remove('hidden');
+        const rect = range.getBoundingClientRect(); const menuWidth = menu.offsetWidth || 220; const padding = 16;
+        let targetLeft = rect.left + (rect.width / 2) - (menuWidth / 2);
+        if (targetLeft < padding) targetLeft = padding;
+        if (targetLeft + menuWidth > window.innerWidth - padding) targetLeft = window.innerWidth - menuWidth - padding;
+        let targetTop = rect.top - 55;
+        if (targetTop < 80) targetTop = rect.bottom + 15;
+
+        menu.style.top = `${targetTop}px`; menu.style.left = `${targetLeft}px`;
+        requestAnimationFrame(() => { menu.classList.remove('opacity-0', 'scale-75'); });
+    } else {
+        if (!_isTouchDragging) window.hideSelectionMenu();
+    }
+}
+
+document.addEventListener('selectionchange', () => {
+    if(!activeBookId) return;
+    // Saat masih drag, debounce lebih lama supaya ga berat
+    clearTimeout(_selChangeDebounce);
+    _selChangeDebounce = setTimeout(_handleSelectionChange, _isTouchDragging ? 300 : 50);
+});
+
+if(document.getElementById('reader-content')) {
+    document.getElementById('reader-content').addEventListener('mousedown', (e) => { 
+        const menu = document.getElementById('selection-menu');
+        // Kalau klik di dalam menu, jangan lakukan apapun
+        if(menu && !menu.classList.contains('hidden') && menu.contains(e.target)) return;
+        // Clear menu hanya kalau memang tidak ada teks terseleksi
+        if(!window.getSelection().toString().trim()) { window.hideSelectionMenu(); } 
+    });
+}
+
+window.hideSelectionMenu = function() {
+    const menu = document.getElementById('selection-menu');
+    if (menu) { menu.classList.add('opacity-0', 'scale-75'); setTimeout(() => menu.classList.add('hidden'), 200); }
+}
+
+function showToast(msg) {
+    let t = document.getElementById('copy-toast');
+    if (!t) {
+        t = document.createElement('div');
+        t.id = 'copy-toast';
+        t.className = 'fixed bottom-28 left-1/2 -translate-x-1/2 z-[999] px-5 py-2.5 rounded-full bg-m3-onSurface text-m3-surface text-xs font-bold shadow-lg transition-all duration-300 opacity-0';
+        document.body.appendChild(t);
+    }
+    t.textContent = msg;
+    t.classList.remove('opacity-0');
+    clearTimeout(t._hide);
+    t._hide = setTimeout(() => t.classList.add('opacity-0'), 1500);
+}
+
+window.copySelection = function() {
+    const text = currentSelection.text;
+    if (!text) return;
+    window.hideSelectionMenu();
+    window.getSelection().removeAllRanges();
+    showToast(wikiLang === 'id' ? 'Tersalin!' : 'Copied!');
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).catch(() => {
+            const ta = document.createElement('textarea');
+            ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+            document.body.appendChild(ta); ta.select(); document.execCommand('copy');
+            document.body.removeChild(ta);
+        });
+    } else {
+        const ta = document.createElement('textarea');
+        ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+        document.body.appendChild(ta); ta.select(); document.execCommand('copy');
+        document.body.removeChild(ta);
+    }
+}
+
+async function registerAnnotation(annotObj) {
+    window.hideSelectionMenu(); const bookIndex = library.findIndex(b => b.id === activeBookId); if(bookIndex === -1) return;
+    const book = library[bookIndex]; if(!book.annotations) book.annotations = [];
+    book.annotations.push(annotObj); await localforage.setItem('pdf_epub_master', library);
+    
+    const nodeEl = document.getElementById(`node-${annotObj.nodeIdx}`);
+    if(nodeEl && book.nodes[annotObj.nodeIdx]) {
+        const currentAnnots = book.annotations.filter(a => a.nodeIdx === annotObj.nodeIdx);
+        nodeEl.innerHTML = window.renderNodeText(book.nodes[annotObj.nodeIdx].text, currentAnnots);
+    }
+    window.getSelection().removeAllRanges();
+    window.renderBookmarkPanel();
+    updateStatistics(); 
+}
+
+window.openBookmarkModal = function(color) {
+    if(currentSelection.nodeIdx === -1) return;
+    
+    activeNoteColor = color; 
+    editingAnnotId = null; 
+    
+    document.getElementById('bookmark-input-title').value = '';
+    document.getElementById('bookmark-input-text').value = '';
+    document.getElementById('btn-delete-bookmark').classList.add('hidden');
+    
+    openModal('bookmark-modal', 'bookmark-sheet', true);
+};
+
+window.saveBookmarkAnnotation = function() {
+    const titleVal = document.getElementById('bookmark-input-title').value.trim();
+    const noteVal = document.getElementById('bookmark-input-text').value.trim();
+    history.back(); 
+    
+    if(editingAnnotId) {
+        const bookIndex = library.findIndex(b => b.id === activeBookId);
+        if(bookIndex > -1) {
+            const annotIndex = library[bookIndex].annotations.findIndex(a => a.id === editingAnnotId);
+            if(annotIndex > -1) {
+                library[bookIndex].annotations[annotIndex].title = titleVal;
+                library[bookIndex].annotations[annotIndex].note = noteVal;
+                localforage.setItem('pdf_epub_master', library).then(() => {
+                    window.renderBookmarkPanel();
+                });
+            }
+        }
+    } else {
+        const book = library.find(b => b.id === activeBookId);
+        if (!book) return;
+
+        const totalNodes = book.nodes.length;
+        const pct = Math.round(((currentSelection.nodeIdx + 1) / totalNodes) * 100);
+
+        let closestChapterName = wikiLang === 'id' ? "Bagian Buku" : "Book Section";
+        for (let i = currentSelection.nodeIdx; i >= 0; i--) {
+            if (book.nodes[i].tag === 'h1' || book.nodes[i].tag === 'h2') {
+                closestChapterName = book.nodes[i].text;
+                break;
+            }
+        }
+        const chapterPreview = closestChapterName.length > 15 ? closestChapterName.substring(0, 15) + '...' : closestChapterName;
+
+        const newAnnot = { 
+            id: 'BM_' + Date.now().toString(), 
+            nodeIdx: currentSelection.nodeIdx, 
+            startOff: currentSelection.startOff, 
+            endOff: currentSelection.endOff,
+            text: currentSelection.text, 
+            color: activeNoteColor, 
+            title: titleVal || (wikiLang === 'id' ? "Bookmark Baru" : "New Bookmark"), 
+            note: noteVal,
+            meta: `${chapterPreview} — ${pct}%`
+        };
+        
+        setTimeout(() => { registerAnnotation(newAnnot); }, 300);
+    }
+};
+
+window.showAnnotationDetails = function(annotId) {
+    event.preventDefault(); event.stopPropagation();
+    const book = library.find(b => b.id === activeBookId); if(!book || !book.annotations) return;
+    const annot = book.annotations.find(a => a.id === annotId); if(!annot) return;
+    
+    editingAnnotId = annotId;
+    currentSelection = { nodeIdx: annot.nodeIdx, text: annot.text };
+    
+    document.getElementById('bookmark-input-title').value = annot.title || '';
+    document.getElementById('bookmark-input-text').value = annot.note || '';
+    document.getElementById('btn-delete-bookmark').classList.remove('hidden');
+    
+    openModal('bookmark-modal', 'bookmark-sheet', true);
+};
+
+window.deleteBookmarkInsideModal = function() {
+    const d = i18n[wikiLang] || i18n['id'];
+    showDialog("Hapus Bookmark", d.deleteNoteConfirm, "trash-2", [
+        { text: d.bookmarkCancel || "Batal", primary: false },
+        { text: d.delete || "Hapus", primary: true, action: () => {
+            window.closeDialog();
+            window.deleteAnnotationById(editingAnnotId);
+            history.back(); 
+        }}
+    ]);
+}
+
+window.deleteAnnotationById = async function(annotId) {
+    if(!annotId || !activeBookId) return; 
+    const bookIndex = library.findIndex(b => b.id === activeBookId); if(bookIndex === -1) return;
+    const book = library[bookIndex]; 
+    const annotIndex = book.annotations.findIndex(a => a.id === annotId); if(annotIndex === -1) return;
+    
+    const nodeIdx = book.annotations[annotIndex].nodeIdx; 
+    book.annotations.splice(annotIndex, 1);
+    await localforage.setItem('pdf_epub_master', library);
+    
+    const nodeEl = document.getElementById(`node-${nodeIdx}`);
+    if(nodeEl && book.nodes[nodeIdx]) {
+        const currentAnnots = book.annotations.filter(a => a.nodeIdx === nodeIdx);
+        nodeEl.innerHTML = window.renderNodeText(book.nodes[nodeIdx].text, currentAnnots);
+    }
+
+    window.renderBookmarkPanel();
+    updateStatistics(); 
+};
+
+window.renderBookmarkPanel = function() {
+    if(!DOM.bookmarkList || !DOM.bookmarkPanel || !activeBookId) return;
+    const book = library.find(b => b.id === activeBookId);
+    if (!book) return;
+
+    // Reset search input tiap kali panel di-render ulang
+    const searchInput = document.getElementById('bookmark-search-input');
+    if (searchInput) searchInput.value = '';
+
+    _renderBookmarkList(book.annotations || []);
+};
+
+// Fungsi internal render list, bisa dipanggil dengan filter
+function _renderBookmarkList(annotations) {
+    if(!DOM.bookmarkList) return;
+    DOM.bookmarkList.innerHTML = '';
+    const emptyState = document.getElementById('bookmark-empty');
+
+    const bookmarks = [...annotations].sort((a,b) => a.nodeIdx - b.nodeIdx);
+
+    if(bookmarks.length === 0) {
+        if(emptyState) emptyState.classList.remove('hidden');
+    } else {
+        if(emptyState) emptyState.classList.add('hidden');
+        
+        bookmarks.forEach(bm => {
+            const btn = document.createElement('div');
+            btn.className = "group relative flex flex-col p-4 mb-3 rounded-3xl bg-m3-surface shadow-sm overflow-hidden text-left transition-all hover:shadow-md cursor-pointer";
+            
+            btn.onclick = () => {
+                const markTarget = document.querySelector(`mark[data-id="${bm.id}"]`);
+                const paragraphTarget = document.getElementById(`node-${bm.nodeIdx}`);
+                const container = DOM.readContent;
+                
+                if (container) {
+                    let targetEl = markTarget || paragraphTarget;
+                    if (targetEl) {
+                        const cRect = container.getBoundingClientRect();
+                        const tRect = targetEl.getBoundingClientRect();
+                        const offset = tRect.top - cRect.top + container.scrollTop - (cRect.height / 2) + (tRect.height / 2);
+                        
+                        container.scrollTo({ top: offset, behavior: 'smooth' });
+                    }
+                }
+                history.back(); 
+            };
+            
+            let iconColorCls = "text-yellow-600 bg-yellow-500/20 dark:text-yellow-400 dark:bg-yellow-400/20";
+            let quoteBgCls = "bg-yellow-500/10 text-yellow-800 dark:bg-yellow-400/10 dark:text-yellow-100";
+            
+            if (bm.color === 'green') { 
+                iconColorCls = "text-green-600 bg-green-500/20 dark:text-green-400 dark:bg-green-400/20"; 
+                quoteBgCls = "bg-green-500/10 text-green-800 dark:bg-green-400/10 dark:text-green-100";
+            }
+            else if (bm.color === 'pink') { 
+                iconColorCls = "text-pink-600 bg-pink-500/20 dark:text-pink-400 dark:bg-pink-400/20"; 
+                quoteBgCls = "bg-pink-500/10 text-pink-800 dark:bg-pink-400/10 dark:text-pink-100";
+            }
+
+            let noteHtml = bm.note ? `
+                <div class="mt-3 p-3 rounded-2xl bg-m3-surfaceVariant text-m3-onSurfaceVariant font-bold text-xs leading-relaxed">
+                    ${bm.note}
+                </div>` : '';
+            
+            let quoteHtml = `
+                <div class="mt-2 p-3 rounded-2xl ${quoteBgCls}">
+                    <span class="text-[11px] font-medium opacity-90 italic line-clamp-2 leading-relaxed">"${bm.text}"</span>
+                </div>
+            `;
+            
+            let metaText = bm.meta || 'Chapter';
+            if (metaText.length > 15) metaText = metaText.substring(0, 15) + '...';
+
+            btn.innerHTML = `
+                <div class="flex items-start justify-between gap-2 mb-2 w-full">
+                    <span class="text-sm font-bold text-m3-onSurface leading-tight line-clamp-2 pr-6">${bm.title}</span>
+                </div>
+                
+                <div class="flex items-center gap-1.5 w-max px-2.5 py-1 rounded-lg ${iconColorCls}">
+                    <i data-lucide="bookmark" class="w-3 h-3 fill-current"></i>
+                    <span class="text-[9px] font-bold uppercase tracking-wider">${metaText}</span>
+                </div>
+                
+                ${noteHtml}
+                ${quoteHtml}
+            `;
+
+            const delBtn = document.createElement('button');
+            delBtn.className = "absolute top-4 right-4 w-7 h-7 rounded-full text-red-500/40 hover:text-red-500 hover:bg-red-500/10 transition-all flex items-center justify-center";
+            delBtn.innerHTML = `<i data-lucide="trash-2" class="w-4 h-4"></i>`;
+            delBtn.onclick = (e) => {
+                e.stopPropagation(); 
+                window.deleteAnnotationById(bm.id);
+            };
+
+            btn.appendChild(delBtn);
+            DOM.bookmarkList.appendChild(btn);
+        });
+        if(window.lucide) window.lucide.createIcons();
+    }
+}
+
+window.filterBookmarkPanel = function(query) {
+    const book = library.find(b => b.id === activeBookId);
+    if (!book) return;
+    const all = book.annotations || [];
+    const q = query.trim().toLowerCase();
+    const filtered = q ? all.filter(bm => (bm.title || '').toLowerCase().includes(q)) : all;
+    _renderBookmarkList(filtered);
+};
+
+// 12. SWIPE TO DISMISS LOGIC
+function setupSwipeToDismiss() {
+    const sheets = ['global-settings-sheet', 'b-opt-sheet', 'edit-sheet', 'bookmark-sheet', 'raw-backup-sheet', 'raw-restore-sheet', 'welcome-sheet'];
+    sheets.forEach(sheetId => {
+        const sheet = document.getElementById(sheetId);
+        if (!sheet) return;
+        let touchStartY = 0; let initialScrollTop = 0; let isPulling = false;
+        sheet.addEventListener('touchstart', (e) => {
+            touchStartY = e.touches[0].clientY; initialScrollTop = sheet.scrollTop; sheet.style.transition = 'none'; 
+        }, { passive: true });
+        sheet.addEventListener('touchmove', (e) => {
+            if (initialScrollTop <= 0) {
+                const deltaY = e.touches[0].clientY - touchStartY;
+                if (deltaY > 0) { 
+                    isPulling = true; if(e.cancelable) e.preventDefault(); 
+                    sheet.style.transform = `translateY(${deltaY * 0.5}px)`; 
+                }
+            }
+        }, { passive: false });
+        sheet.addEventListener('touchend', (e) => {
+            if (!isPulling) return; isPulling = false;
+            const deltaY = e.changedTouches[0].clientY - touchStartY;
+            sheet.style.transition = 'transform 0.3s cubic-bezier(0.2, 0, 0, 1)';
+            if (deltaY > 100) { 
+                sheet.style.transform = 'translateY(100%)'; 
+                setTimeout(() => { history.back(); setTimeout(() => { sheet.style.transform = ''; }, 100); }, 100);
+            } else { sheet.style.transform = ''; }
+        });
+    });
+
+    // ai-sheet: swipe dismiss HANYA dari drag handle / area header, bukan dari dalam konten scroll
+    const aiSheet = document.getElementById('ai-sheet');
+    if (aiSheet) {
+        // Drag handle = div abu-abu di atas (w-12 h-1.5), dan area header (flex items-center justify-between)
+        // Deteksi: touch mulai di 80px teratas sheet = area aman buat dismiss
+        let aiTouchStartY = 0; let aiIsPulling = false;
+        aiSheet.addEventListener('touchstart', (e) => {
+            aiTouchStartY = e.touches[0].clientY;
+            aiIsPulling = false;
+            aiSheet.style.transition = 'none';
+        }, { passive: true });
+        aiSheet.addEventListener('touchmove', (e) => {
+            // Cek apakah scroll internal (div.flex-1.overflow-y-auto) sudah scroll ke atas
+            const scrollableInner = aiSheet.querySelector('.overflow-y-auto');
+            const innerScrollTop = scrollableInner ? scrollableInner.scrollTop : 0;
+            const deltaY = e.touches[0].clientY - aiTouchStartY;
+            // Hanya aktifkan dismiss kalau: scroll inner udah di atas (0) DAN geser ke bawah
+            if (innerScrollTop <= 0 && deltaY > 0) {
+                aiIsPulling = true;
+                if(e.cancelable) e.preventDefault();
+                aiSheet.style.transform = `translateY(${deltaY * 0.5}px)`;
+            }
+        }, { passive: false });
+        aiSheet.addEventListener('touchend', (e) => {
+            if (!aiIsPulling) return; aiIsPulling = false;
+            const deltaY = e.changedTouches[0].clientY - aiTouchStartY;
+            aiSheet.style.transition = 'transform 0.3s cubic-bezier(0.2, 0, 0, 1)';
+            if (deltaY > 100) {
+                aiSheet.style.transform = 'translateY(100%)';
+                setTimeout(() => { history.back(); setTimeout(() => { aiSheet.style.transform = ''; }, 100); }, 100);
+            } else { aiSheet.style.transform = ''; }
+        });
+    }
+
+    const panels = ['toc-panel', 'settings-panel', 'bookmark-panel'];
+    panels.forEach(panelId => {
+        const panel = document.getElementById(panelId);
+        if(!panel) return;
+        let touchStartX = 0; let touchStartY = 0; let isSwipingPanel = false;
+        panel.addEventListener('touchstart', (e) => {
+            touchStartX = e.touches[0].clientX; touchStartY = e.touches[0].clientY; panel.style.transition = 'none';
+        }, { passive: true });
+        panel.addEventListener('touchmove', (e) => {
+            const deltaX = e.touches[0].clientX - touchStartX;
+            const deltaY = Math.abs(e.touches[0].clientY - touchStartY);
+            if (deltaX > 0 && deltaX > deltaY) { 
+                isSwipingPanel = true;
+                if(e.cancelable) e.preventDefault();
+                panel.style.transform = `translateX(${deltaX}px)`;
+            }
+        }, { passive: false }); 
+        panel.addEventListener('touchend', (e) => {
+            if (!isSwipingPanel) return; isSwipingPanel = false;
+            const deltaX = e.changedTouches[0].clientX - touchStartX;
+            panel.style.transition = 'transform 0.3s cubic-bezier(0.2, 0, 0, 1), opacity 0.3s ease';
+            if (deltaX > 80) { 
+                panel.style.transform = 'translateX(100%)';
+                setTimeout(() => { history.back(); setTimeout(() => { panel.style.transform = ''; }, 100); }, 100);
+            } else { 
+                panel.style.transform = 'translateX(0)';
+            }
+        });
+    });
+}
+
+// 13. PWA & CAPACITOR SETUP
+if ('serviceWorker' in navigator) {
+    const swCode = `
+    const CACHE_NAME = 'baca-pwa-v5';
+    self.addEventListener('install', (e) => {
+        self.skipWaiting();
+        e.waitUntil(caches.open(CACHE_NAME).then(c => c.addAll([
+            '/', 'libs/tailwindcss.js', 'libs/pdf.min.js', 'libs/pdf.worker.min.js', 'libs/localforage.min.js', 'libs/jszip.min.js', 'libs/lucide.js',
+            'css/style.css', 'js/config.js', 'js/reader.js', 'js/app.js'
+       ])));
+    });
+    self.addEventListener('fetch', (e) => { e.respondWith(caches.match(e.request).then(r => r || fetch(e.request))); });
+    `;
+    const blob = new Blob([swCode], {type: 'application/javascript'});
+    navigator.serviceWorker.register(URL.createObjectURL(blob)).catch(err => console.log("SW Error:", err));
+}
+
+document.addEventListener("DOMContentLoaded", () => {
+    setTimeout(() => {
+        if (window.Capacitor && window.Capacitor.Plugins) {
+            const capApp = window.Capacitor.Plugins.App;
+            const capStatusBar = window.Capacitor.Plugins.StatusBar;
+            
+            if (capApp) capApp.addListener('backButton', () => { window.history.back(); });
+            if (capStatusBar) capStatusBar.hide().catch(()=>{});
+        }
+    }, 500);
+});
 
 
