@@ -1166,9 +1166,18 @@ window.openBook = function(book) {
 
     // Sembunyikan/tampilkan tombol Original View di settings berdasarkan pdfType
     const btnOriginalView = document.getElementById('btn-original-view');
+    const btnOriginalViewLabel = document.getElementById('str-btn-original-view');
+    const d0 = typeof i18n !== 'undefined' ? (i18n[wikiLang] || i18n['id']) : {};
     if (btnOriginalView) {
-        if (book.pdfType === 'text') { btnOriginalView.classList.remove('hidden'); }
-        else { btnOriginalView.classList.add('hidden'); }
+        if (book.pdfType === 'text') {
+            btnOriginalView.classList.remove('hidden');
+            // Reset label & style ke state default (mode teks aktif)
+            if (btnOriginalViewLabel) btnOriginalViewLabel.textContent = d0.pdfOriginalView || 'Mode Kanvas';
+            const btn = btnOriginalView.querySelector('button');
+            if (btn) { btn.style.background = ''; btn.style.color = ''; }
+        } else {
+            btnOriginalView.classList.add('hidden');
+        }
     }
 
     // PDF GAMBAR: langsung ke original view, lock fitur teks
@@ -1297,7 +1306,7 @@ window.showLockedFeatureAlert = function() {
     );
 };
 
-// Toggle Original View (Tampilan Asli) — hanya untuk PDF teks
+// Toggle Canvas/Teks — hanya untuk PDF teks
 let _isOriginalViewActive = false;
 window.toggleOriginalView = function() {
     const book = library.find(b => b.id === activeBookId);
@@ -1308,21 +1317,35 @@ window.toggleOriginalView = function() {
 
     const d = typeof i18n !== 'undefined' ? (i18n[wikiLang] || i18n['id']) : {};
     const btnLabel = document.getElementById('str-btn-original-view');
+    const btnWrapper = document.getElementById('btn-original-view');
 
     _isOriginalViewActive = !_isOriginalViewActive;
 
     if (_isOriginalViewActive) {
+        // Switch ke mode canvas
         DOM.readContent.classList.add('hidden');
         pdfOriginalContainer.classList.remove('hidden');
-        pdfOriginalContainer.style.height = '100%';
         window.renderPdfOriginalView(book, pdfOriginalContainer);
         if (isDark) window.togglePdfOriginalDark(true);
+
+        // Update label & style tombol jadi "aktif"
         if (btnLabel) btnLabel.textContent = d.pdfText || 'Tampilan Teks';
+        if (btnWrapper) {
+            const btn = btnWrapper.querySelector('button');
+            if (btn) { btn.style.background = 'var(--md-sys-color-primary)'; btn.style.color = 'var(--md-sys-color-on-primary)'; }
+        }
     } else {
+        // Switch balik ke mode teks
         pdfOriginalContainer.classList.add('hidden');
         pdfOriginalContainer.innerHTML = '';
         DOM.readContent.classList.remove('hidden');
-        if (btnLabel) btnLabel.textContent = d.pdfOriginalView || 'Tampilan Asli';
+
+        // Update label & style tombol jadi "non-aktif"
+        if (btnLabel) btnLabel.textContent = d.pdfOriginalView || 'Mode Kanvas';
+        if (btnWrapper) {
+            const btn = btnWrapper.querySelector('button');
+            if (btn) { btn.style.background = ''; btn.style.color = ''; }
+        }
     }
 };
 
