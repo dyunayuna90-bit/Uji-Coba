@@ -1,4 +1,3 @@
-```javascript
 // --- APP LOGIC ---
 // Mengurus interaksi UI, Tema, Render Library, & Fitur In-Book Bookmark Berwarna
 
@@ -1410,4 +1409,3 @@ document.addEventListener("DOMContentLoaded", () => {
         }
     }, 1000);
 });
-
