@@ -1,4 +1,3 @@
-```css
 * {
     outline: none !important;
     /* BLOKIR SELEKSI TEKS GLOBAL & POPUP NATIVE */
@@ -138,5 +137,3 @@ html.dark .pdf-canvas, html.amoled .pdf-canvas {
 html.dark .pdf-page-wrapper img, html.amoled .pdf-page-wrapper img {
     filter: invert(1) hue-rotate(180deg);
 }
-
-```
