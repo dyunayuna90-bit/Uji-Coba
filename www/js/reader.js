@@ -831,29 +831,39 @@ async function handleEpub(file, bookTitle) {
     let parsedNodes = []; 
     let coverBase64 = null;
 
+    // Helper untuk mendeteksi elemen secara universal tanpa peduli namespace (opf:item, dc:title, dll)
+    const getEls = (doc, localName) => Array.from(doc.getElementsByTagName("*")).filter(el => el.localName === localName);
+
     const containerXml = await zip.file("META-INF/container.xml").async("text");
-    const opfPath = (new DOMParser()).parseFromString(containerXml, "text/xml").getElementsByTagName("rootfile")[0].getAttribute("full-path");
+    const containerDoc = (new DOMParser()).parseFromString(containerXml, "text/xml");
+    
+    const rootfileEls = getEls(containerDoc, "rootfile");
+    if (rootfileEls.length === 0) throw new Error("File container.xml tidak memiliki rootfile.");
+    const opfPath = rootfileEls[0].getAttribute("full-path");
+    
     const opfDir = opfPath.includes('/') ? opfPath.substring(0, opfPath.lastIndexOf('/') + 1) : "";
     const opfXml = await zip.file(opfPath).async("text");
     const opfDoc = (new DOMParser()).parseFromString(opfXml, "text/xml");
 
-    const titleEl = opfDoc.getElementsByTagName("dc:title")[0]; 
+    const titleEl = getEls(opfDoc, "title")[0]; 
     if (titleEl && titleEl.textContent) bookTitle = titleEl.textContent;
 
     const manifest = {};
-    Array.from(opfDoc.getElementsByTagName("item")).forEach(item => { 
+    getEls(opfDoc, "item").forEach(item => { 
         manifest[item.getAttribute("id")] = { href: item.getAttribute("href"), mediaType: item.getAttribute("media-type") }; 
     });
 
-    const metaCover = opfDoc.querySelector("meta[name='cover']");
+    const metaCover = getEls(opfDoc, "meta").find(m => m.getAttribute("name") === "cover");
     if (metaCover) {
         const coverId = metaCover.getAttribute("content");
-        if (manifest[coverId]) {
+        if (coverId && manifest[coverId]) {
             let coverPath = opfDir + manifest[coverId].href;
             const coverFile = zip.file(coverPath);
             if (coverFile) {
-                const b64 = await coverFile.async("base64");
-                coverBase64 = "data:" + manifest[coverId].mediaType + ";base64," + b64;
+                try {
+                    const b64 = await coverFile.async("base64");
+                    coverBase64 = "data:" + manifest[coverId].mediaType + ";base64," + b64;
+                } catch(e) { console.warn("Gagal ekstrak cover dari meta:", e); }
             }
         }
     }
@@ -864,13 +874,15 @@ async function handleEpub(file, bookTitle) {
             let coverPath = opfDir + potentialCover.href;
             const coverFile = zip.file(coverPath);
             if (coverFile) {
-                const b64 = await coverFile.async("base64");
-                coverBase64 = "data:" + potentialCover.mediaType + ";base64," + b64;
+                try {
+                    const b64 = await coverFile.async("base64");
+                    coverBase64 = "data:" + potentialCover.mediaType + ";base64," + b64;
+                } catch(e) { console.warn("Gagal ekstrak fallback cover:", e); }
             }
         }
     }
 
-    const spine = Array.from(opfDoc.getElementsByTagName("itemref")).map(item => item.getAttribute("idref"));
+    const spine = getEls(opfDoc, "itemref").map(item => item.getAttribute("idref"));
     let order = 0;
     
     const validBlockTags = ['p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'li', 'blockquote', 'div', 'section', 'article', 'header'];
@@ -894,102 +906,109 @@ async function handleEpub(file, bookTitle) {
         try { doc = (new DOMParser()).parseFromString(htmlStr, "text/html"); } catch(e) { continue; }
         if (!doc || !doc.body) continue;
 
-        doc.querySelectorAll('script, style, nav, footer, iframe, svg, button').forEach(el => el.remove());
+        try {
+            doc.querySelectorAll('script, style, nav, footer, iframe, svg, button').forEach(el => el.remove());
 
-        const allElements = doc.body.querySelectorAll('*');
+            const allElements = doc.body.querySelectorAll('*');
 
-        for (let el of allElements) {
-            let tag = el.tagName.toLowerCase();
-            
-            if (tag === 'img' || tag === 'image') {
-                let src = el.getAttribute('src') || el.getAttribute('href');
-                if (src && !src.startsWith('http') && !src.startsWith('data:')) {
-                    let absPath = resolveRelativePath(htmlPath, src); 
-                    const imgFile = zip.file(absPath);
-                    if (imgFile) { 
-                        const b64 = await imgFile.async("base64"); 
-                        let mime = "image/jpeg";
-                        if(absPath.toLowerCase().endsWith('.png')) mime = "image/png";
-                        else if(absPath.toLowerCase().endsWith('.gif')) mime = "image/gif";
-                        parsedNodes.push({ tag: 'img', src: `data:${mime};base64,${b64}` }); 
-                    }
-                } else if (src && src.startsWith('data:')) {
-                    parsedNodes.push({ tag: 'img', src: src });
-                }
-                continue;
-            }
-
-            if (validBlockTags.includes(tag)) {
-                let hasBlockChild = false;
-                const descendants = el.querySelectorAll('*');
-                for (let i = 0; i < descendants.length; i++) {
-                    if (validBlockTags.includes(descendants[i].tagName.toLowerCase())) {
-                        hasBlockChild = true;
-                        break;
-                    }
-                }
+            for (let el of allElements) {
+                let tag = el.tagName.toLowerCase();
                 
-                if (hasBlockChild) continue; 
-                
-                let text = el.textContent.trim().replace(/\s+/g, ' ');
-                if (text.length === 0) continue;
+                if (tag === 'img' || tag === 'image') {
+                    try {
+                        let src = el.getAttribute('src') || el.getAttribute('href');
+                        if (src && !src.startsWith('http') && !src.startsWith('data:')) {
+                            let absPath = resolveRelativePath(htmlPath, src); 
+                            const imgFile = zip.file(absPath);
+                            if (imgFile) { 
+                                const b64 = await imgFile.async("base64"); 
+                                let mime = "image/jpeg";
+                                if(absPath.toLowerCase().endsWith('.png')) mime = "image/png";
+                                else if(absPath.toLowerCase().endsWith('.gif')) mime = "image/gif";
+                                parsedNodes.push({ tag: 'img', src: `data:${mime};base64,${b64}` }); 
+                            }
+                        } else if (src && src.startsWith('data:')) {
+                            parsedNodes.push({ tag: 'img', src: src });
+                        }
+                    } catch (imgErr) { console.warn("Gagal ekstrak gambar epub:", imgErr); }
+                    continue;
+                }
 
-                // Normalisasi: spasi antar huruf scatter (e.g. "B A B" → "BAB")
-                // Pakai pendekatan aman tanpa lookbehind (kompatibel semua WebView)
-                text = text.replace(/([A-Z]) (?=[A-Z])/g, '$1');
-                text = text.replace(/B\s*A\s*B/gi, 'BAB');
-
-                // Buang teks yang tidak mengandung karakter konten sama sekali
-                if (text.length < 2) continue;
-                if (!/\w/.test(text) && !/[\u00C0-\u024F\u0600-\u06FF\u4E00-\u9FFF]/.test(text)) continue;
-
-                let finalTag = 'p';
-
-                if (['h1', 'h2', 'h3', 'h4', 'h5', 'h6'].includes(tag)) {
-                    // Heading semantik dari HTML EPUB: percaya sepenuhnya, tapi validasi
-                    // h1/h2/h3 → h1 (bab), h4/h5/h6 → h2 (sub-bab)
-                    const level = parseInt(tag[1]);
-
-                    // Heading yang terlalu panjang kemungkinan salah tag oleh penerbit → turunkan ke p
-                    if (text.length > 200) {
-                        finalTag = 'p';
-                    } else if (level <= 3) {
-                        finalTag = 'h1';
-                    } else {
-                        finalTag = 'h2';
+                if (validBlockTags.includes(tag)) {
+                    let hasBlockChild = false;
+                    const descendants = el.querySelectorAll('*');
+                    for (let i = 0; i < descendants.length; i++) {
+                        if (validBlockTags.includes(descendants[i].tagName.toLowerCase())) {
+                            hasBlockChild = true;
+                            break;
+                        }
                     }
+                    
+                    if (hasBlockChild) continue; 
+                    
+                    let text = el.textContent.trim().replace(/\s+/g, ' ');
+                    if (text.length === 0) continue;
 
-                    // Deduplication: heading persis sama yang sudah muncul → ubah ke p
-                    if (finalTag !== 'p') {
-                        const textKey = text.toLowerCase().trim();
-                        if (seenEpubHeadings.has(textKey)) {
+                    // Normalisasi: spasi antar huruf scatter (e.g. "B A B" → "BAB")
+                    // Pakai pendekatan aman tanpa lookbehind (kompatibel semua WebView)
+                    text = text.replace(/([A-Z]) (?=[A-Z])/g, '$1');
+                    text = text.replace(/B\s*A\s*B/gi, 'BAB');
+
+                    // Buang teks yang tidak mengandung karakter konten sama sekali
+                    if (text.length < 2) continue;
+                    if (!/\w/.test(text) && !/[\u00C0-\u024F\u0600-\u06FF\u4E00-\u9FFF]/.test(text)) continue;
+
+                    let finalTag = 'p';
+
+                    if (['h1', 'h2', 'h3', 'h4', 'h5', 'h6'].includes(tag)) {
+                        // Heading semantik dari HTML EPUB: percaya sepenuhnya, tapi validasi
+                        // h1/h2/h3 → h1 (bab), h4/h5/h6 → h2 (sub-bab)
+                        const level = parseInt(tag[1]);
+
+                        // Heading yang terlalu panjang kemungkinan salah tag oleh penerbit → turunkan ke p
+                        if (text.length > 200) {
                             finalTag = 'p';
+                        } else if (level <= 3) {
+                            finalTag = 'h1';
                         } else {
-                            seenEpubHeadings.add(textKey);
+                            finalTag = 'h2';
+                        }
+
+                        // Deduplication: heading persis sama yang sudah muncul → ubah ke p
+                        if (finalTag !== 'p') {
+                            const textKey = text.toLowerCase().trim();
+                            if (seenEpubHeadings.has(textKey)) {
+                                finalTag = 'p';
+                            } else {
+                                seenEpubHeadings.add(textKey);
+                            }
+                        }
+                    } else {
+                        // Bukan tag heading → p, tapi cek apakah konten class-nya adalah heading
+                        // Beberapa EPUB pake <p class="chapter-title"> dll
+                        const cls = (el.getAttribute('class') || '').toLowerCase();
+                        const isHeadingClass = /\b(chapter|heading|title|bab|judul|h[1-6]|header)\b/.test(cls);
+
+                        if (isHeadingClass && text.length < 120) {
+                            // Cek lebih lanjut: harus punya "nilai heading"
+                            const hasChapterKeyword = /^(bab|chapter|bagian|part|section|pendahuluan|penutup|kesimpulan|kata\s+pengantar|prakata|prolog|epilog)\b/i.test(text);
+                            finalTag = hasChapterKeyword ? 'h1' : 'h2';
+
+                            const textKey = text.toLowerCase().trim();
+                            if (seenEpubHeadings.has(textKey)) {
+                                finalTag = 'p';
+                            } else if (finalTag !== 'p') {
+                                seenEpubHeadings.add(textKey);
+                            }
                         }
                     }
-                } else {
-                    // Bukan tag heading → p, tapi cek apakah konten class-nya adalah heading
-                    // Beberapa EPUB pake <p class="chapter-title"> dll
-                    const cls = (el.getAttribute('class') || '').toLowerCase();
-                    const isHeadingClass = /\b(chapter|heading|title|bab|judul|h[1-6]|header)\b/.test(cls);
 
-                    if (isHeadingClass && text.length < 120) {
-                        // Cek lebih lanjut: harus punya "nilai heading"
-                        const hasChapterKeyword = /^(bab|chapter|bagian|part|section|pendahuluan|penutup|kesimpulan|kata\s+pengantar|prakata|prolog|epilog)\b/i.test(text);
-                        finalTag = hasChapterKeyword ? 'h1' : 'h2';
-
-                        const textKey = text.toLowerCase().trim();
-                        if (seenEpubHeadings.has(textKey)) {
-                            finalTag = 'p';
-                        } else if (finalTag !== 'p') {
-                            seenEpubHeadings.add(textKey);
-                        }
-                    }
+                    parsedNodes.push({ tag: finalTag, text: text });
                 }
-
-                parsedNodes.push({ tag: finalTag, text: text });
             }
+        } catch (chapterErr) {
+            // Pelindung agar jika 1 halaman/bab HTML EPUB nya korup, dia akan melewatinya dan lanjut ke bab selanjutnya
+            console.warn(`Melewati chapter ${idref} karena error parsial:`, chapterErr);
         }
     }
     
@@ -1145,5 +1164,3 @@ window.closeAiModal = function(isFromHistory = false) {
     m.classList.add('opacity-0');
     setTimeout(() => m.classList.add('hidden'), 300);
 }
-
-
