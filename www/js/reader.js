@@ -8,31 +8,31 @@ if (typeof pdfjsLib !== 'undefined') {
 // 1. EVENT LISTENER UNTUK UPLOAD BUKU & PENCARIAN
 let inbookSearchTimeout;
 document.addEventListener("DOMContentLoaded", () => {
-    // Listener Upload File (PDF/EPUB)
+    // Listener Upload File (PDF/EPUB/TXT) — support multi-file
     const fileInput = document.getElementById('doc-upload');
     if (fileInput) {
         fileInput.addEventListener('change', async (e) => {
-            const file = e.target.files[0]; if (!file) return;
-            const originalFilename = file.name; 
-            const ext = originalFilename.split('.').pop().toLowerCase(); 
-            const bookTitle = originalFilename.replace(/\.[^/.]+$/, "");
-            
-            DOM.load.classList.remove('hidden'); 
-            DOM.loadBar.style.width = '0%'; 
-            DOM.loadPct.textContent = '0%';
+            const files = Array.from(e.target.files);
+            if (!files.length) return;
+            await processMultipleFiles(files);
+            e.target.value = '';
+        });
+    }
 
-            try {
-                if (ext === 'pdf') await handlePdf(file, bookTitle);
-                else if (ext === 'epub') await handleEpub(file, bookTitle);
-                else throw new Error("Hanya PDF/EPUB.");
-            } catch (err) { 
-                showDialog("Gagal Buka Buku", err.message, "alert-triangle", [{text: "Tutup", primary: true}]);
-                console.error(err); 
-            } 
-            finally { 
-                setTimeout(() => { DOM.load.classList.add('hidden'); }, 1000); 
-                e.target.value = ''; 
+    // Listener Scan Folder (input folder picker)
+    const folderInput = document.getElementById('folder-scan-upload');
+    if (folderInput) {
+        folderInput.addEventListener('change', async (e) => {
+            const files = Array.from(e.target.files).filter(f => {
+                const ext = f.name.split('.').pop().toLowerCase();
+                return ['pdf', 'epub', 'txt'].includes(ext);
+            });
+            if (!files.length) {
+                showDialog("Info", "Tidak ada file PDF, EPUB, atau TXT di folder ini.", "info", [{text: "Oke", primary: true}]);
+                return;
             }
+            await processMultipleFiles(files);
+            e.target.value = '';
         });
     }
 
@@ -89,6 +89,209 @@ document.addEventListener("DOMContentLoaded", () => {
         });
     }
 });
+
+// 1b. PROSES BANYAK FILE SEKALIGUS (multi-select atau folder scan)
+async function processMultipleFiles(files) {
+    const skipped = [];
+    const failed = [];
+    let imported = 0;
+
+    for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        const originalFilename = file.name;
+        const ext = originalFilename.split('.').pop().toLowerCase();
+        const bookTitle = originalFilename.replace(/\.[^/.]+$/, "");
+
+        // Cek duplikat by judul
+        if (library.some(b => b.title.toLowerCase() === bookTitle.toLowerCase())) {
+            skipped.push(bookTitle);
+            continue;
+        }
+
+        // Update loading UI — tampilkan nama file + progress index
+        DOM.load.classList.remove('hidden');
+        DOM.loadBar.style.width = '0%';
+        DOM.loadPct.textContent = '0%';
+        if (DOM.loadTxt) DOM.loadTxt.textContent = `(${i + 1}/${files.length}) ${bookTitle}`;
+
+        try {
+            if (ext === 'pdf') await handlePdf(file, bookTitle);
+            else if (ext === 'epub') await handleEpub(file, bookTitle);
+            else if (ext === 'txt') await handleTxt(file, bookTitle);
+            else { skipped.push(bookTitle); continue; }
+            imported++;
+        } catch (err) {
+            console.error(`Gagal import: ${bookTitle}`, err);
+            failed.push(bookTitle);
+        }
+    }
+
+    setTimeout(() => { DOM.load.classList.add('hidden'); }, 800);
+    if (DOM.loadTxt) DOM.loadTxt.textContent = 'Reading Document...';
+
+    // Ringkasan hasil
+    let summary = `${imported} buku berhasil diimpor.`;
+    if (skipped.length > 0) summary += `\n${skipped.length} dilewati (sudah ada).`;
+    if (failed.length > 0) summary += `\n${failed.length} gagal.`;
+
+    if (files.length > 1) {
+        showDialog("Selesai Import", summary, "check-circle", [{ text: "Oke", primary: true }]);
+    }
+}
+
+// 1c. HANDLER TXT
+async function handleTxt(file, bookTitle) {
+    const text = await file.text();
+    const parsedNodes = [];
+
+    // Coba split by baris kosong dulu (paragraf standar)
+    let paragraphs = text.split(/\n\s*\n/).map(p => p.trim().replace(/\s+/g, ' ')).filter(p => p.length > 0);
+
+    // Kalau hasilnya cuma 1 blok (tidak ada baris kosong), fallback ke split per baris
+    if (paragraphs.length <= 1) {
+        paragraphs = text.split('\n').map(p => p.trim()).filter(p => p.length > 0);
+    }
+
+    paragraphs.forEach(para => {
+        // Deteksi heading sederhana: pendek, huruf kapital, atau diawali angka bab
+        const isHeading = para.length < 80 && (
+            /^(bab|chapter|bagian|part|section)\s/i.test(para) ||
+            /^[IVX]+\./i.test(para) ||
+            /^\d+[\.\)]\s/.test(para) ||
+            para === para.toUpperCase()
+        );
+        parsedNodes.push({ tag: isHeading ? 'h2' : 'p', text: para });
+    });
+
+    if (parsedNodes.length === 0) throw new Error("File TXT kosong atau tidak bisa dibaca.");
+
+    // Cover placeholder untuk TXT (tidak ada gambar)
+    const coverBase64 = null;
+
+    library.push({
+        id: Date.now().toString(),
+        type: 'txt',
+        title: bookTitle,
+        nodes: parsedNodes,
+        pages: Math.ceil(parsedNodes.length / 10),
+        progressPct: 0,
+        lastReadId: null,
+        coverBase64: coverBase64,
+        shape: 'square'
+    });
+
+    await localforage.setItem('pdf_epub_master', library);
+    renderLibrary();
+}
+
+// 1d. SCAN FOLDER VIA CAPACITOR FILESYSTEM
+window.scanFolderAndImport = async function() {
+    // Cek apakah Capacitor Filesystem tersedia
+    if (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.Filesystem) {
+        const { Filesystem } = window.Capacitor.Plugins;
+        try {
+            // Minta user pilih direktori — pakai readdir dari Documents dulu
+            // Capacitor tidak punya folder picker native, jadi kita baca dari direktori umum
+            const dirs = ['Documents', 'Downloads', 'DCIM'];
+            let allFiles = [];
+
+            for (const dir of dirs) {
+                try {
+                    const result = await Filesystem.readdir({ path: '', directory: dir });
+                    const bookFiles = result.files.filter(f => {
+                        const name = (f.name || f).toLowerCase();
+                        return name.endsWith('.pdf') || name.endsWith('.epub') || name.endsWith('.txt');
+                    });
+                    bookFiles.forEach(f => {
+                        allFiles.push({ name: f.name || f, directory: dir });
+                    });
+                } catch (e) { /* folder tidak accessible, skip */ }
+            }
+
+            if (allFiles.length === 0) {
+                showDialog("Tidak Ada Buku", "Tidak ditemukan file PDF, EPUB, atau TXT di folder Documents/Downloads.", "folder-open", [{ text: "Oke", primary: true }]);
+                return;
+            }
+
+            showDialog(
+                "Scan Folder",
+                `Ditemukan ${allFiles.length} file buku di storage. Import semua sekarang?`,
+                "folder-open",
+                [
+                    { text: "Batal", primary: false },
+                    { text: `Import ${allFiles.length} Buku`, primary: true, action: async () => {
+                        window.closeDialog();
+                        await _importCapacitorFiles(allFiles, Filesystem);
+                    }}
+                ]
+            );
+        } catch (err) {
+            console.error("Scan folder gagal:", err);
+            // Fallback ke folder picker HTML biasa
+            document.getElementById('folder-scan-upload').click();
+        }
+    } else {
+        // Fallback: pakai webkitdirectory HTML input
+        document.getElementById('folder-scan-upload').click();
+    }
+};
+
+async function _importCapacitorFiles(fileList, Filesystem) {
+    const skipped = [];
+    const failed = [];
+    let imported = 0;
+
+    for (let i = 0; i < fileList.length; i++) {
+        const fileInfo = fileList[i];
+        const name = fileInfo.name;
+        const ext = name.split('.').pop().toLowerCase();
+        const bookTitle = name.replace(/\.[^/.]+$/, "");
+
+        if (library.some(b => b.title.toLowerCase() === bookTitle.toLowerCase())) {
+            skipped.push(bookTitle);
+            continue;
+        }
+
+        DOM.load.classList.remove('hidden');
+        DOM.loadBar.style.width = '0%';
+        DOM.loadPct.textContent = '0%';
+        if (DOM.loadTxt) DOM.loadTxt.textContent = `(${i + 1}/${fileList.length}) ${bookTitle}`;
+
+        try {
+            const result = await Filesystem.readFile({ path: name, directory: fileInfo.directory });
+            // Convert base64 ke Blob/File
+            const byteString = atob(result.data);
+            const ab = new ArrayBuffer(byteString.length);
+            const ia = new Uint8Array(ab);
+            for (let j = 0; j < byteString.length; j++) ia[j] = byteString.charCodeAt(j);
+
+            let mimeType = 'application/octet-stream';
+            if (ext === 'pdf') mimeType = 'application/pdf';
+            else if (ext === 'epub') mimeType = 'application/epub+zip';
+            else if (ext === 'txt') mimeType = 'text/plain';
+
+            const blob = new Blob([ab], { type: mimeType });
+            const file = new File([blob], name, { type: mimeType });
+
+            if (ext === 'pdf') await handlePdf(file, bookTitle);
+            else if (ext === 'epub') await handleEpub(file, bookTitle);
+            else if (ext === 'txt') await handleTxt(file, bookTitle);
+
+            imported++;
+        } catch (err) {
+            console.error(`Gagal import: ${bookTitle}`, err);
+            failed.push(bookTitle);
+        }
+    }
+
+    setTimeout(() => { DOM.load.classList.add('hidden'); }, 800);
+    if (DOM.loadTxt) DOM.loadTxt.textContent = 'Reading Document...';
+
+    let summary = `${imported} buku berhasil diimpor.`;
+    if (skipped.length > 0) summary += `\n${skipped.length} dilewati (sudah ada).`;
+    if (failed.length > 0) summary += `\n${failed.length} gagal.`;
+    showDialog("Selesai Import", summary, "check-circle", [{ text: "Mantap!", primary: true }]);
+}
 
 function clearSearchHighlights() {
     if(!DOM.inner) return;
