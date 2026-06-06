@@ -1,6 +1,6 @@
 window.APP_VERSION = "2.0.5";
-window.UPDATE_URL = "https://raw.githubusercontent.com/dyunayuna90-bit/Uji-Coba/main/package.json";
-window.RELEASES_URL = "https://github.com/dyunayuna90-bit/Uji-Coba/releases/latest";
+window.UPDATE_URL = "https://raw.githubusercontent.com/dyunayuna90-bit/baca./main/package.json";
+window.RELEASES_URL = "https://github.com/dyunayuna90-bit/baca./releases/latest";
 
 // Konfigurasi Tailwind CSS untuk kustomisasi warna dan font
 window.tailwind = window.tailwind || {};
