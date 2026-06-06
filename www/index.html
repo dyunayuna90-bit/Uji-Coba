@@ -16,6 +16,7 @@
     <script src="libs/localforage.min.js"></script>
     <script src="libs/jszip.min.js"></script>
     <script src="libs/lucide.js"></script>
+    <script src="libs/marked.min.js"></script>
 
     <!-- Konfigurasi Statis (Tailwind, Palet, i18n) -->
     <script src="js/config.js"></script>
@@ -164,9 +165,6 @@
                 <div id="reader-inner" class="max-w-4xl mx-auto reader-text-container space-y-5"></div>
             </div>
 
-            <!-- PDF Original View Container (horizontal scroll, hanya muncul untuk PDF) -->
-            <div id="pdf-original-view-container" class="hidden absolute inset-0 pt-16 pb-20 w-full bg-m3-bg"></div>
-
             <div id="side-panel-overlay" class="hidden absolute inset-0 bg-black/20 z-30 transition-opacity" onclick="history.back()"></div>
 
             <!-- Panel Daftar Isi -->
@@ -191,14 +189,6 @@
                 <h3 id="str-set-title" class="text-lg font-bold mb-6 text-m3-onSurfaceVariant flex items-center gap-2"><i data-lucide="sliders-horizontal"></i> Tampilan</h3>
                 
                 <div class="space-y-6 pb-20">
-                    <!-- Tombol Tampilan Asli — hanya muncul untuk PDF teks, dikontrol dari app.js -->
-                    <div id="btn-original-view" class="hidden">
-                        <button onclick="toggleOriginalView()" class="btn-morph w-full py-3 px-4 bg-m3-primaryContainer text-m3-onPrimaryContainer rounded-2xl font-bold text-sm flex items-center justify-center gap-2">
-                            <i data-lucide="layout-template" class="w-4 h-4"></i>
-                            <span id="str-btn-original-view">Tampilan Asli</span>
-                        </button>
-                    </div>
-
                     <div>
                         <label id="str-set-search" class="text-xs font-bold opacity-70 block mb-3 uppercase tracking-wider">Pencarian</label>
                         <div class="search-capsule bg-m3-surface p-1 rounded-full relative flex items-center h-14 border-none transition-all duration-300">
@@ -593,3 +583,4 @@
 
 </body>
 </html>
+
