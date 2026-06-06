@@ -334,57 +334,120 @@ function renderSearchResults(results, keyword) {
     searchResEl.classList.remove('hidden');
 }
 
-// 2. FUNGSI EKSTRAK PDF (REVISI ALGORITMA: ANTI-SAMPAH TOC)
+// 2. FUNGSI EKSTRAK PDF (ALGORITMA CERDAS: STATISTIK FONT + SEMANTIK)
 async function handlePdf(file, bookTitle) {
     const arrayBuffer = await file.arrayBuffer(); 
     const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
     let parsedNodes = []; 
     const total = pdf.numPages;
 
+    // --- EKSTRAK COVER ---
     const coverCanvas = document.createElement('canvas'); const coverCtx = coverCanvas.getContext('2d');
     const firstPage = await pdf.getPage(1); const viewport = firstPage.getViewport({ scale: 0.5 });
     coverCanvas.width = viewport.width; coverCanvas.height = viewport.height;
     await firstPage.render({ canvasContext: coverCtx, viewport: viewport }).promise;
     const coverBase64 = coverCanvas.toDataURL('image/jpeg', 0.8);
 
+    // --- PHASE 1: STATISTICAL FONT PROFILING (Mencari Ukuran Paragraf Utama) ---
+    // Scan up to 10 halaman awal buat nyari ukuran font yang paling sering dipakai (Teks Paragraf)
+    let fontSizes = {};
+    const samplePages = Math.min(total, 10);
+    for (let i = 1; i <= samplePages; i++) {
+        const page = await pdf.getPage(i);
+        const textContent = await page.getTextContent();
+        textContent.items.forEach(item => {
+            const h = Math.round(item.height);
+            if (h > 0 && item.str.trim().length > 0) {
+                // Bobot didasarkan pada panjang teks (paragraf punya teks terpanjang)
+                fontSizes[h] = (fontSizes[h] || 0) + item.str.length;
+            }
+        });
+    }
+
+    // Cari modus (ukuran font dengan bobot karakter terbanyak)
+    let baseFontSize = 12; // Fallback
+    let maxWeight = 0;
+    for (const [size, weight] of Object.entries(fontSizes)) {
+        if (weight > maxWeight) {
+            maxWeight = weight;
+            baseFontSize = parseInt(size);
+        }
+    }
+
+    // --- PHASE 2: EKSTRAKSI & PENENTUAN TAG (H1/H2/P) ---
     for (let i = 1; i <= total; i++) {
         DOM.loadBar.style.width = `${Math.round((i / total) * 100)}%`; 
         DOM.loadPct.textContent = `${Math.round((i / total) * 100)}%`;
 
         const page = await pdf.getPage(i); 
         const textContent = await page.getTextContent();
+        
         let currentBlock = ""; 
         let lastY = -1; 
-        let isTitle = false;
+        let blockMaxHeight = 0;
+
+        // Fungsi internal untuk memproses satu blok teks
+        const processBlock = (text, maxHeight) => {
+            let cleanText = text.trim().replace(/\s+/g, ' ');
+            
+            // Bersihin spasi alay, misal: "B A B 1" -> "BAB 1"
+            cleanText = cleanText.replace(/B\s*A\s*B/gi, 'BAB');
+
+            // Skip sampah (kurang dari 2 huruf dan bukan angka murni)
+            if (cleanText.length < 2 && !/^\d+$/.test(cleanText)) return;
+
+            let tag = 'p';
+            
+            // 1. Deteksi Semantik Ekstrim (Regex)
+            // Memaksa H1 jika teks mengandung unsur Bab, Chapter, atau Bagian.
+            const isChapter = /^(bab|chapter|bagian)\s*([IVXLCDM\d]+|[a-zA-Z]+)/i.test(cleanText);
+            
+            // 2. Deteksi Statistik Ukuran Font
+            // H1 = minimal 1.4x lebih besar dari teks paragraf
+            // H2 = minimal 1.15x lebih besar dari teks paragraf
+            const isSignificantlyLarger = maxHeight >= (baseFontSize * 1.4);
+            const isSlightlyLarger = maxHeight >= (baseFontSize * 1.15);
+            
+            // 3. Deteksi ALL CAPS (Biasa dipake buat sub-bab di PDF lama)
+            const isAllCaps = cleanText === cleanText.toUpperCase() && cleanText.length > 5 && /[A-Z]/.test(cleanText);
+
+            if (isChapter) {
+                tag = 'h1';
+            } else if (isSignificantlyLarger && cleanText.length < 120 && /[a-zA-Z]/.test(cleanText)) {
+                tag = 'h1';
+            } else if ((isSlightlyLarger || isAllCaps) && cleanText.length < 150 && /[a-zA-Z]/.test(cleanText)) {
+                tag = 'h2';
+            }
+
+            // Keamanan: Kalau teksnya super panjang (> 200 karakter), itu pasti paragraf, se-gede apapun fontnya.
+            if (tag !== 'p' && cleanText.length > 200) {
+                tag = 'p';
+            }
+
+            parsedNodes.push({ tag: tag, text: cleanText });
+        };
 
         textContent.items.forEach(item => {
             const y = Math.round(item.transform[5]); 
             const height = item.height;
-            if (lastY !== -1 && Math.abs(y - lastY) > height * 1.5) {
+            
+            // Jarak threshold vertikal. Kalau turun drastis (beda Y gede), berarti paragraf baru.
+            if (lastY !== -1 && Math.abs(y - lastY) > (baseFontSize * 1.2)) {
                 if (currentBlock.trim().length > 0) { 
-                    let cleanText = currentBlock.trim().replace(/\s+/g, ' ');
-                    
-                    // Filter pintar untuk judul/daftar isi:
-                    // 1. Tinggi font memadai (isTitle)
-                    // 2. Bukan cuma 1-2 huruf "E", "W", "1" (length > 2)
-                    // 3. Mengandung setidaknya 1 huruf alphabet (menghindari angka doang)
-                    // 4. Ga kepanjangan (menghindari paragraf besar)
-                    let isRealTitle = isTitle && cleanText.length > 2 && /[a-zA-Z]/.test(cleanText) && cleanText.length < 150;
-                    
-                    parsedNodes.push({ tag: isRealTitle ? 'h2' : 'p', text: cleanText });
+                    processBlock(currentBlock, blockMaxHeight);
                 }
                 currentBlock = ""; 
-                isTitle = false;
+                blockMaxHeight = 0;
             }
-            if (height > 18) isTitle = true;
+            
+            if (height > blockMaxHeight) blockMaxHeight = height;
             currentBlock += item.str + " "; 
             lastY = y;
         });
 
+        // Proses sisa blok terakhir di halaman itu
         if (currentBlock.trim().length > 0) { 
-            let cleanText = currentBlock.trim().replace(/\s+/g, ' ');
-            let isRealTitle = isTitle && cleanText.length > 2 && /[a-zA-Z]/.test(cleanText) && cleanText.length < 150;
-            parsedNodes.push({ tag: isRealTitle ? 'h2' : 'p', text: cleanText }); 
+            processBlock(currentBlock, blockMaxHeight);
         }
     }
     
@@ -658,3 +721,4 @@ window.closeAiModal = function(isFromHistory = false) {
     m.classList.add('opacity-0');
     setTimeout(() => m.classList.add('hidden'), 300);
 }
+
