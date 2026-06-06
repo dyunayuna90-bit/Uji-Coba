@@ -388,21 +388,34 @@ async function handlePdf(file, bookTitle) {
     let pdfPages = null; // array base64 per halaman (hanya untuk PDF image & original view)
 
     if (pdfType === 'image') {
-        // Render semua halaman sebagai gambar
-        pdfPages = [];
-        for (let i = 1; i <= total; i++) {
-            DOM.loadBar.style.width = `${Math.round((i / total) * 100)}%`;
-            DOM.loadPct.textContent = `${Math.round((i / total) * 100)}%`;
+        // PDF gambar: TIDAK di-scan saat import
+        // Simpan file sebagai base64 string, render halaman saat dibuka (lazy)
+        DOM.loadBar.style.width = '100%';
+        DOM.loadPct.textContent = '100%';
+        const uint8 = new Uint8Array(arrayBuffer);
+        let binary = '';
+        for (let i = 0; i < uint8.length; i++) binary += String.fromCharCode(uint8[i]);
+        const pdfFileBase64 = 'data:application/pdf;base64,' + btoa(binary);
+        parsedNodes.push({ tag: 'p', text: '[PDF Gambar]' });
 
-            const page = await pdf.getPage(i);
-            const vp = page.getViewport({ scale: 1.5 });
-            const canvas = document.createElement('canvas');
-            canvas.width = vp.width; canvas.height = vp.height;
-            await page.render({ canvasContext: canvas.getContext('2d'), viewport: vp }).promise;
-            pdfPages.push(canvas.toDataURL('image/jpeg', 0.85));
-        }
-        // Buat 1 node placeholder agar struktur library tidak kosong
-        parsedNodes.push({ tag: 'p', text: '[PDF Gambar — gunakan Tampilan Asli]' });
+        library.push({
+            id: Date.now().toString(),
+            type: 'pdf',
+            pdfType: 'image',
+            pdfFileBase64: pdfFileBase64,
+            pdfTotalPages: total,
+            title: bookTitle,
+            nodes: parsedNodes,
+            pages: total,
+            progressPct: 0,
+            lastReadId: null,
+            pdfOriginalPage: 0,
+            coverBase64: coverBase64,
+            shape: 'square'
+        });
+        await localforage.setItem('pdf_epub_master', library);
+        renderLibrary();
+        return;
     } else {
         // Ekstrak teks
         for (let i = 1; i <= total; i++) {
@@ -433,19 +446,25 @@ async function handlePdf(file, bookTitle) {
         }
     }
 
+    const newBookId = Date.now().toString();
     library.push({
-        id: Date.now().toString(),
+        id: newBookId,
         type: 'pdf',
-        pdfType: pdfType,           // 'text' | 'image'
-        pdfPages: pdfPages,         // array base64 halaman (null untuk pdf teks)
+        pdfType: pdfType,
+        pdfTotalPages: total,
         title: bookTitle,
         nodes: parsedNodes,
         pages: total,
         progressPct: 0,
         lastReadId: null,
+        pdfOriginalPage: 0,
         coverBase64: coverBase64,
         shape: 'square'
     });
+
+    // Cache pdfjsLib doc untuk mode kanvas (sesi ini saja, hilang saat app restart)
+    window._pdfDocCache = { bookId: newBookId, doc: pdf };
+
     await localforage.setItem('pdf_epub_master', library);
     renderLibrary();
 }
@@ -712,275 +731,202 @@ window.closeAiModal = function(isFromHistory = false) {
     setTimeout(() => m.classList.add('hidden'), 300);
 }
 
-// 5. PDF ORIGINAL VIEW RENDERER
-// Render semua halaman PDF sebagai canvas horizontal scroll
-// Dipanggil dari app.js saat openBook (pdf image) atau user klik "Tampilan Asli" (pdf teks)
+// 5. PDF CANVAS RENDERER
+// Render PDF halaman per halaman, horizontal swipe/tap, pinch+pan zoom
+// Dipanggil dari app.js: PDF image saat openBook, PDF teks saat toggle kanvas
 
 window.renderPdfOriginalView = async function(book, containerEl) {
     if (!containerEl) return;
     containerEl.innerHTML = '';
-    containerEl.classList.remove('hidden');
 
     const lang = typeof wikiLang !== 'undefined' ? wikiLang : 'id';
-    const d = typeof i18n !== 'undefined' ? (i18n[lang] || i18n['id']) : {};
 
-    // Jika halaman sudah tersimpan sebagai base64 (PDF gambar saat import)
-    if (book.pdfPages && book.pdfPages.length > 0) {
-        _renderPdfPagesFromBase64(book.pdfPages, containerEl, book);
+    // Tentukan sumber PDF
+    let pdfDoc = null;
+    try {
+        if (book.pdfFileBase64) {
+            // PDF image: load dari base64 yang disimpan saat import
+            pdfDoc = await pdfjsLib.getDocument({ url: book.pdfFileBase64 }).promise;
+        } else if (window._pdfDocCache && window._pdfDocCache.bookId === book.id) {
+            // PDF teks: pakai cache pdfjsLib doc yang disimpan saat import
+            pdfDoc = window._pdfDocCache.doc;
+        } else {
+            // Tidak ada sumber — minta import ulang
+            containerEl.innerHTML = `<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;gap:12px;padding:24px;text-align:center;color:var(--md-sys-color-on-surface);">
+                <svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                <p style="font-weight:700;font-size:13px;">${lang === 'id' ? 'Import ulang PDF untuk mode kanvas.' : lang === 'es' ? 'Reimporta el PDF para el modo canvas.' : 'Re-import PDF to use canvas mode.'}</p>
+            </div>`;
+            return;
+        }
+    } catch(e) {
+        console.error('PDF load error', e);
         return;
     }
 
-    // Fallback: render ulang dari ArrayBuffer (PDF teks yang switch ke Original View)
-    // Data PDF asli tidak disimpan di library, jadi minta user buka ulang
-    // Gunakan pdfPagesCache jika ada
-    if (window._pdfPageCache && window._pdfPageCache.bookId === book.id) {
-        _renderPdfPagesFromBase64(window._pdfPageCache.pages, containerEl, book);
-        return;
-    }
-
-    // Tampilkan pesan minta render ulang
-    containerEl.innerHTML = `
-        <div class="flex flex-col items-center justify-center h-full gap-4 px-8 text-center">
-            <div class="w-16 h-16 rounded-full bg-m3-primaryContainer flex items-center justify-center">
-                <svg xmlns="http://www.w3.org/2000/svg" class="w-8 h-8 text-m3-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/></svg>
-            </div>
-            <p class="text-sm font-bold text-m3-onSurface">${d.pdfOriginalView || 'Tampilan Asli'}</p>
-            <p class="text-xs text-m3-onSurfaceVariant opacity-70">${lang === 'id' ? 'Buka ulang file PDF untuk mode ini.' : lang === 'es' ? 'Vuelve a abrir el archivo PDF para este modo.' : 'Reopen the PDF file to use this mode.'}</p>
-        </div>
-    `;
+    _renderPdfCanvas(pdfDoc, containerEl, book);
 };
 
-function _renderPdfPagesFromBase64(pages, containerEl, book) {
-    const totalPages = pages.length;
-    let currentPage = book.pdfOriginalPage || 0;
+async function _renderPdfCanvas(pdfDoc, containerEl, book) {
+    const totalPages = pdfDoc.numPages;
+    let currentPage = (book.pdfOriginalPage || 0);
+    if (currentPage >= totalPages) currentPage = 0;
+
+    // State zoom & pan
     let scale = 1;
-    let isPinching = false;
-    let pinchStartDist = 0;
-    let pinchStartScale = 1;
-    let translateX = 0;
-    let translateY = 0;
-    let panStartX = 0;
-    let panStartY = 0;
-    let isPanning = false;
+    let panX = 0;
+    let panY = 0;
 
-    // Outer wrapper: full size, no overflow, posisi relatif untuk overlay tombol
-    containerEl.style.cssText = 'position:relative; width:100%; height:100%; overflow:hidden; background:transparent; display:flex; flex-direction:column;';
+    // Layout: container full, satu canvas ditampilkan
+    containerEl.style.cssText = 'position:relative;width:100%;height:100%;overflow:hidden;background:#1a1a1a;display:flex;align-items:center;justify-content:center;';
 
-    // Strip scroll horizontal — 1 halaman per view, snap per halaman
-    const strip = document.createElement('div');
-    strip.style.cssText = `
-        display: flex;
-        flex-direction: row;
-        width: ${totalPages * 100}%;
-        height: 100%;
-        transition: transform 0.35s cubic-bezier(0.25, 0.46, 0.45, 0.94);
-        will-change: transform;
-        touch-action: none;
-    `;
+    const canvas = document.createElement('canvas');
+    canvas.style.cssText = 'display:block;max-width:100%;max-height:100%;object-fit:contain;touch-action:none;';
+    canvas.classList.add('pdf-original-page');
+    containerEl.appendChild(canvas);
 
-    // Render semua halaman
-    pages.forEach((base64, idx) => {
-        const pageSlot = document.createElement('div');
-        pageSlot.style.cssText = `
-            width: ${100 / totalPages}%;
-            height: 100%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            flex-shrink: 0;
-            padding: 8px;
-            box-sizing: border-box;
-        `;
+    // Counter halaman
+    const counter = document.createElement('div');
+    counter.style.cssText = 'position:absolute;bottom:10px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,0.5);color:#fff;font-size:11px;font-weight:700;padding:3px 12px;border-radius:99px;pointer-events:none;z-index:5;';
+    containerEl.appendChild(counter);
 
-        const img = document.createElement('img');
-        img.src = base64;
-        img.alt = `Halaman ${idx + 1}`;
-        img.id = `pdf-page-${idx}`;
-        img.loading = idx === 0 ? 'eager' : 'lazy';
-        img.draggable = false;
-        img.classList.add('pdf-original-page');
-        img.style.cssText = `
-            max-width: 100%;
-            max-height: 100%;
-            width: auto;
-            height: auto;
-            object-fit: contain;
-            border-radius: 8px;
-            box-shadow: 0 4px 24px rgba(0,0,0,0.18);
-            display: block;
-            user-select: none;
-            -webkit-user-select: none;
-        `;
+    // Render halaman ke canvas
+    async function renderPage(idx) {
+        scale = 1; panX = 0; panY = 0;
+        applyTransform();
+        const page = await pdfDoc.getPage(idx + 1);
+        const vp = page.getViewport({ scale: 1.5 });
+        canvas.width = vp.width;
+        canvas.height = vp.height;
+        await page.render({ canvasContext: canvas.getContext('2d'), viewport: vp }).promise;
+        counter.textContent = `${idx + 1} / ${totalPages}`;
 
-        pageSlot.appendChild(img);
-        strip.appendChild(pageSlot);
-    });
-
-    containerEl.appendChild(strip);
-
-    // Fungsi pindah ke halaman tertentu
-    function goToPage(idx) {
-        if (idx < 0) idx = 0;
-        if (idx >= totalPages) idx = totalPages - 1;
-        currentPage = idx;
-        // Reset zoom saat pindah halaman
-        scale = 1; translateX = 0; translateY = 0;
-        strip.style.transform = `translateX(-${(currentPage / totalPages) * 100}%)`;
-        updatePageCounter();
-        updateNavButtons();
         // Simpan progress
         if (typeof library !== 'undefined' && typeof activeBookId !== 'undefined') {
             const bIdx = library.findIndex(b => b.id === activeBookId);
-            if (bIdx > -1) { library[bIdx].pdfOriginalPage = currentPage; localforage.setItem('pdf_epub_master', library); }
+            if (bIdx > -1) { library[bIdx].pdfOriginalPage = idx; localforage.setItem('pdf_epub_master', library); }
+        }
+
+        // Dark mode
+        if (typeof isDark !== 'undefined' && isDark) {
+            canvas.style.filter = 'invert(1) hue-rotate(180deg)';
+        } else {
+            canvas.style.filter = '';
         }
     }
 
-    // Terapkan posisi awal
-    strip.style.transition = 'none';
-    strip.style.transform = `translateX(-${(currentPage / totalPages) * 100}%)`;
-    setTimeout(() => { strip.style.transition = 'transform 0.35s cubic-bezier(0.25, 0.46, 0.45, 0.94)'; }, 50);
-
-    // --- TOMBOL NAVIGASI KIRI / KANAN ---
-    const btnPrev = document.createElement('button');
-    btnPrev.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>`;
-    btnPrev.style.cssText = `
-        position:absolute; left:8px; top:50%; transform:translateY(-50%);
-        z-index:10; width:36px; height:36px; border-radius:50%;
-        background:rgba(0,0,0,0.35); color:#fff; border:none;
-        display:flex; align-items:center; justify-content:center;
-        cursor:pointer; transition:opacity 0.2s, background 0.2s;
-        -webkit-tap-highlight-color:transparent;
-    `;
-
-    const btnNext = document.createElement('button');
-    btnNext.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>`;
-    btnNext.style.cssText = `
-        position:absolute; right:8px; top:50%; transform:translateY(-50%);
-        z-index:10; width:36px; height:36px; border-radius:50%;
-        background:rgba(0,0,0,0.35); color:#fff; border:none;
-        display:flex; align-items:center; justify-content:center;
-        cursor:pointer; transition:opacity 0.2s, background 0.2s;
-        -webkit-tap-highlight-color:transparent;
-    `;
-
-    // --- PAGE COUNTER ---
-    const pageCounter = document.createElement('div');
-    pageCounter.style.cssText = `
-        position:absolute; bottom:12px; left:50%; transform:translateX(-50%);
-        z-index:10; background:rgba(0,0,0,0.4); color:#fff;
-        font-size:11px; font-weight:700; padding:4px 12px;
-        border-radius:99px; pointer-events:none; letter-spacing:0.05em;
-    `;
-
-    function updatePageCounter() {
-        pageCounter.textContent = `${currentPage + 1} / ${totalPages}`;
-    }
-    function updateNavButtons() {
-        btnPrev.style.opacity = currentPage === 0 ? '0.25' : '0.8';
-        btnNext.style.opacity = currentPage === totalPages - 1 ? '0.25' : '0.8';
+    function applyTransform() {
+        canvas.style.transform = `translate(${panX}px, ${panY}px) scale(${scale})`;
+        canvas.style.transformOrigin = 'center center';
     }
 
-    btnPrev.addEventListener('click', () => goToPage(currentPage - 1));
-    btnNext.addEventListener('click', () => goToPage(currentPage + 1));
+    function goTo(idx) {
+        if (idx < 0 || idx >= totalPages) return;
+        currentPage = idx;
+        renderPage(currentPage);
+    }
 
-    containerEl.appendChild(btnPrev);
-    containerEl.appendChild(btnNext);
-    containerEl.appendChild(pageCounter);
-    updatePageCounter();
-    updateNavButtons();
+    await renderPage(currentPage);
 
-    // --- SWIPE GESTURE (horizontal, dengan threshold) ---
-    let touchStartX = 0;
-    let touchStartY = 0;
-    let touchStartTime = 0;
-    let isSwiping = false;
+    // --- GESTURE ---
+    let touchStartX = 0, touchStartY = 0, touchStartTime = 0;
+    let pinchStartDist = 0, pinchStartScale = 1;
+    let panStartX = 0, panStartY = 0, panStartPanX = 0, panStartPanY = 0;
+    let isPinching = false, isSwiping = false, isPanning = false;
 
     containerEl.addEventListener('touchstart', (e) => {
         if (e.touches.length === 2) {
-            // Pinch start
-            isPinching = true;
-            isSwiping = false;
+            isPinching = true; isSwiping = false; isPanning = false;
             pinchStartDist = Math.hypot(
                 e.touches[1].clientX - e.touches[0].clientX,
                 e.touches[1].clientY - e.touches[0].clientY
             );
             pinchStartScale = scale;
-            return;
-        }
-        if (e.touches.length === 1) {
+            panStartX = (e.touches[0].clientX + e.touches[1].clientX) / 2;
+            panStartY = (e.touches[0].clientY + e.touches[1].clientY) / 2;
+            panStartPanX = panX; panStartPanY = panY;
+        } else if (e.touches.length === 1) {
             touchStartX = e.touches[0].clientX;
             touchStartY = e.touches[0].clientY;
             touchStartTime = Date.now();
-            isSwiping = false;
+            panStartPanX = panX; panStartPanY = panY;
+            isSwiping = false; isPanning = false;
         }
     }, { passive: true });
 
     containerEl.addEventListener('touchmove', (e) => {
         if (e.touches.length === 2 && isPinching) {
-            // Pinch zoom
             const dist = Math.hypot(
                 e.touches[1].clientX - e.touches[0].clientX,
                 e.touches[1].clientY - e.touches[0].clientY
             );
-            scale = Math.min(4, Math.max(1, pinchStartScale * (dist / pinchStartDist)));
-            _applyZoom();
+            scale = Math.min(5, Math.max(1, pinchStartScale * (dist / pinchStartDist)));
+            // Pan saat pinch
+            const mx = (e.touches[0].clientX + e.touches[1].clientX) / 2;
+            const my = (e.touches[0].clientY + e.touches[1].clientY) / 2;
+            panX = panStartPanX + (mx - panStartX);
+            panY = panStartPanY + (my - panStartY);
+            if (scale <= 1) { panX = 0; panY = 0; }
+            applyTransform();
             if (e.cancelable) e.preventDefault();
             return;
         }
+
         if (e.touches.length === 1 && !isPinching) {
             const dx = e.touches[0].clientX - touchStartX;
-            const dy = Math.abs(e.touches[0].clientY - touchStartY);
-            if (Math.abs(dx) > 8 && Math.abs(dx) > dy) {
-                isSwiping = true;
+            const dy = e.touches[0].clientY - touchStartY;
+
+            if (scale > 1) {
+                // Mode pan
+                isPanning = true;
+                panX = panStartPanX + dx;
+                panY = panStartPanY + dy;
+                applyTransform();
                 if (e.cancelable) e.preventDefault();
+            } else {
+                // Mode swipe ganti halaman
+                if (Math.abs(dx) > 8 && Math.abs(dx) > Math.abs(dy)) {
+                    isSwiping = true;
+                    if (e.cancelable) e.preventDefault();
+                }
             }
         }
     }, { passive: false });
 
     containerEl.addEventListener('touchend', (e) => {
-        if (isPinching) {
-            isPinching = false;
+        if (isPinching && e.touches.length < 2) { isPinching = false; return; }
+        if (isPanning) { isPanning = false; return; }
+        if (!isSwiping) {
+            // Tap — cek kiri atau kanan layar
+            const tapX = e.changedTouches[0].clientX;
+            const w = containerEl.offsetWidth;
+            if (tapX < w * 0.3) goTo(currentPage - 1);
+            else if (tapX > w * 0.7) goTo(currentPage + 1);
             return;
         }
-        if (!isSwiping) return;
         isSwiping = false;
-
         const dx = e.changedTouches[0].clientX - touchStartX;
         const dt = Date.now() - touchStartTime;
         const isFlick = dt < 300 && Math.abs(dx) > 40;
-        const isSlide = Math.abs(dx) > containerEl.offsetWidth * 0.3;
-
-        if ((isFlick || isSlide) && dx < 0) goToPage(currentPage + 1);
-        else if ((isFlick || isSlide) && dx > 0) goToPage(currentPage - 1);
+        const isSlide = Math.abs(dx) > containerEl.offsetWidth * 0.25;
+        if (isFlick || isSlide) {
+            if (dx < 0) goTo(currentPage + 1);
+            else goTo(currentPage - 1);
+        }
     }, { passive: true });
 
-    // --- PINCH ZOOM helper ---
-    function _applyZoom() {
-        const currentImg = containerEl.querySelector(`#pdf-page-${currentPage}`);
-        if (!currentImg) return;
-        if (scale <= 1) { scale = 1; translateX = 0; translateY = 0; }
-        currentImg.style.transform = `scale(${scale}) translate(${translateX}px, ${translateY}px)`;
-        currentImg.style.transformOrigin = 'center center';
-    }
-
-    // Reset zoom saat double tap
-    containerEl.addEventListener('dblclick', () => {
-        scale = 1; translateX = 0; translateY = 0;
-        _applyZoom();
-    });
-
-    // Apply dark mode jika aktif
-    if (typeof isDark !== 'undefined' && isDark) {
-        setTimeout(() => window.togglePdfOriginalDark(true), 100);
-    }
+    // Double tap reset zoom
+    let lastTap = 0;
+    containerEl.addEventListener('touchend', (e) => {
+        const now = Date.now();
+        if (now - lastTap < 300) { scale = 1; panX = 0; panY = 0; applyTransform(); }
+        lastTap = now;
+    }, { passive: true });
 }
 
-// Toggle dark mode filter untuk PDF Original View
+// Toggle dark mode filter untuk PDF Canvas
 window.togglePdfOriginalDark = function(enable) {
     const pages = document.querySelectorAll('.pdf-original-page');
-    pages.forEach(img => {
-        img.style.filter = enable ? 'invert(1) hue-rotate(180deg)' : '';
-    });
+    pages.forEach(el => { el.style.filter = enable ? 'invert(1) hue-rotate(180deg)' : ''; });
     localStorage.setItem('pdf_original_dark', enable ? '1' : '0');
 };
 
