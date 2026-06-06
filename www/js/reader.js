@@ -101,8 +101,16 @@ async function processMultipleFiles(files) {
     for (const f of files) _importQueue.push(f);
     _importTotalQueued += files.length;
 
-    // Jika sudah ada runner aktif, cukup update total — runner akan terus drain queue
-    if (_importRunning) return;
+    // Jika sudah ada runner aktif, cukup tambah ke queue — runner terus drain
+    // Update label total supaya angka (1/2) langsung berubah tanpa flicker
+    if (_importRunning) {
+        if (DOM.loadTxt) {
+            const currentLabel = DOM.loadTxt.textContent;
+            const match = currentLabel.match(/\((\d+)\/\d+\)(.*)/);
+            if (match) DOM.loadTxt.textContent = `(${match[1]}/${_importTotalQueued})${match[2]}`;
+        }
+        return;
+    }
 
     // Mulai runner
     _importRunning = true;
@@ -110,6 +118,7 @@ async function processMultipleFiles(files) {
     const failed = [];
     let imported = 0;
 
+    // Pastikan card terlihat dan tidak di-hide oleh timeout lama
     DOM.load.classList.remove('hidden');
 
     while (_importQueue.length > 0) {
@@ -118,7 +127,6 @@ async function processMultipleFiles(files) {
         const ext = originalFilename.split('.').pop().toLowerCase();
         const bookTitle = originalFilename.replace(/\.[^/.]+$/, "");
 
-        // Update label: tampilkan progress akurat termasuk file yang ditambahkan belakangan
         const currentIdx = _importDoneCount + 1;
         const totalNow = _importTotalQueued;
         DOM.loadBar.style.width = '0%';
@@ -137,6 +145,16 @@ async function processMultipleFiles(files) {
             failed.push(bookTitle);
         }
         _importDoneCount++;
+
+        // Update label total secara real-time setelah setiap buku selesai
+        // (supaya kalau ada buku ditambahkan di tengah jalan, totalnya langsung update)
+        const nextIdx = _importDoneCount + 1;
+        const nextTotal = _importTotalQueued;
+        if (_importQueue.length > 0 && DOM.loadTxt) {
+            const nextFile = _importQueue[0];
+            const nextTitle = nextFile.name.replace(/\.[^/.]+$/, "");
+            DOM.loadTxt.textContent = `(${nextIdx}/${nextTotal}) ${nextTitle}`;
+        }
     }
 
     // Semua selesai — reset state
@@ -145,7 +163,10 @@ async function processMultipleFiles(files) {
     _importTotalQueued = 0;
     _importDoneCount = 0;
 
-    setTimeout(() => { DOM.load.classList.add('hidden'); }, 800);
+    DOM.loadBar.style.width = '100%';
+    DOM.loadPct.textContent = '100%';
+    // Hide card dengan delay supaya user sempat lihat 100%
+    setTimeout(() => { DOM.load.classList.add('hidden'); }, 900);
     if (DOM.loadTxt) DOM.loadTxt.textContent = 'Reading Document...';
 
     let summary = `${imported} buku berhasil diimpor.`;
@@ -671,8 +692,31 @@ async function handlePdf(file, bookTitle) {
 
     for (const block of rawBlocks) {
         let text = block.text.replace(/\s+/g, ' ').trim();
-        // Normalisasi spasi antar huruf yang ter-scatter (e.g. "B A B" → "BAB")
-        text = text.replace(/\b([A-Z])\s(?=[A-Z]\s|[A-Z]\b)/g, '$1');
+
+        // ---------------------------------------------------------------
+        // NORMALISASI SPASI ANTAR KARAKTER (kasus PDF encoding aneh)
+        // Deteksi: teks yang mayoritas kata-katanya <= 2 huruf = kemungkinan
+        // setiap karakter/suku kata dipisah spasi, e.g. "m e n i n g g a l k a n"
+        // Strategi: hitung rasio kata pendek. Jika > 60%, gabungkan semua.
+        // ---------------------------------------------------------------
+        const words = text.split(' ');
+        if (words.length >= 4) {
+            const shortWords = words.filter(w => w.length <= 2 && /[a-zA-Z\u00C0-\u024F]/.test(w));
+            const shortRatio = shortWords.length / words.length;
+            if (shortRatio > 0.6) {
+                // Teks ini kemungkinan besar scattered — gabungkan semua karakter
+                // tapi pertahankan spasi setelah tanda baca
+                text = text.replace(/ (?=[a-zA-Z\u00C0-\u024F])/g, (match, offset) => {
+                    // Jika karakter sebelumnya adalah tanda baca atau angka, pertahankan spasi
+                    const prev = text[offset - 1];
+                    if (prev && /[.!?,;:0-9]/.test(prev)) return match;
+                    return '';
+                });
+            }
+        }
+
+        // Normalisasi spasi antar huruf kapital scatter (e.g. "B A B" → "BAB")
+        text = text.replace(/([A-Z]) (?=[A-Z])/g, '$1');
         text = text.replace(/B\s*A\s*B/gi, 'BAB');
 
         if (text.length < 2) continue;
@@ -830,6 +874,8 @@ async function handleEpub(file, bookTitle) {
     let order = 0;
     
     const validBlockTags = ['p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'li', 'blockquote', 'div', 'section', 'article', 'header'];
+    // Deduplication heading di luar loop — deteksi duplikat antar chapter juga
+    const seenEpubHeadings = new Set();
 
     for (const idref of spine) {
         order++;
@@ -841,16 +887,16 @@ async function handleEpub(file, bookTitle) {
         const htmlFile = zip.file(htmlPath);
         if (!htmlFile) continue;
 
-        const htmlStr = await htmlFile.async("text");
-        const doc = (new DOMParser()).parseFromString(htmlStr, "text/html");
-        
-        // Guard: beberapa chapter EPUB adalah XHTML malformed tanpa <body>
+        let htmlStr;
+        try { htmlStr = await htmlFile.async("text"); } catch(e) { continue; }
+
+        let doc;
+        try { doc = (new DOMParser()).parseFromString(htmlStr, "text/html"); } catch(e) { continue; }
         if (!doc || !doc.body) continue;
 
         doc.querySelectorAll('script, style, nav, footer, iframe, svg, button').forEach(el => el.remove());
 
         const allElements = doc.body.querySelectorAll('*');
-        const seenEpubHeadings = new Set();
 
         for (let el of allElements) {
             let tag = el.tagName.toLowerCase();
@@ -889,13 +935,8 @@ async function handleEpub(file, bookTitle) {
                 if (text.length === 0) continue;
 
                 // Normalisasi: spasi antar huruf scatter (e.g. "B A B" → "BAB")
-                // Hanya untuk huruf kapital ASCII agar tidak merusak Unicode lain
-                try {
-                    text = text.replace(/(?<=[A-Z]) (?=[A-Z]( [A-Z]|$))/g, '');
-                } catch(e) {
-                    // Fallback kalau lookbehind tidak support (older WebView)
-                    text = text.replace(/\b([A-Z]) ([A-Z])\b/g, '$1$2');
-                }
+                // Pakai pendekatan aman tanpa lookbehind (kompatibel semua WebView)
+                text = text.replace(/([A-Z]) (?=[A-Z])/g, '$1');
                 text = text.replace(/B\s*A\s*B/gi, 'BAB');
 
                 // Buang teks yang tidak mengandung karakter konten sama sekali
