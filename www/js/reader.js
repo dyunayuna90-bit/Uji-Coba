@@ -37,7 +37,6 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     // Listener Pencarian dalam Buku
-    // Pakai getElementById langsung buat hindari race condition dengan app.js
     const searchInputEl = document.getElementById('inbook-search-input');
     const searchResEl = document.getElementById('search-results-panel');
 
@@ -92,7 +91,6 @@ document.addEventListener("DOMContentLoaded", () => {
 
 // 1b. PROSES BANYAK FILE SEKALIGUS (multi-select atau folder scan)
 async function processMultipleFiles(files) {
-    const skipped = [];
     const failed = [];
     let imported = 0;
 
@@ -102,13 +100,9 @@ async function processMultipleFiles(files) {
         const ext = originalFilename.split('.').pop().toLowerCase();
         const bookTitle = originalFilename.replace(/\.[^/.]+$/, "");
 
-        // Cek duplikat by judul
-        if (library.some(b => b.title.toLowerCase() === bookTitle.toLowerCase())) {
-            skipped.push(bookTitle);
-            continue;
-        }
+        // Pengecekan duplikat DIHAPUS. User bisa memasukkan buku yang sama berkali-kali.
 
-        // Update loading UI — tampilkan nama file + progress index
+        // Update loading UI
         DOM.load.classList.remove('hidden');
         DOM.loadBar.style.width = '0%';
         DOM.loadPct.textContent = '0%';
@@ -119,7 +113,7 @@ async function processMultipleFiles(files) {
             else if (ext === 'epub') await handleEpub(file, bookTitle);
             else if (ext === 'txt') await handleTxt(file, bookTitle);
             else if (ext === 'md') await handleMd(file, bookTitle);
-            else { skipped.push(bookTitle); continue; }
+            else { continue; }
             imported++;
         } catch (err) {
             console.error(`Gagal import: ${bookTitle}`, err);
@@ -130,9 +124,7 @@ async function processMultipleFiles(files) {
     setTimeout(() => { DOM.load.classList.add('hidden'); }, 800);
     if (DOM.loadTxt) DOM.loadTxt.textContent = 'Reading Document...';
 
-    // Ringkasan hasil
     let summary = `${imported} buku berhasil diimpor.`;
-    if (skipped.length > 0) summary += `\n${skipped.length} dilewati (sudah ada).`;
     if (failed.length > 0) summary += `\n${failed.length} gagal.`;
 
     if (files.length > 1) {
@@ -145,16 +137,13 @@ async function handleTxt(file, bookTitle) {
     const text = await file.text();
     const parsedNodes = [];
 
-    // Coba split by baris kosong dulu (paragraf standar)
     let paragraphs = text.split(/\n\s*\n/).map(p => p.trim().replace(/\s+/g, ' ')).filter(p => p.length > 0);
 
-    // Kalau hasilnya cuma 1 blok (tidak ada baris kosong), fallback ke split per baris
     if (paragraphs.length <= 1) {
         paragraphs = text.split('\n').map(p => p.trim()).filter(p => p.length > 0);
     }
 
     paragraphs.forEach(para => {
-        // Deteksi heading sederhana: pendek, huruf kapital, atau diawali angka bab
         const isHeading = para.length < 80 && (
             /^(bab|chapter|bagian|part|section)\s/i.test(para) ||
             /^[IVX]+\./i.test(para) ||
@@ -166,18 +155,15 @@ async function handleTxt(file, bookTitle) {
 
     if (parsedNodes.length === 0) throw new Error("File TXT kosong atau tidak bisa dibaca.");
 
-    // Cover placeholder untuk TXT (tidak ada gambar)
-    const coverBase64 = null;
-
     library.push({
-        id: Date.now().toString(),
+        id: Date.now().toString() + Math.floor(Math.random() * 1000), // Tambahin random biar ID duplikat bener-bener aman
         type: 'txt',
         title: bookTitle,
         nodes: parsedNodes,
         pages: Math.ceil(parsedNodes.length / 10),
         progressPct: 0,
         lastReadId: null,
-        coverBase64: coverBase64,
+        coverBase64: null,
         shape: 'square'
     });
 
@@ -231,7 +217,7 @@ async function handleMd(file, bookTitle) {
     if (parsedNodes.length === 0) throw new Error("File MD kosong atau tidak valid.");
 
     library.push({
-        id: Date.now().toString(),
+        id: Date.now().toString() + Math.floor(Math.random() * 1000),
         type: 'md',
         title: bookTitle,
         nodes: parsedNodes,
@@ -334,7 +320,7 @@ function renderSearchResults(results, keyword) {
     searchResEl.classList.remove('hidden');
 }
 
-// 2. FUNGSI EKSTRAK PDF (ALGORITMA CERDAS: STATISTIK FONT + SEMANTIK)
+// 2. FUNGSI EKSTRAK PDF (ALGORITMA CERDAS + STITCHING & HYPHENATION FIX)
 async function handlePdf(file, bookTitle) {
     const arrayBuffer = await file.arrayBuffer(); 
     const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
@@ -348,8 +334,7 @@ async function handlePdf(file, bookTitle) {
     await firstPage.render({ canvasContext: coverCtx, viewport: viewport }).promise;
     const coverBase64 = coverCanvas.toDataURL('image/jpeg', 0.8);
 
-    // --- PHASE 1: STATISTICAL FONT PROFILING (Mencari Ukuran Paragraf Utama) ---
-    // Scan up to 10 halaman awal buat nyari ukuran font yang paling sering dipakai (Teks Paragraf)
+    // --- PHASE 1: STATISTICAL FONT PROFILING ---
     let fontSizes = {};
     const samplePages = Math.min(total, 10);
     for (let i = 1; i <= samplePages; i++) {
@@ -358,14 +343,12 @@ async function handlePdf(file, bookTitle) {
         textContent.items.forEach(item => {
             const h = Math.round(item.height);
             if (h > 0 && item.str.trim().length > 0) {
-                // Bobot didasarkan pada panjang teks (paragraf punya teks terpanjang)
                 fontSizes[h] = (fontSizes[h] || 0) + item.str.length;
             }
         });
     }
 
-    // Cari modus (ukuran font dengan bobot karakter terbanyak)
-    let baseFontSize = 12; // Fallback
+    let baseFontSize = 12;
     let maxWeight = 0;
     for (const [size, weight] of Object.entries(fontSizes)) {
         if (weight > maxWeight) {
@@ -374,7 +357,7 @@ async function handlePdf(file, bookTitle) {
         }
     }
 
-    // --- PHASE 2: EKSTRAKSI & PENENTUAN TAG (H1/H2/P) ---
+    // --- PHASE 2: EKSTRAKSI & STITCHING PARAGRAF ---
     for (let i = 1; i <= total; i++) {
         DOM.loadBar.style.width = `${Math.round((i / total) * 100)}%`; 
         DOM.loadPct.textContent = `${Math.round((i / total) * 100)}%`;
@@ -386,29 +369,16 @@ async function handlePdf(file, bookTitle) {
         let lastY = -1; 
         let blockMaxHeight = 0;
 
-        // Fungsi internal untuk memproses satu blok teks
         const processBlock = (text, maxHeight) => {
-            let cleanText = text.trim().replace(/\s+/g, ' ');
-            
-            // Bersihin spasi alay, misal: "B A B 1" -> "BAB 1"
+            let cleanText = text.replace(/\s+/g, ' ').trim();
             cleanText = cleanText.replace(/B\s*A\s*B/gi, 'BAB');
 
-            // Skip sampah (kurang dari 2 huruf dan bukan angka murni)
             if (cleanText.length < 2 && !/^\d+$/.test(cleanText)) return;
 
             let tag = 'p';
-            
-            // 1. Deteksi Semantik Ekstrim (Regex)
-            // Memaksa H1 jika teks mengandung unsur Bab, Chapter, atau Bagian.
             const isChapter = /^(bab|chapter|bagian)\s*([IVXLCDM\d]+|[a-zA-Z]+)/i.test(cleanText);
-            
-            // 2. Deteksi Statistik Ukuran Font
-            // H1 = minimal 1.4x lebih besar dari teks paragraf
-            // H2 = minimal 1.15x lebih besar dari teks paragraf
             const isSignificantlyLarger = maxHeight >= (baseFontSize * 1.4);
             const isSlightlyLarger = maxHeight >= (baseFontSize * 1.15);
-            
-            // 3. Deteksi ALL CAPS (Biasa dipake buat sub-bab di PDF lama)
             const isAllCaps = cleanText === cleanText.toUpperCase() && cleanText.length > 5 && /[A-Z]/.test(cleanText);
 
             if (isChapter) {
@@ -419,7 +389,6 @@ async function handlePdf(file, bookTitle) {
                 tag = 'h2';
             }
 
-            // Keamanan: Kalau teksnya super panjang (> 200 karakter), itu pasti paragraf, se-gede apapun fontnya.
             if (tag !== 'p' && cleanText.length > 200) {
                 tag = 'p';
             }
@@ -430,33 +399,72 @@ async function handlePdf(file, bookTitle) {
         textContent.items.forEach(item => {
             const y = Math.round(item.transform[5]); 
             const height = item.height;
+            const str = item.str;
+
+            // Lewati item yang cuma berisi string kosong untuk kalkulasi posisi, tapi tetep simpen spasinya
+            if (str.trim() === '') {
+                currentBlock += str;
+                return;
+            }
             
-            // Jarak threshold vertikal. Kalau turun drastis (beda Y gede), berarti paragraf baru.
-            if (lastY !== -1 && Math.abs(y - lastY) > (baseFontSize * 1.2)) {
-                if (currentBlock.trim().length > 0) { 
-                    processBlock(currentBlock, blockMaxHeight);
+            if (lastY !== -1) {
+                const gap = Math.abs(lastY - y);
+                // Logika Pemisahan Paragraf:
+                // Pisah jika gap > 1.6x baseFont (jarak enter yang jauh)
+                // ATAU gap > 0.8x baseFont (baris baru normal) TAPI baris sebelumnya diakhiri titik, tanda tanya, atau seru.
+                const isBigGap = gap > (baseFontSize * 1.6);
+                const isEndOfSentence = gap > (baseFontSize * 0.8) && currentBlock.trim().match(/[.!?]$/);
+
+                if (isBigGap || isEndOfSentence) {
+                    if (currentBlock.trim().length > 0) { 
+                        processBlock(currentBlock, blockMaxHeight);
+                    }
+                    currentBlock = ""; 
+                    blockMaxHeight = 0;
                 }
-                currentBlock = ""; 
-                blockMaxHeight = 0;
             }
             
             if (height > blockMaxHeight) blockMaxHeight = height;
-            currentBlock += item.str + " "; 
+            
+            // Logika Penyambungan (Stitching) & Pemenggalan Kata (Hyphenation)
+            let cbTrimmed = currentBlock.trim();
+            if (cbTrimmed.endsWith('-')) {
+                // Hapus strip, dan gabungkan tanpa spasi (cth: "se-" + "jarah" = "sejarah")
+                currentBlock = cbTrimmed.slice(0, -1) + str.trimStart();
+            } else {
+                // Normal append. Kasih spasi buat gabungin kata antar baris.
+                if (currentBlock.length > 0 && !currentBlock.endsWith(" ")) {
+                    currentBlock += " ";
+                }
+                currentBlock += str;
+            }
+
             lastY = y;
         });
 
-        // Proses sisa blok terakhir di halaman itu
+        // Proses sisa blok terakhir di halaman
         if (currentBlock.trim().length > 0) { 
             processBlock(currentBlock, blockMaxHeight);
         }
     }
     
-    library.push({ id: Date.now().toString(), type: 'pdf', title: bookTitle, nodes: parsedNodes, pages: total, progressPct: 0, lastReadId: null, coverBase64: coverBase64, shape: 'square' });
+    library.push({ 
+        id: Date.now().toString() + Math.floor(Math.random() * 1000), 
+        type: 'pdf', 
+        title: bookTitle, 
+        nodes: parsedNodes, 
+        pages: total, 
+        progressPct: 0, 
+        lastReadId: null, 
+        coverBase64: coverBase64, 
+        shape: 'square' 
+    });
+    
     await localforage.setItem('pdf_epub_master', library); 
     renderLibrary();
 }
 
-// 3. FUNGSI EKSTRAK EPUB (REVISI ALGORITMA: ANTI-LAG & ANTI-DUPLIKAT MURNI)
+// 3. FUNGSI EKSTRAK EPUB
 async function handleEpub(file, bookTitle) {
     const zip = await JSZip.loadAsync(file); 
     let parsedNodes = []; 
@@ -504,7 +512,6 @@ async function handleEpub(file, bookTitle) {
     const spine = Array.from(opfDoc.getElementsByTagName("itemref")).map(item => item.getAttribute("idref"));
     let order = 0;
     
-    // Tag yang sah buat dijadiin blok paragraf / heading
     const validBlockTags = ['p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'li', 'blockquote', 'div', 'section', 'article', 'header'];
 
     for (const idref of spine) {
@@ -520,16 +527,13 @@ async function handleEpub(file, bookTitle) {
         const htmlStr = await htmlFile.async("text");
         const doc = (new DOMParser()).parseFromString(htmlStr, "text/html");
         
-        // Bersihin sampah yang bikin layout kotor
         doc.querySelectorAll('script, style, nav, footer, iframe, svg, button').forEach(el => el.remove());
 
-        // Scan semua elemen secara berurutan dari atas ke bawah (Pre-order Traversal)
         const allElements = doc.body.querySelectorAll('*');
 
         for (let el of allElements) {
             let tag = el.tagName.toLowerCase();
             
-            // 1. Eksekusi Gambar
             if (tag === 'img' || tag === 'image') {
                 let src = el.getAttribute('src') || el.getAttribute('href');
                 if (src && !src.startsWith('http') && !src.startsWith('data:')) {
@@ -548,9 +552,7 @@ async function handleEpub(file, bookTitle) {
                 continue;
             }
 
-            // 2. Eksekusi Blok Teks
             if (validBlockTags.includes(tag)) {
-                // Cek apakah elemen ini punya anak blok lain di dalamnya (Kalo punya, ini cuma Wrapper, lewatin aja)
                 let hasBlockChild = false;
                 const descendants = el.querySelectorAll('*');
                 for (let i = 0; i < descendants.length; i++) {
@@ -560,7 +562,7 @@ async function handleEpub(file, bookTitle) {
                     }
                 }
                 
-                if (hasBlockChild) continue; // Jangan ambil teksnya, tunggu iterasi sampai ke anak terdalamnya
+                if (hasBlockChild) continue; 
                 
                 let text = el.textContent.trim().replace(/\s+/g, ' ');
                 if (text.length === 0) continue;
@@ -568,10 +570,7 @@ async function handleEpub(file, bookTitle) {
                 let finalTag = 'p';
                 if (['h1', 'h2', 'h3', 'h4'].includes(tag)) finalTag = tag === 'h1' ? 'h1' : 'h2';
                 
-                // Pembersihan kasus Bab spasi alay ("B a B", "B A B")
                 text = text.replace(/B\s*A\s*B/gi, 'BAB');
-
-                // Kalau teks h1/h2 tapi panjangnya ngotak (kayak paragraf utuh), turunin pangkas jadi paragraf
                 if ((finalTag === 'h1' || finalTag === 'h2') && text.length > 150) finalTag = 'p';
 
                 parsedNodes.push({ tag: finalTag, text: text });
@@ -579,7 +578,18 @@ async function handleEpub(file, bookTitle) {
         }
     }
     
-    library.push({ id: Date.now().toString(), type: 'epub', title: bookTitle, nodes: parsedNodes, pages: spine.length, progressPct: 0, lastReadId: null, coverBase64: coverBase64, shape: 'square' });
+    library.push({ 
+        id: Date.now().toString() + Math.floor(Math.random() * 1000), 
+        type: 'epub', 
+        title: bookTitle, 
+        nodes: parsedNodes, 
+        pages: spine.length, 
+        progressPct: 0, 
+        lastReadId: null, 
+        coverBase64: coverBase64, 
+        shape: 'square' 
+    });
+    
     await localforage.setItem('pdf_epub_master', library); 
     renderLibrary();
 }
