@@ -16,6 +16,7 @@
     <script src="libs/localforage.min.js"></script>
     <script src="libs/jszip.min.js"></script>
     <script src="libs/lucide.js"></script>
+    <script src="libs/marked.min.js"></script> <!-- Tambahan buat ekstrak .md -->
 
     <!-- Konfigurasi Statis (Tailwind, Palet, i18n) -->
     <script src="js/config.js"></script>
@@ -37,7 +38,6 @@
         <header id="main-header" class="flex-none sticky top-0 z-40 bg-m3-bg pt-[calc(env(safe-area-inset-top,0px)+4.5rem)] pb-5 px-5 transition-shadow duration-300">
             <div id="title-area" class="mb-4">
                 <h1 class="text-4xl font-black tracking-tighter text-m3-onBg" style="font-family: 'Outfit', sans-serif;">Baca.</h1>
-                <!-- JUMLAH BUKU DI BAWAH HEADER SUDAH DIHAPUS -->
             </div>
             
             <div id="search-area" class="search-row transition-shadow duration-300">
@@ -63,10 +63,9 @@
                 </div>
             </div>
 
-            <!-- STATISTIK USER (M3 Expressive Card - Compact) -->
+            <!-- STATISTIK USER -->
             <section id="statistics-section" class="mb-8 mt-1 transition-all duration-300 origin-top overflow-hidden">
                 <div class="bg-m3-secondaryContainer text-m3-onSecondaryContainer rounded-[28px] p-4 shadow-sm relative flex flex-col justify-center min-h-[100px]">
-                    <!-- Ornamen background M3 Expressive -->
                     <i data-lucide="asterisk" class="absolute -right-4 -bottom-6 w-32 h-32 text-m3-onSecondaryContainer opacity-[0.04] transform rotate-45 pointer-events-none"></i>
                     <div class="absolute -left-8 -top-8 w-24 h-24 bg-m3-onSecondaryContainer/5 rounded-full blur-2xl pointer-events-none"></div>
 
@@ -99,11 +98,9 @@
             <!-- VIEW: SEMUA BUKU -->
             <div id="continue-reading-section" class="hidden mb-8 -mx-5 mt-2">
                 <h2 id="str-continue-reading" class="text-base font-bold mb-4 text-m3-onBg px-5 tracking-tight">Lanjutkan Membaca</h2>
-                <div id="top-books-slider" class="flex gap-3 overflow-x-auto snap-x snap-proximity px-5 pb-2 hide-scroll" style="scroll-padding-left: 1.25rem;">
-                </div>
+                <div id="top-books-slider" class="flex gap-3 overflow-x-auto snap-x snap-proximity px-5 pb-2 hide-scroll" style="scroll-padding-left: 1.25rem;"></div>
             </div>
 
-            <!-- PINNED BOOKS SECTION -->
             <div id="pinned-books-section" class="hidden mb-8 mt-2">
                 <div class="flex items-center gap-2 mb-4">
                     <i data-lucide="pin" class="w-5 h-5 text-m3-primary fill-m3-primary/20"></i>
@@ -112,7 +109,6 @@
                 <div id="pinned-book-grid" class="grid grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 w-full"></div>
             </div>
 
-            <!-- REGULAR COLLECTION SECTION -->
             <div id="collection-heading" class="hidden mb-4 mt-2">
                 <h2 class="text-base font-bold text-m3-onBg tracking-tight" id="str-book-collection">Koleksi Buku</h2>
             </div>
@@ -125,12 +121,13 @@
             </div>
         </div>
 
+        <!-- FAB DITAMBAH .md DI ACCEPT -->
         <div id="fab-container" class="fixed bottom-8 right-6 z-50 transition-all duration-300">
             <button onclick="document.getElementById('doc-upload').click();" class="fab-capsule flex items-center justify-center bg-m3-primary text-m3-onPrimary cursor-pointer shadow-none overflow-hidden">
                 <i data-lucide="plus" class="w-8 h-8 shrink-0"></i>
             </button>
-            <input type="file" id="doc-upload" accept=".epub,.pdf,.txt" multiple class="hidden">
-            <input type="file" id="folder-scan-upload" accept=".epub,.pdf,.txt" multiple webkitdirectory class="hidden">
+            <input type="file" id="doc-upload" accept=".epub,.pdf,.txt,.md" multiple class="hidden">
+            <input type="file" id="folder-scan-upload" accept=".epub,.pdf,.txt,.md" multiple webkitdirectory class="hidden">
         </div>
         
         <div id="batch-delete-bar" class="fixed bottom-6 left-1/2 -translate-x-1/2 bg-m3-surfaceVariant text-m3-onSurfaceVariant px-6 py-3 z-[60] translate-y-32 transition-transform duration-300 flex justify-between items-center rounded-full shadow-[0_8px_30px_rgba(0,0,0,0.2)] gap-4 w-max border-none pointer-events-auto">
@@ -160,8 +157,14 @@
         </div>
 
         <div class="flex-1 relative overflow-hidden flex w-full">
-            <div id="reader-content" oncontextmenu="event.preventDefault()" class="absolute inset-0 overflow-y-auto overflow-x-hidden px-5 pt-24 pb-40 scroll-smooth reader-dynamic-text w-full">
+            <!-- TEKS VERTIKAL ASLI -->
+            <div id="reader-content" oncontextmenu="event.preventDefault()" class="absolute inset-0 overflow-y-auto overflow-x-hidden px-5 pt-24 pb-40 scroll-smooth reader-dynamic-text w-full transition-opacity duration-300">
                 <div id="reader-inner" class="max-w-4xl mx-auto reader-text-container space-y-5"></div>
+            </div>
+
+            <!-- PDF HORIZONTAL WADAH (Fase 2) -->
+            <div id="pdf-render-container" oncontextmenu="event.preventDefault()" class="hidden absolute inset-0 overflow-x-auto overflow-y-hidden snap-x snap-mandatory flex w-full h-full bg-m3-bg transition-opacity duration-300 z-10 pb-20 pt-16" style="scroll-behavior: smooth;">
+                <!-- Halaman canvas render PDF akan ditambahkan ke sini -->
             </div>
 
             <div id="side-panel-overlay" class="hidden absolute inset-0 bg-black/20 z-30 transition-opacity" onclick="history.back()"></div>
@@ -188,50 +191,65 @@
                 <h3 id="str-set-title" class="text-lg font-bold mb-6 text-m3-onSurfaceVariant flex items-center gap-2"><i data-lucide="sliders-horizontal"></i> Tampilan</h3>
                 
                 <div class="space-y-6 pb-20">
-                    <div>
-                        <label id="str-set-search" class="text-xs font-bold opacity-70 block mb-3 uppercase tracking-wider">Pencarian</label>
-                        <div class="search-capsule bg-m3-surface p-1 rounded-full relative flex items-center h-14 border-none transition-all duration-300">
-                            <i data-lucide="search" class="w-5 h-5 ml-4 opacity-70 text-m3-onSurface shrink-0 pointer-events-none"></i>
-                            <input type="text" id="inbook-search-input" class="w-full bg-transparent border-none outline-none py-2 pl-3 pr-4 text-sm font-bold text-m3-onSurface placeholder:opacity-60" placeholder="Cari dalam buku...">
+                    <!-- TOMBOL TAMPILAN ASLI (PDF SAJA) -->
+                    <div id="pdf-original-view-setting" class="hidden mb-2">
+                        <div class="flex items-center justify-between bg-m3-surface p-3 px-4 rounded-2xl cursor-pointer btn-morph border border-m3-primary/20" onclick="window.togglePdfOriginalView()">
+                            <span class="font-bold text-xs tracking-wide text-m3-primary flex items-center gap-2">
+                                <i data-lucide="file-image" class="w-4 h-4"></i> <span id="str-set-original">Tampilan Asli</span>
+                            </span>
+                            <div class="relative w-12 h-6 rounded-full bg-m3-onSurfaceVariant/20 transition-colors" id="pdf-view-switch-bg">
+                                <div id="pdf-view-switch-knob" class="absolute top-1 left-1 w-4 h-4 rounded-full bg-m3-surface transition-transform duration-300"></div>
+                            </div>
                         </div>
-                        <div id="search-results-panel" class="hidden mt-3 max-h-48 overflow-y-auto rounded-2xl bg-m3-surface text-xs shadow-md border-none pointer-events-auto flex-col gap-1 p-2"></div>
+                        <p id="str-set-original-desc" class="text-[9px] text-m3-onSurfaceVariant opacity-70 mt-2 px-1 text-center font-medium leading-tight hidden">PDF ini murni gambar, pengaturan teks dinonaktifkan.</p>
                     </div>
 
-                    <div>
-                        <label id="str-set-theme" class="text-xs font-bold opacity-70 block mb-3 uppercase tracking-wider">Mode Tema</label>
-                        <div class="capsule-group bg-m3-surface p-1 rounded-full">
-                            <button id="theme-btn-light" onclick="setReaderTheme('light')" class="capsule-btn py-2 font-bold text-xs">Light</button>
-                            <button id="theme-btn-dark" onclick="setReaderTheme('dark')" class="capsule-btn py-2 font-bold text-xs">Dark</button>
-                            <button id="theme-btn-amoled" onclick="setReaderTheme('amoled')" class="capsule-btn py-2 font-bold text-xs">AMOLED</button>
+                    <div id="text-typography-settings" class="space-y-6 transition-opacity duration-300">
+                        <div>
+                            <label id="str-set-search" class="text-xs font-bold opacity-70 block mb-3 uppercase tracking-wider">Pencarian</label>
+                            <div class="search-capsule bg-m3-surface p-1 rounded-full relative flex items-center h-14 border-none transition-all duration-300">
+                                <i data-lucide="search" class="w-5 h-5 ml-4 opacity-70 text-m3-onSurface shrink-0 pointer-events-none"></i>
+                                <input type="text" id="inbook-search-input" class="w-full bg-transparent border-none outline-none py-2 pl-3 pr-4 text-sm font-bold text-m3-onSurface placeholder:opacity-60" placeholder="Cari dalam buku...">
+                            </div>
+                            <div id="search-results-panel" class="hidden mt-3 max-h-48 overflow-y-auto rounded-2xl bg-m3-surface text-xs shadow-md border-none pointer-events-auto flex-col gap-1 p-2"></div>
                         </div>
-                    </div>
-                    <div>
-                        <label id="str-set-size" class="text-xs font-bold opacity-70 block mb-3 uppercase tracking-wider">Ukuran Teks</label>
-                        <div class="capsule-group bg-m3-surface p-1 rounded-full">
-                            <button id="typo-sz-sm" onclick="changeTypo('size', '1rem')" class="capsule-btn py-2 font-bold text-xs">Small</button>
-                            <button id="typo-sz-md" onclick="changeTypo('size', '1.2rem')" class="capsule-btn py-2 font-bold text-xs">Med</button>
-                            <button id="typo-sz-lg" onclick="changeTypo('size', '1.5rem')" class="capsule-btn py-2 font-bold text-xs">Large</button>
+
+                        <div>
+                            <label id="str-set-theme" class="text-xs font-bold opacity-70 block mb-3 uppercase tracking-wider">Mode Tema</label>
+                            <div class="capsule-group bg-m3-surface p-1 rounded-full">
+                                <button id="theme-btn-light" onclick="setReaderTheme('light')" class="capsule-btn py-2 font-bold text-xs">Light</button>
+                                <button id="theme-btn-dark" onclick="setReaderTheme('dark')" class="capsule-btn py-2 font-bold text-xs">Dark</button>
+                                <button id="theme-btn-amoled" onclick="setReaderTheme('amoled')" class="capsule-btn py-2 font-bold text-xs">AMOLED</button>
+                            </div>
                         </div>
-                    </div>
-                    <div>
-                        <label id="str-set-align" class="text-xs font-bold opacity-70 block mb-3 uppercase tracking-wider">Perataan Teks</label>
-                        <div class="capsule-group bg-m3-surface p-1 rounded-full">
-                            <button id="typo-al-left" onclick="changeTypo('align', 'left')" class="capsule-btn py-2"><i data-lucide="align-left" class="w-4 h-4"></i></button>
-                            <button id="typo-al-center" onclick="changeTypo('align', 'center')" class="capsule-btn py-2"><i data-lucide="align-center" class="w-4 h-4"></i></button>
-                            <button id="typo-al-justify" onclick="changeTypo('align', 'justify')" class="capsule-btn py-2"><i data-lucide="align-justify" class="w-4 h-4"></i></button>
+                        <div>
+                            <label id="str-set-size" class="text-xs font-bold opacity-70 block mb-3 uppercase tracking-wider">Ukuran Teks</label>
+                            <div class="capsule-group bg-m3-surface p-1 rounded-full">
+                                <button id="typo-sz-sm" onclick="changeTypo('size', '1rem')" class="capsule-btn py-2 font-bold text-xs">Small</button>
+                                <button id="typo-sz-md" onclick="changeTypo('size', '1.2rem')" class="capsule-btn py-2 font-bold text-xs">Med</button>
+                                <button id="typo-sz-lg" onclick="changeTypo('size', '1.5rem')" class="capsule-btn py-2 font-bold text-xs">Large</button>
+                            </div>
                         </div>
-                    </div>
-                    <div>
-                        <label id="str-set-font" class="text-xs font-bold opacity-70 block mb-3 uppercase tracking-wider">Jenis Font</label>
-                        <div class="flex flex-col gap-2">
-                            <button id="typo-fn-lora" onclick="changeTypo('font', 'Lora')" class="btn-morph py-3 px-4 bg-m3-surface rounded-2xl text-left font-serif font-bold text-sm">Lora</button>
-                            <button id="typo-fn-merri" onclick="changeTypo('font', 'Merriweather')" class="btn-morph py-3 px-4 bg-m3-surface rounded-2xl text-left font-merriweather font-bold text-sm">Merriweather</button>
-                            <button id="typo-fn-playfair" onclick="changeTypo('font', 'Playfair Display')" class="btn-morph py-3 px-4 bg-m3-surface rounded-2xl text-left font-playfair font-bold text-sm">Playfair</button>
-                            <button id="typo-fn-inter" onclick="changeTypo('font', 'Inter')" class="btn-morph py-3 px-4 bg-m3-surface rounded-2xl text-left font-sans font-bold text-sm">Inter</button>
-                            <button id="typo-fn-mono" onclick="changeTypo('font', 'Space Mono')" class="btn-morph py-3 px-4 bg-m3-surface rounded-2xl text-left font-mono font-bold text-sm">Mono</button>
-                            <button id="typo-fn-google" onclick="changeTypo('font', 'Google Sans Flex')" class="btn-morph py-3 px-4 bg-m3-surface rounded-2xl text-left font-google font-bold text-sm">Google Sans Flex</button>
+                        <div>
+                            <label id="str-set-align" class="text-xs font-bold opacity-70 block mb-3 uppercase tracking-wider">Perataan Teks</label>
+                            <div class="capsule-group bg-m3-surface p-1 rounded-full">
+                                <button id="typo-al-left" onclick="changeTypo('align', 'left')" class="capsule-btn py-2"><i data-lucide="align-left" class="w-4 h-4"></i></button>
+                                <button id="typo-al-center" onclick="changeTypo('align', 'center')" class="capsule-btn py-2"><i data-lucide="align-center" class="w-4 h-4"></i></button>
+                                <button id="typo-al-justify" onclick="changeTypo('align', 'justify')" class="capsule-btn py-2"><i data-lucide="align-justify" class="w-4 h-4"></i></button>
+                            </div>
                         </div>
-                    </div>
+                        <div>
+                            <label id="str-set-font" class="text-xs font-bold opacity-70 block mb-3 uppercase tracking-wider">Jenis Font</label>
+                            <div class="flex flex-col gap-2">
+                                <button id="typo-fn-lora" onclick="changeTypo('font', 'Lora')" class="btn-morph py-3 px-4 bg-m3-surface rounded-2xl text-left font-serif font-bold text-sm">Lora</button>
+                                <button id="typo-fn-merri" onclick="changeTypo('font', 'Merriweather')" class="btn-morph py-3 px-4 bg-m3-surface rounded-2xl text-left font-merriweather font-bold text-sm">Merriweather</button>
+                                <button id="typo-fn-playfair" onclick="changeTypo('font', 'Playfair Display')" class="btn-morph py-3 px-4 bg-m3-surface rounded-2xl text-left font-playfair font-bold text-sm">Playfair</button>
+                                <button id="typo-fn-inter" onclick="changeTypo('font', 'Inter')" class="btn-morph py-3 px-4 bg-m3-surface rounded-2xl text-left font-sans font-bold text-sm">Inter</button>
+                                <button id="typo-fn-mono" onclick="changeTypo('font', 'Space Mono')" class="btn-morph py-3 px-4 bg-m3-surface rounded-2xl text-left font-mono font-bold text-sm">Mono</button>
+                                <button id="typo-fn-google" onclick="changeTypo('font', 'Google Sans Flex')" class="btn-morph py-3 px-4 bg-m3-surface rounded-2xl text-left font-google font-bold text-sm">Google Sans Flex</button>
+                            </div>
+                        </div>
+                    </div> <!-- Akhir wrapper typography -->
                 </div>
             </div>
         </div>
@@ -336,9 +354,11 @@
             </div>
             
             <h4 id="str-set-lang" class="text-xs font-bold opacity-70 mb-3 px-1 mt-6 uppercase tracking-wider">Bahasa</h4>
+            <!-- TRILINGUAL CAPSULE TAMBAHAN ESPANOL -->
             <div class="capsule-group bg-m3-surfaceVariant p-1 rounded-full mb-4">
                 <button id="wiki-lang-id" onclick="setWikiLang('id')" class="capsule-btn py-3 font-bold text-xs text-m3-onSurfaceVariant">Indonesia</button>
                 <button id="wiki-lang-en" onclick="setWikiLang('en')" class="capsule-btn py-3 font-bold text-xs text-m3-onSurfaceVariant">English</button>
+                <button id="wiki-lang-es" onclick="setWikiLang('es')" class="capsule-btn py-3 font-bold text-xs text-m3-onSurfaceVariant">Español</button>
             </div>
 
             <h4 id="str-set-ai-config" class="text-xs font-bold opacity-70 mb-3 px-1 mt-6 uppercase tracking-wider">Konfigurasi AI</h4>
