@@ -37,7 +37,7 @@ document.addEventListener("DOMContentLoaded", () => {
         file: document.getElementById('doc-upload'), 
         backBtn: document.getElementById('btn-back'),
         tocBtn: document.getElementById('btn-toc'), 
-        setBtn: document.getElementById('settings-btn'), // Fix id
+        setBtn: document.getElementById('settings-btn'),
         inner: document.getElementById('reader-inner'), 
         title: document.getElementById('reader-title'), 
         count: document.getElementById('library-count'),
@@ -228,7 +228,6 @@ window.closeSearch = function(fromHistory = false) {
         searchArea.classList.remove('search-active');
         DOM.globalSearch.blur(); DOM.globalSearch.value = ''; 
         
-        // Tampilkan kembali statistik saat search ditutup
         if(statSection) {
              statSection.style.height = '';
              statSection.style.opacity = '1';
@@ -457,7 +456,6 @@ window.checkForUpdate = async function() {
     const d = typeof i18n !== 'undefined' ? (i18n[wikiLang] || i18n['id']) : {};
     
     if(!window.UPDATE_URL) return;
-
     if(icon) icon.classList.add('animate-spin');
     
     try {
@@ -470,9 +468,7 @@ window.checkForUpdate = async function() {
 
         if(icon) icon.classList.remove('animate-spin');
 
-        const isNewer = compareVersions(latestVersion, currentVersion) > 0;
-
-        if (isNewer) {
+        if (compareVersions(latestVersion, currentVersion) > 0) {
             showDialog(
                 d.updateAvailableTitle || "Update Tersedia!",
                 (d.updateAvailableDesc || "Versi {v} udah rilis nih. Mau buka halaman download sekarang?").replace('{v}', latestVersion),
@@ -496,12 +492,7 @@ window.checkForUpdate = async function() {
     } catch (err) {
         console.error("Cek update gagal:", err);
         if(icon) icon.classList.remove('animate-spin');
-        showDialog(
-            "Error",
-            d.updateError || "Gagal ngecek update. Pastiin internet lu nyala.",
-            "wifi-off",
-            [{ text: "Tutup", primary: true }]
-        );
+        showDialog("Error", d.updateError || "Gagal ngecek update. Pastiin internet lu nyala.", "wifi-off", [{ text: "Tutup", primary: true }]);
     }
 };
 
@@ -521,38 +512,32 @@ window.clearAllCoversConfirm = function() {
             { text: d.delete || "Hapus", primary: true, action: async () => {
                 window.closeDialog();
                 
-                library.forEach(book => {
-                    book.coverBase64 = null;
-                });
+                for (let book of library) {
+                    await localforage.removeItem('cover_' + book.id);
+                }
                 
-                await localforage.setItem('pdf_epub_master', library);
                 renderLibrary(DOM.globalSearch ? DOM.globalSearch.value : "");
                 
                 setTimeout(() => {
-                    showDialog(
-                        "Sukses",
-                        d.clearCoversSuccess || "Semua sampul berhasil dihapus! Aplikasi sekarang jauh lebih ringan.",
-                        "check-circle",
-                        [{ text: "Mantap", primary: true }]
-                    );
+                    showDialog("Sukses", d.clearCoversSuccess || "Semua sampul berhasil dihapus! Aplikasi sekarang jauh lebih ringan.", "check-circle", [{ text: "Mantap", primary: true }]);
                 }, 400);
             }}
         ]
     );
 };
 
-// 7. BACKUP & RESTORE DATA (OPTIMASI STRINGIFY & CHUNKING DEWA)
+// 7. BACKUP & RESTORE DATA (OPTIMASI STREAMING APPEND + NO COVER BACKUP)
 window.exportData = async function() {
     const d = typeof i18n !== 'undefined' ? (i18n[wikiLang] || i18n['id']) : {};
     try {
         if (!library || library.length === 0) {
-            showDialog("Info", wikiLang === 'id' ? "Ga ada buku untuk di-backup." : (wikiLang === 'es' ? "No hay libros para hacer copia de seguridad." : "No books to backup."), "info", [{ text: "Oke", primary: true }]);
+            showDialog("Info", wikiLang === 'id' ? "Ga ada buku untuk di-backup." : "No books to backup.", "info", [{ text: "Oke", primary: true }]);
             return;
         }
 
         showDialog(
-            wikiLang === 'id' ? "Memproses Backup" : (wikiLang === 'es' ? "Procesando copia de seguridad" : "Processing Backup"),
-            wikiLang === 'id' ? "Mohon tunggu sebentar, menyiapkan file lu..." : (wikiLang === 'es' ? "Por favor espera, preparando tu archivo..." : "Please wait, preparing your file..."),
+            wikiLang === 'id' ? "Memproses Backup" : "Processing Backup",
+            wikiLang === 'id' ? "Mohon tunggu sebentar, menyiapkan file lu..." : "Please wait, preparing your file...",
             "loader", 
             []
         );
@@ -562,45 +547,49 @@ window.exportData = async function() {
 
         setTimeout(async () => {
             try {
-                // [OPTIMASI DEWA]: Chunking JSON Stringifier. 
-                // Kita rakit manual string JSON-nya, biar Engine JS HP lu ga meledak nampung Array Memory raksasa.
-                let jsonStr = '[';
-                for (let i = 0; i < library.length; i++) {
-                    let strippedBook = { ...library[i] };
-                    delete strippedBook.coverBase64; // Sampul ga di-backup biar ringan
-
-                    // Ambil Teks Konten (nodes) dari storage terpisah yg udah kita normalisasi
-                    let contentNodes = await localforage.getItem('content_' + strippedBook.id);
-                    strippedBook.nodes = contentNodes || [];
-
-                    jsonStr += JSON.stringify(strippedBook);
-                    if (i < library.length - 1) jsonStr += ',';
-
-                    // Yield ke event loop (ngasih jeda 10ms per buku biar UI/HP ga freeze/ngelag)
-                    await new Promise(r => setTimeout(r, 10));
-                }
-                jsonStr += ']';
-
+                // KALO NATIVE APP (CAPACITOR ADA) -> PAKE APPEND FILE (Anti Force Close)
                 if (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.Filesystem) {
                     const dt = new Date();
                     const fileName = `Baca_Backup_${dt.getFullYear()}${('0'+(dt.getMonth()+1)).slice(-2)}${('0'+dt.getDate()).slice(-2)}_${dt.getTime()}.json`;
-                    
-                    let displayFileName = fileName;
-                    if (fileName.length > 25) {
-                        displayFileName = fileName.substring(0, 16) + "..." + fileName.slice(-10);
-                    }
+                    let displayFileName = fileName.length > 25 ? fileName.substring(0, 16) + "..." + fileName.slice(-10) : fileName;
                     
                     try {
+                        // Tulis Kurung Kotak Awal
                         await window.Capacitor.Plugins.Filesystem.writeFile({
-                            path: fileName,
-                            data: jsonStr, // Tulis String utuh langsung tanpa stringify lagi
-                            directory: 'DOCUMENTS',
-                            encoding: 'utf8'
+                            path: fileName, data: '[\n', directory: 'DOCUMENTS', encoding: 'utf8'
+                        });
+
+                        // Tulis data per buku (Streaming Output)
+                        for (let i = 0; i < library.length; i++) {
+                            let strippedBook = { ...library[i] };
+                            
+                            // Tarik nodes dari database pecahan
+                            let contentNodes = await localforage.getItem('content_' + strippedBook.id);
+                            strippedBook.nodes = contentNodes || [];
+                            
+                            // PASTIKAN COVER GA IKUT DIBACKUP. Kalo ngikut, file JSON bakal Gede & Force Close pas Restore.
+                            delete strippedBook.coverBase64;
+
+                            let chunk = JSON.stringify(strippedBook);
+                            if (i < library.length - 1) chunk += ',\n';
+
+                            // Append ke file yg udah ada
+                            await window.Capacitor.Plugins.Filesystem.appendFile({
+                                path: fileName, data: chunk, directory: 'DOCUMENTS', encoding: 'utf8'
+                            });
+
+                            // Yield ke Event Loop (Biar CPU/RAM HP bisa nafas)
+                            await new Promise(r => setTimeout(r, 20));
+                        }
+
+                        // Tutup Kurung Kotak
+                        await window.Capacitor.Plugins.Filesystem.appendFile({
+                            path: fileName, data: '\n]', directory: 'DOCUMENTS', encoding: 'utf8'
                         });
                         
                         showDialog(
-                            wikiLang === 'id' ? "Backup Sukses" : (wikiLang === 'es' ? "Copia de seguridad exitosa" : "Backup Success"), 
-                            wikiLang === 'id' ? `File backup berhasil disimpan di folder Documents HP lu.\nNama file: ${displayFileName}` : (wikiLang === 'es' ? `Archivo de copia de seguridad guardado en la carpeta Documentos.\nNombre del archivo: ${displayFileName}` : `Backup file saved in your device's Documents folder.\nFile name: ${displayFileName}`), 
+                            wikiLang === 'id' ? "Backup Sukses" : "Backup Success", 
+                            wikiLang === 'id' ? `File backup berhasil disimpan di folder Documents HP lu.\nNama file: ${displayFileName}` : `Backup file saved in your device's Documents folder.\nFile name: ${displayFileName}`, 
                             "check-circle", 
                             [{ text: "Mantap", primary: true }]
                         );
@@ -610,19 +599,23 @@ window.exportData = async function() {
                     }
                 }
                 
-                // Fallback Raw Text
-                document.getElementById('raw-backup-textarea').value = jsonStr;
+                // FALLBACK JIKA BUKAN APK / CAPACITOR GAGAL (Raw Backup)
+                // Kita gaboleh masukin nodes, karena browser bakal langsung nge-freeze/nge-crash textareanya.
+                let rawData = library.map(b => {
+                    let min = {...b};
+                    delete min.nodes;
+                    delete min.coverBase64;
+                    return min;
+                });
+                const rawStr = JSON.stringify(rawData);
+                document.getElementById('raw-backup-textarea').value = rawStr;
                 
                 window.closeDialog(true);
-                
                 setTimeout(() => {
                     openModal('raw-backup-modal', 'raw-backup-sheet', true);
-                    
                     setTimeout(() => {
                         showDialog("Info Fallback", 
-                            wikiLang === 'id' ? 
-                            "Simpan file native gagal. Ini adalah teks mentahnya.\n\nCATATAN: Demi menghindari error sistem, data Sampul otomatis DIHAPUS pada versi ini. Data teks buku tetap aman." : 
-                            (wikiLang === 'es' ? "Error al guardar el archivo nativo. Este es el texto sin procesar.\n\nNOTA: Para evitar errores de memoria del sistema, las portadas de los libros se ELIMINAN en esta versión. Los datos de texto están seguros." : "Native file save failed. This is the raw text.\n\nNOTE: To prevent system memory errors, Book Covers are REMOVED in this version. Text data is safe."), 
+                            wikiLang === 'id' ? "Simpan file native gagal. Ini adalah metadata mentahnya. Teks buku disembunyikan demi keamanan memori." : "Native file save failed. This is the metadata. Text nodes hidden for memory safety.", 
                             "info", [{ text: "Mengerti", primary: true }]);
                     }, 400);
                 }, 350);
@@ -648,7 +641,7 @@ window.copyRawBackup = function() {
         document.execCommand('copy');
         const btnSpan = document.getElementById('str-raw-bak-btn-copy');
         const originalText = btnSpan.innerText;
-        btnSpan.innerText = wikiLang === 'id' ? "Berhasil Disalin!" : (wikiLang === 'es' ? "¡Copiado!" : "Copied!");
+        btnSpan.innerText = wikiLang === 'id' ? "Berhasil Disalin!" : "Copied!";
         setTimeout(() => { btnSpan.innerText = originalText; }, 2000);
     } catch (err) {
         showDialog("Error", "Gagal menyalin otomatis. Silakan blok semua teks secara manual dan salin.", "alert-circle", [{ text: "Tutup", primary: true }]);
@@ -663,7 +656,7 @@ window.openRestoreOptions = function() {
 window.processRawRestore = function() {
     const val = document.getElementById('raw-restore-textarea').value.trim();
     if(!val) {
-        showDialog("Info", wikiLang === 'id' ? "Kotak teks masih kosong." : (wikiLang === 'es' ? "El cuadro de texto está vacío." : "Text box is empty."), "info", [{ text: "Oke", primary: true }]);
+        showDialog("Info", wikiLang === 'id' ? "Kotak teks masih kosong." : "Text box is empty.", "info", [{ text: "Oke", primary: true }]);
         return;
     }
     executeRestoreLogic(val);
@@ -685,24 +678,28 @@ async function executeRestoreLogic(jsonString) {
         const parsedData = JSON.parse(jsonString);
         if (!Array.isArray(parsedData)) throw new Error("Format file/teks tidak valid.");
         
-        const isValid = parsedData.every(b => b.id && b.title && b.nodes);
+        const isValid = parsedData.every(b => b.id && b.title);
         if (!isValid) throw new Error("Data backup rusak atau tidak kompatibel.");
         
         showDialog(
-            wikiLang === 'id' ? "Konfirmasi Restore" : (wikiLang === 'es' ? "Confirmar restauración" : "Confirm Restore"),
-            wikiLang === 'id' ? "PERINGATAN: Semua data buku saat ini akan ketimpa total. Yakin mau lanjut?" : (wikiLang === 'es' ? "ADVERTENCIA: Los libros actuales serán reemplazados completamente. ¿Continuar?" : "WARNING: Current books will be completely replaced. Continue?"),
+            wikiLang === 'id' ? "Konfirmasi Restore" : "Confirm Restore",
+            wikiLang === 'id' ? "PERINGATAN: Semua data buku saat ini akan ketimpa total. Yakin mau lanjut?" : "WARNING: Current books will be completely replaced. Continue?",
             "alert-triangle",
             [
                 { text: "Batal", primary: false },
                 { text: "Lanjut", primary: true, action: async () => {
                     window.closeDialog();
                     
-                    // [OPTIMASI DEWA]: Langsung normalize saat restore, pisahin nodes ke DB tersendiri
                     let newLibrary = [];
                     for(let b of parsedData) {
-                        await localforage.setItem('content_' + b.id, b.nodes);
+                        // Kalo ada nodes di file backup, balikin ke DB terpisah
+                        if(b.nodes && b.nodes.length > 0) {
+                            await localforage.setItem('content_' + b.id, b.nodes);
+                        }
+                        
                         let meta = {...b};
                         delete meta.nodes;
+                        delete meta.coverBase64; // Cover otomatis kosong (biar enteng)
                         newLibrary.push(meta);
                     }
 
@@ -717,8 +714,8 @@ async function executeRestoreLogic(jsonString) {
                     
                     setTimeout(() => {
                         showDialog(
-                            wikiLang === 'id' ? "Restore Berhasil!" : (wikiLang === 'es' ? "¡Restauración exitosa!" : "Restore Success!"),
-                            wikiLang === 'id' ? "Data aplikasi lu udah berhasil dipulihin dengan super ringan." : (wikiLang === 'es' ? "Tus datos han sido restaurados con éxito." : "Your data has been successfully restored."),
+                            wikiLang === 'id' ? "Restore Berhasil!" : "Restore Success!",
+                            wikiLang === 'id' ? "Data aplikasi lu udah berhasil dipulihin dengan super ringan." : "Your data has been successfully restored.",
                             "check-circle",
                             [{ text: "Oke", primary: true }]
                         );
@@ -728,28 +725,40 @@ async function executeRestoreLogic(jsonString) {
         );
     } catch (err) {
         console.error("Restore failed:", err);
-        showDialog("Error", (wikiLang === 'id' ? "Gagal memulihkan: " : (wikiLang === 'es' ? "Error al restaurar: " : "Failed to restore: ")) + err.message, "alert-circle", [{ text: "Tutup", primary: true }]);
+        showDialog("Error", (wikiLang === 'id' ? "Gagal memulihkan: " : "Failed to restore: ") + err.message, "alert-circle", [{ text: "Tutup", primary: true }]);
     }
 }
 
-// 8. LIBRARY & BOOK MANAGEMENT (AUTO-MIGRASI MEMORY)
+// 8. LIBRARY & BOOK MANAGEMENT (AUTO-MIGRASI MEMORY EKSTREM)
 async function loadLibrary() { 
     try { 
         library = await localforage.getItem('pdf_epub_master') || []; 
         let needsMigration = false;
 
-        // [OPTIMASI DEWA]: Auto-Migrasi. Kalo masih ada array nodes di master, pindahin diam-diam!
+        // [OPTIMASI DEWA]: Auto-Migrasi. Bersihin Nodes & Cover dari RAM UI
         for (let i = 0; i < library.length; i++) {
+            let changed = false;
+            
+            // Pindahin teks buku
             if (library[i].nodes && library[i].nodes.length > 0) {
-                needsMigration = true;
                 await localforage.setItem('content_' + library[i].id, library[i].nodes);
-                delete library[i].nodes; // Babad dari RAM HP lu!
+                delete library[i].nodes; 
+                changed = true;
             }
+            
+            // Pindahin gambar sampul
+            if (library[i].coverBase64 && library[i].coverBase64.length > 50) {
+                await localforage.setItem('cover_' + library[i].id, library[i].coverBase64);
+                delete library[i].coverBase64; 
+                changed = true;
+            }
+            
+            if(changed) needsMigration = true;
         }
 
         if (needsMigration) {
             await localforage.setItem('pdf_epub_master', library);
-            console.log("Database dipisah biar RAM ga jebol. Mantap!");
+            console.log("Database Node & Cover dipisah biar RAM ga jebol. Mantap!");
         }
 
         renderLibrary(); 
@@ -803,32 +812,79 @@ function renderLibrary(filterText = "") {
     window.updateBatchSelectionUI();
 }
 
+// [OPTIMASI UI]: Render Cover Secara Async
 function createBookCard(book, isSlider = false, index = 0) {
     const progress = book.progressPct || 0; 
     const card = document.createElement('div');
     
-    let shapeClass = "";
-    let shp = book.shape || 'square';
-    if (shp === 'rounded') shapeClass = 'rounded-[24px]';
-    else if (shp === 'square') shapeClass = 'rounded-xl';
-    else shapeClass = index % 2 === 0 ? 'rounded-tl-[32px] rounded-br-[32px] rounded-tr-lg rounded-bl-lg' : 'rounded-tr-[32px] rounded-bl-[32px] rounded-tl-lg rounded-br-lg';
+    let shapeClass = book.shape === 'rounded' ? 'rounded-[24px]' : (book.shape === 'square' ? 'rounded-xl' : (index % 2 === 0 ? 'rounded-tl-[32px] rounded-br-[32px] rounded-tr-lg rounded-bl-lg' : 'rounded-tr-[32px] rounded-bl-[32px] rounded-tl-lg rounded-br-lg'));
 
-    let bgStyle = ""; let textOverlay = ""; let baseClass = "";
-    if(book.coverBase64) {
-        bgStyle = `background-image: url('${book.coverBase64}'); background-size: cover; background-position: top center;`;
-        baseClass = "text-white border-none outline-none ring-0 shadow-lg"; 
-        textOverlay = `<div class="absolute inset-x-0 bottom-0 h-[80%] bg-gradient-to-t from-black via-black/40 to-transparent pointer-events-none z-0 rounded-b-inherit border-none outline-none"></div>`;
-    } else {
-        const colors = [
-            'bg-m3-primaryContainer text-m3-onPrimaryContainer', 
-            'bg-m3-secondaryContainer text-m3-onSecondaryContainer', 
-            'bg-m3-tertiaryContainer text-m3-onTertiaryContainer',
-            'bg-m3-surfaceVariant text-m3-onSurfaceVariant'
-        ];
-        baseClass = colors[index % colors.length];
-    }
-
+    const colors = [
+        'bg-m3-primaryContainer text-m3-onPrimaryContainer', 
+        'bg-m3-secondaryContainer text-m3-onSecondaryContainer', 
+        'bg-m3-tertiaryContainer text-m3-onTertiaryContainer',
+        'bg-m3-surfaceVariant text-m3-onSurfaceVariant'
+    ];
+    let baseClass = colors[index % colors.length];
     const dimensionClass = isSlider ? "w-64 h-40 shrink-0 snap-start" : "aspect-[3/4.5] w-full shadow-md hover:shadow-xl transition-shadow";
+
+    card.className = `${baseClass} ${shapeClass} ${dimensionClass} p-4 relative cursor-pointer card-morph flex flex-col justify-between overflow-hidden border-none outline-none ring-0`;
+
+    let batchOverlayHTML = !isSlider ? `
+        <div class="batch-overlay absolute inset-0 z-20 transition-all duration-300 pointer-events-none rounded-inherit" data-book-id="${book.id}" style="display: none; opacity: 0; background-color: transparent;">
+            <div class="batch-icon-box absolute top-3 left-3 w-7 h-7 rounded-full flex items-center justify-center transition-colors"></div>
+        </div>
+    ` : '';
+
+    // Render HTML Dasar (Tanpa Cover)
+    card.innerHTML = `
+        ${batchOverlayHTML}
+        <div class="absolute inset-x-0 bottom-0 h-[80%] bg-gradient-to-t from-black via-black/40 to-transparent pointer-events-none z-0 rounded-b-inherit border-none outline-none hidden" id="overlay-${book.id}"></div>
+        
+        <div class="relative z-10 flex flex-col h-full justify-between pointer-events-none border-none">
+            <div class="flex ${isSlider ? 'justify-between items-start' : 'justify-end gap-1'} w-full drop-shadow-md" id="top-icons-${book.id}">
+                ${isSlider ? `<span class="inline-block text-[0.65rem] font-bold px-2 py-0.5 bg-black/40 rounded-full text-white uppercase tracking-widest">${book.type}</span>` : (book.isPinned ? `<i data-lucide="pin" class="w-3.5 h-3.5 opacity-90 fill-current"></i>` : '')}
+            </div>
+            <div class="mt-auto flex flex-col border-none">
+                ${!isSlider ? `<i data-lucide="book" class="w-6 h-6 mb-2 opacity-80" id="book-icon-${book.id}"></i>` : ''}
+                <h3 class="font-bold ${isSlider ? 'text-sm line-clamp-2' : 'text-sm mt-1 line-clamp-3'} leading-tight drop-shadow-md" id="title-${book.id}">${book.title}</h3>
+                ${!isSlider ? `<span class="inline-block mt-2 mb-2 text-[0.6rem] font-bold px-2 py-0.5 bg-black/40 rounded-full text-white uppercase tracking-widest self-start">${book.type}</span>` : ''}
+                <div class="w-full ${isSlider ? 'mt-2' : ''} border-none">
+                    <div class="flex justify-between text-[${isSlider ? '0.65rem' : '0.6rem'}] font-bold opacity-90 mb-1" id="pct-${book.id}"><span>${progress}%</span></div>
+                    <div class="h-1.5 w-full bg-black/20 dark:bg-white/20 rounded-full overflow-hidden border-none">
+                        <div class="h-full bg-m3-primary dark:bg-m3-primaryContainer rounded-full border-none" style="width: ${progress}%" id="bar-${book.id}"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+
+    // Load Cover di Background
+    localforage.getItem('cover_' + book.id).then(coverData => {
+        if (coverData && coverData.length > 50) {
+            card.style.backgroundImage = `url('${coverData}')`;
+            card.style.backgroundSize = 'cover';
+            card.style.backgroundPosition = 'top center';
+            
+            // Terapin efek teks putih & shadow karena ada background gelap
+            card.classList.remove(...baseClass.split(' '));
+            card.classList.add('text-white', 'shadow-lg');
+            
+            const overlay = document.getElementById(`overlay-${book.id}`);
+            if(overlay) overlay.classList.remove('hidden');
+            
+            ['title-', 'top-icons-', 'pct-'].forEach(prefix => {
+                const el = document.getElementById(prefix + book.id);
+                if(el) el.classList.add('text-white');
+            });
+            
+            const bar = document.getElementById(`bar-${book.id}`);
+            if(bar) { bar.classList.remove('bg-m3-primary', 'dark:bg-m3-primaryContainer'); bar.classList.add('bg-white'); }
+            
+            const icon = document.getElementById(`book-icon-${book.id}`);
+            if(icon) icon.classList.add('hidden');
+        }
+    });
 
     let pressTimer = null; let isPressing = false; let hasLongPressed = false;
     const handleStart = (e) => {
@@ -860,66 +916,6 @@ function createBookCard(book, isSlider = false, index = 0) {
         window.openBook(book); 
     });
 
-    card.className = `${baseClass} ${shapeClass} ${dimensionClass} p-4 relative cursor-pointer card-morph flex flex-col justify-between overflow-hidden border-none outline-none ring-0`;
-    card.style = bgStyle;
-
-    let batchOverlayHTML = '';
-    if (!isSlider) {
-        batchOverlayHTML = `
-            <div class="batch-overlay absolute inset-0 z-20 transition-all duration-300 pointer-events-none rounded-inherit" data-book-id="${book.id}" style="display: none; opacity: 0; background-color: transparent;">
-                <div class="batch-icon-box absolute top-3 left-3 w-7 h-7 rounded-full flex items-center justify-center transition-colors"></div>
-            </div>
-        `;
-    }
-
-    const titleShadow = book.coverBase64 ? 'text-white' : '';
-    const barBase = book.coverBase64 ? 'bg-white' : 'bg-m3-primary dark:bg-m3-primaryContainer';
-
-    let indicators = '';
-    if(!isSlider) {
-        if(book.isPinned) indicators += `<i data-lucide="pin" class="w-3.5 h-3.5 opacity-90 fill-current"></i>`;
-    }
-
-    if (isSlider) {
-        card.innerHTML = `
-            ${textOverlay}
-            <div class="relative z-10 flex flex-col h-full justify-between pointer-events-none border-none">
-                <div class="flex justify-between w-full items-start">
-                    <span class="inline-block text-[0.65rem] font-bold px-2 py-0.5 bg-black/40 rounded-full text-white uppercase tracking-widest">${book.type}</span>
-                </div>
-                <div class="mt-auto flex flex-col border-none">
-                    <h3 class="font-bold text-sm leading-tight line-clamp-2 drop-shadow-md ${titleShadow}">${book.title}</h3>
-                    <div class="w-full mt-2 border-none">
-                        <div class="flex justify-between text-[0.65rem] font-bold opacity-90 mb-1 ${titleShadow}"><span>${progress}%</span></div>
-                        <div class="h-1.5 w-full bg-black/20 dark:bg-white/20 rounded-full overflow-hidden border-none">
-                            <div class="h-full ${barBase} rounded-full border-none" style="width: ${progress}%"></div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        `;
-    } else {
-        card.innerHTML = `
-            ${batchOverlayHTML}
-            ${textOverlay}
-            <div class="relative z-10 flex flex-col h-full justify-between pointer-events-none border-none">
-                <div class="flex justify-end w-full gap-1 drop-shadow-md ${titleShadow}">${indicators}</div>
-                <div class="mt-auto flex flex-col border-none">
-                    ${book.coverBase64 ? '' : '<i data-lucide="book" class="w-6 h-6 mb-2 opacity-80"></i>'}
-                    <h3 class="font-bold text-sm leading-tight mt-1 line-clamp-3 drop-shadow-md ${titleShadow}">${book.title}</h3>
-                    <span class="inline-block mt-2 mb-2 text-[0.6rem] font-bold px-2 py-0.5 bg-black/40 rounded-full text-white uppercase tracking-widest self-start">${book.type}</span>
-                    <div class="w-full border-none">
-                        <div class="flex justify-between text-[0.6rem] font-bold opacity-90 mb-1 ${titleShadow}">
-                            <span>${progress}%</span>
-                        </div>
-                        <div class="h-1.5 w-full bg-black/20 dark:bg-white/20 rounded-full overflow-hidden border-none">
-                            <div class="h-full ${barBase} rounded-full border-none" style="width: ${progress}%"></div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        `;
-    }
     return card;
 }
 
@@ -1027,9 +1023,10 @@ window.executeBatchDelete = async function() {
             window.closeDialog();
             const toDeleteSet = new Set(selectedForDelete.map(String));
             
-            // [OPTIMASI]: Bersihkan juga database kontennya!
+            // Bersihin DB Pecahan
             for(let id of selectedForDelete) {
                 await localforage.removeItem('content_' + id);
+                await localforage.removeItem('cover_' + id);
             }
 
             library = library.filter(b => !toDeleteSet.has(String(b.id)));
@@ -1048,8 +1045,8 @@ window.triggerDeleteView = async function() {
         { text: "Hapus", primary: true, action: async () => {
             window.closeDialog();
             
-            // [OPTIMASI]: Bersihkan DB Konten terpisah
             await localforage.removeItem('content_' + activeOptsId);
+            await localforage.removeItem('cover_' + activeOptsId);
 
             library = library.filter(b => !selectedForDelete.includes(b.id) && b.id !== activeOptsId); 
             await localforage.setItem('pdf_epub_master', library); 
@@ -1099,7 +1096,8 @@ window.saveBookEdit = async function() {
         if (coverFile) { 
             const reader = new FileReader(); 
             reader.onload = async function(e) { 
-                library[bookIndex].coverBase64 = e.target.result; await localforage.setItem('pdf_epub_master', library); 
+                await localforage.setItem('cover_' + id, e.target.result); // Save langsung ke DB pecahan
+                await localforage.setItem('pdf_epub_master', library); 
                 history.back(); renderLibrary(); 
             }; 
             reader.readAsDataURL(coverFile); 
@@ -1247,7 +1245,7 @@ window.openBook = async function(book) {
 
     DOM.progBar.style.width = `${book.progressPct || 0}%`; DOM.progTxt.textContent = `${book.progressPct || 0}%`;
 
-    // [OPTIMASI DEWA]: Fetch nodes dari storage independen (Lazy Loading)
+    // Fetch nodes dari storage independen
     if (!book.nodes) {
         const savedNodes = await localforage.getItem('content_' + book.id);
         if(savedNodes) {
@@ -1324,11 +1322,11 @@ window._closeReaderAction = function(isFromHistory = false) {
     DOM.readView.classList.add('translate-y-full'); DOM.libView.style.transform = 'scale(1)';
     if(observer) observer.disconnect(); 
     
-    // [OPTIMASI DEWA]: Hapus nodes dari RAM pas buku ditutup
+    // Bebasin RAM pas buku ditutup
     if (activeBookId) {
         let bIdx = library.findIndex(b => b.id === activeBookId);
         if (bIdx > -1 && library[bIdx].nodes) {
-            delete library[bIdx].nodes; // Free RAM!
+            delete library[bIdx].nodes;
         }
     }
 
@@ -1580,7 +1578,7 @@ window.copySelection = function() {
     if (!text) return;
     window.hideSelectionMenu();
     window.getSelection().removeAllRanges();
-    showToast(wikiLang === 'id' ? 'Tersalin!' : (wikiLang === 'es' ? '¡Copiado!' : 'Copied!'));
+    showToast(wikiLang === 'id' ? 'Tersalin!' : 'Copied!');
     if (navigator.clipboard && navigator.clipboard.writeText) {
         navigator.clipboard.writeText(text).catch(() => {
             const ta = document.createElement('textarea');
@@ -1648,7 +1646,7 @@ window.saveBookmarkAnnotation = function() {
         const totalNodes = book.nodes.length;
         const pct = Math.round(((currentSelection.nodeIdx + 1) / totalNodes) * 100);
 
-        let closestChapterName = wikiLang === 'id' ? "Bagian Buku" : (wikiLang === 'es' ? "Sección del libro" : "Book Section");
+        let closestChapterName = wikiLang === 'id' ? "Bagian Buku" : "Book Section";
         for (let i = currentSelection.nodeIdx; i >= 0; i--) {
             if (book.nodes[i].tag === 'h1' || book.nodes[i].tag === 'h2') {
                 closestChapterName = book.nodes[i].text;
@@ -1664,7 +1662,7 @@ window.saveBookmarkAnnotation = function() {
             endOff: currentSelection.endOff,
             text: currentSelection.text, 
             color: activeNoteColor, 
-            title: titleVal || (wikiLang === 'id' ? "Bookmark Baru" : (wikiLang === 'es' ? "Nuevo marcador" : "New Bookmark")), 
+            title: titleVal || (wikiLang === 'id' ? "Bookmark Baru" : "New Bookmark"), 
             note: noteVal,
             meta: `${chapterPreview} — ${pct}%`
         };
