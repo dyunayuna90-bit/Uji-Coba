@@ -139,10 +139,22 @@ const i18n = {
         bakModalTitle: "Pilih Jenis Backup", bakModalDesc: "Pilih format backup yang sesuai dengan kebutuhan lu:",
         bakJsonTitle: "JSON (Progres Saja)", bakJsonDesc: "Sangat ringan & cepat. Hanya menyimpan daftar buku, progres, dan catatan. Lu harus upload ulang file bukunya nanti sebelum direstore.",
         bakZipTitle: "ZIP (Paket Lengkap)", bakZipDesc: "Menyimpan seluruh teks buku, sampul, progres, dan catatan jadi satu file ZIP. Lebih besar, tapi bisa langsung dibaca setelah direstore.",
+        bakZipWarn: "Proses ZIP bisa memakan waktu lama dan berpotensi menyebabkan lag atau crash di beberapa perangkat dengan koleksi buku besar.",
+        bakModalCancel: "Batal",
         btnBakJson: "Backup JSON", btnBakZip: "Backup ZIP",
         zipProcess: "Membuat ZIP...", zipWait: "Mohon tunggu, sedang menyusun dan mengompres file lu...",
         zipExtract: "Mengekstrak ZIP...", zipExtractWait: "Sedang membaca dan memulihkan isi buku dari file ZIP...",
-        zipRestoreConfirm: "Ada {n} buku paket lengkap di file ZIP ini. Semuanya bakal dipulihkan ke library lu. Lanjut?"
+        zipRestoreConfirm: "Ada {n} buku paket lengkap di file ZIP ini. Semuanya bakal dipulihkan ke library lu. Lanjut?",
+        bakLoadingJsonTitle: "Menyiapkan Backup...",
+        bakLoadingJsonMsg: "Mohon tunggu, sedang menyusun data progres lu...",
+        bakLoadingZipTitle: "Membuat ZIP...",
+        bakLoadingZipMsg: "Mohon tunggu, sedang menyusun dan mengompres semua isi buku lu. Proses ini bisa memakan waktu beberapa saat.",
+        bakSuccessTitle: "Backup Sukses!",
+        bakSuccessMsgNative: "File JSON berhasil disimpan di folder Documents:\n{f}",
+        bakSuccessMsgWeb: "File JSON berhasil diunduh:\n{f}",
+        bakZipSuccessMsgNative: "File ZIP berhasil disimpan di folder Documents:\n{f}",
+        bakZipSuccessMsgWeb: "File ZIP berhasil diunduh:\n{f}",
+        bakErrorMsg: "Backup gagal: "
     },
     en: {
         libEmpty: "Library is Empty.", searchBooks: "Search books...", loadingDocs: "Reading Document...", 
@@ -207,10 +219,22 @@ const i18n = {
         bakModalTitle: "Select Backup Type", bakModalDesc: "Choose the backup format you need:",
         bakJsonTitle: "JSON (Progress Only)", bakJsonDesc: "Very lightweight. Saves only your book list, progress, and notes. You must re-upload the original books later.",
         bakZipTitle: "ZIP (Full Backup)", bakZipDesc: "Complete package. Saves all book texts, covers, progress, and notes. Ready to read immediately after restore.",
+        bakZipWarn: "ZIP processing can take a long time and may cause lag or crashes on some devices with large book collections.",
+        bakModalCancel: "Cancel",
         btnBakJson: "Backup JSON", btnBakZip: "Backup ZIP",
         zipProcess: "Creating ZIP...", zipWait: "Please wait, compiling and compressing your files...",
         zipExtract: "Extracting ZIP...", zipExtractWait: "Reading and restoring books from the ZIP file...",
-        zipRestoreConfirm: "Found {n} complete books in this ZIP. They will be restored to your library. Continue?"
+        zipRestoreConfirm: "Found {n} complete books in this ZIP. They will be restored to your library. Continue?",
+        bakLoadingJsonTitle: "Preparing Backup...",
+        bakLoadingJsonMsg: "Please wait, compiling your progress data...",
+        bakLoadingZipTitle: "Creating ZIP...",
+        bakLoadingZipMsg: "Please wait, compiling and compressing all your books. This may take a moment.",
+        bakSuccessTitle: "Backup Successful!",
+        bakSuccessMsgNative: "JSON file saved to Documents folder:\n{f}",
+        bakSuccessMsgWeb: "JSON file downloaded:\n{f}",
+        bakZipSuccessMsgNative: "ZIP file saved to Documents folder:\n{f}",
+        bakZipSuccessMsgWeb: "ZIP file downloaded:\n{f}",
+        bakErrorMsg: "Backup failed: "
     },
     es: {
         libEmpty: "La biblioteca está vacía.", searchBooks: "Buscar libros...", loadingDocs: "Leyendo documento...", 
@@ -275,10 +299,22 @@ const i18n = {
         bakModalTitle: "Tipo de copia", bakModalDesc: "Elige el formato de copia de seguridad:",
         bakJsonTitle: "JSON (Solo progreso)", bakJsonDesc: "Muy ligero. Guarda solo la lista, progreso y notas. Debes volver a subir los libros originales después.",
         bakZipTitle: "ZIP (Copia completa)", bakZipDesc: "Paquete completo. Guarda todos los textos, portadas, progreso y notas. Listo para leer al restaurar.",
+        bakZipWarn: "El proceso ZIP puede tardar mucho y puede causar retrasos o bloqueos en algunos dispositivos con colecciones grandes.",
+        bakModalCancel: "Cancelar",
         btnBakJson: "Copia JSON", btnBakZip: "Copia ZIP",
         zipProcess: "Creando ZIP...", zipWait: "Por favor espera, comprimiendo tus archivos...",
         zipExtract: "Extrayendo ZIP...", zipExtractWait: "Leyendo y restaurando libros del archivo ZIP...",
-        zipRestoreConfirm: "Se encontraron {n} libros completos en este ZIP. Se restaurarán en tu biblioteca. ¿Continuar?"
+        zipRestoreConfirm: "Se encontraron {n} libros completos en este ZIP. Se restaurarán en tu biblioteca. ¿Continuar?",
+        bakLoadingJsonTitle: "Preparando copia...",
+        bakLoadingJsonMsg: "Por favor espera, preparando tus datos de progreso...",
+        bakLoadingZipTitle: "Creando ZIP...",
+        bakLoadingZipMsg: "Por favor espera, comprimiendo todos tus libros. Este proceso puede tardar un momento.",
+        bakSuccessTitle: "¡Copia exitosa!",
+        bakSuccessMsgNative: "Archivo JSON guardado en la carpeta Documentos:\n{f}",
+        bakSuccessMsgWeb: "Archivo JSON descargado:\n{f}",
+        bakZipSuccessMsgNative: "Archivo ZIP guardado en la carpeta Documentos:\n{f}",
+        bakZipSuccessMsgWeb: "Archivo ZIP descargado:\n{f}",
+        bakErrorMsg: "Error al hacer copia: "
     }
 };
 
