@@ -98,7 +98,7 @@ const i18n = {
         extractingCover: "Mengekstrak Sampul...", readingPage: "Membaca Halaman", formattingText: "Memformat Teks...",
         extractingEpub: "Mengekstrak EPUB...", analyzingStruct: "Menganalisa Struktur...", extractingChapter: "Mengekstrak Bab",
         welcomeTitle: "Selamat Datang di Baca.", welcomeDesc: "Harap baca instruksi berikut untuk pengalaman membaca yang optimal.",
-        welBackup: "Pencadangan Data", welBackupDesc: "Gunakan fitur Backup di Pengaturan. Data di-backup jadi file JSON dan otomatis masuk ke folder <b>Documents</b> di penyimpanan utama HP. Ingat, di folder Documents, bukan di DCIM atau Download! Nanti buat restore, anda tinggal klik 'Pilih File' dan cari file tersebut.",
+        welBackup: "Pencadangan Data", welBackupDesc: "Gunakan fitur Backup di Pengaturan. Tersedia opsi <b>JSON</b> (hanya progres) dan <b>ZIP</b> (full backup isi buku). File disimpan di folder <b>Documents</b> HP lu.",
         welFormat: "Batasan Format", welFormatDesc: "<b>PDF:</b> Hanya teks. Gambar diabaikan.<br><b>EPUB:</b> Didukung penuh.",
         welPrivacy: "Privasi Total", welPrivacyDesc: "Diproses secara lokal di perangkat Anda.", welBtn: "Mengerti",
         setMainTitle: "Pengaturan", setPalette: "Palet Tema", setLang: "Bahasa", setInfo: "Info & Dukungan",
@@ -124,7 +124,7 @@ const i18n = {
         editTitle: "Edit Detail", editBookTitle: "Judul Buku", editBookCover: "Gambar Sampul", editBookShape: "Bentuk Kartu", editCancel: "Batal", editSave: "Simpan", optCancel: "Batal", themeLight: "Mode Terang", themeDark: "Mode Gelap", amoledLabel: "AMOLED (Hitam Pekat)",
         shapeDyn: "Dinamis", shapeRound: "Bulat", shapeSquare: "Kotak",                
         rawBakTitle: "Data Backup Mentah", rawBakDesc: "Karena batasan sistem perangkat, silakan salin teks di bawah ini dan simpan ke dalam Note/Pesan WhatsApp/File teks dengan aman.", rawBakCopy: "Salin Teks", rawBakClose: "Tutup",
-        rawResTitle: "Pulihkan Data", rawResDesc: "Paste teks mentah (JSON) backup lu di kotak ini, ATAU pilih file JSON dari perangkat.", rawResFile: "Pilih File", rawResProcess: "Proses Teks", rawResClose: "Batal",
+        rawResTitle: "Pulihkan Data", rawResDesc: "Pilih file JSON (untuk progres) atau ZIP (untuk full backup) dari perangkat lu.", rawResFile: "Pilih File", rawResProcess: "Proses Teks", rawResClose: "Batal",
         setAiConfig: "Konfigurasi AI", geminiPlaceholder: "Gemini API Key...", geminiDesc: "Tambahkan API Key untuk mendapatkan penjelasan pintar dari AI. (Saran optimal: gunakan Gemini 2.5 Flash Lite untuk kecepatan maksimal).", keySaved: "API Key berhasil disimpan.",
 
         statTitle: "Statistik Membaca", statTotal: "Koleksi", statReading: "Dibaca", statCompleted: "Selesai", statNotes: "Catatan",
@@ -135,52 +135,14 @@ const i18n = {
         clearCoversDesc: "Semua gambar sampul akan dihapus permanen untuk menghemat memori. Buku dan progres bacaan tetap aman 100%. Lanjutkan?",
         clearCoversSuccess: "Semua sampul berhasil dihapus! Aplikasi sekarang jauh lebih ringan.",
 
-        // Backup JSON (progress saja)
-        backupEmpty: "Ga ada buku untuk di-backup.",
-        backupProcessingTitle: "Memproses Backup",
-        backupProcessingDesc: "Mohon tunggu sebentar, menyiapkan file lu...",
-        backupSuccessTitle: "Backup Sukses",
-        backupSuccessDesc: "File backup progress berhasil disimpan di folder Documents HP lu.\nNama file: {f}\n\n⚠️ Ingat: backup ini hanya menyimpan progress & catatan, BUKAN isi buku. Saat restore, kamu perlu upload ulang file bukunya terlebih dahulu.",
-        backupSuccessBtn: "Mantap",
-        backupFallbackTitle: "Info Backup Mentah",
-        backupFallbackDesc: "Simpan ke file native gagal. Salin teks JSON ini dan simpan di Notes/WhatsApp/file teks.\n\n⚠️ Ingat: ini hanya backup progress & catatan, BUKAN isi buku. Saat restore, upload ulang bukunya dulu.",
-        backupFallbackBtn: "Mengerti",
-        copiedConfirm: "Berhasil Disalin!",
-
-        // Backup ZIP (komplit)
-        backupZipProcessingTitle: "Membuat Backup ZIP Komplit",
-        backupZipProcessingDesc: "Mengemas seluruh isi buku, progress & catatan ke dalam ZIP... Proses ini bisa memakan waktu beberapa menit tergantung jumlah buku. Mohon jangan tutup aplikasi.",
-        backupZipCompressing: "Mengompresi... {p}%",
-        backupZipSuccessTitle: "Backup ZIP Komplit Sukses!",
-        backupZipSuccessDesc: "File ZIP ({s} MB) berhasil disimpan di folder Documents HP lu.\nNama file: {f}\n\n✅ ZIP ini menyimpan SELURUH isi buku + progress + catatan. Restore ZIP = langsung bisa baca, tanpa upload ulang.",
-        backupZipSuccessDescWeb: "File ZIP ({s} MB) berhasil diunduh.\n\n✅ ZIP ini menyimpan SELURUH isi buku + progress + catatan. Restore ZIP = langsung bisa baca, tanpa upload ulang.",
-        backupZipError: "Backup ZIP gagal: ",
-        zipLibMissing: "Library JSZip tidak ditemukan. Pastikan jszip.min.js sudah ter-load.",
-
-        // Restore — pilih format
-        restoreChooseTitle: "Pulihkan Data",
-        restoreChooseDesc: "Pilih format backup yang kamu punya:\n\n📦 ZIP — backup KOMPLIT (isi buku + progress + catatan). Setelah restore langsung bisa baca, tanpa upload ulang.\n📄 JSON — backup RINGAN (progress & catatan saja). Setelah restore, file buku perlu diupload ulang dulu.",
-        restoreChooseZip: "📦 File ZIP (Komplit)",
-        restoreChooseJson: "📄 File / Teks JSON (Progress saja)",
-
-        // Restore ZIP
-        zipRestoreProcessingTitle: "Membaca File ZIP...",
-        zipRestoreProcessingDesc: "Sedang membuka arsip ZIP, mohon tunggu...",
-        zipNoJsonFound: "File ZIP tidak mengandung data backup yang valid.",
-        restoreConfirmTitle: "Konfirmasi Restore",
-        restoreConfirmBtn: "Lanjut Restore",
-        zipRestoreProgressTitle: "Memulihkan...",
-        zipRestoreProgressDesc: "Sedang memulihkan buku satu per satu, mohon tunggu...",
-        zipRestoreProgress: "Memulihkan buku {n} dari {t}...",
-        restoreSuccessTitle: "Restore Berhasil!",
-        zipRestoreError: "Gagal memulihkan dari ZIP: ",
-
-        // Restore JSON
-        restoreEmptyBox: "Kotak teks masih kosong.",
-        restoreInvalidFormat: "Format file/teks tidak valid.",
-        restoreCorrupted: "Data backup rusak atau tidak kompatibel.",
-        restoreFailedPrefix: "Gagal memulihkan: ",
-        restoreDone: "Restore selesai."
+        // Opsi Backup Baru
+        bakModalTitle: "Pilih Jenis Backup", bakModalDesc: "Pilih format backup yang sesuai dengan kebutuhan lu:",
+        bakJsonTitle: "JSON (Progres Saja)", bakJsonDesc: "Sangat ringan & cepat. Hanya menyimpan daftar buku, progres, dan catatan. Lu harus upload ulang file bukunya nanti sebelum direstore.",
+        bakZipTitle: "ZIP (Paket Lengkap)", bakZipDesc: "Menyimpan seluruh teks buku, sampul, progres, dan catatan jadi satu file ZIP. Lebih besar, tapi bisa langsung dibaca setelah direstore.",
+        btnBakJson: "Backup JSON", btnBakZip: "Backup ZIP",
+        zipProcess: "Membuat ZIP...", zipWait: "Mohon tunggu, sedang menyusun dan mengompres file lu...",
+        zipExtract: "Mengekstrak ZIP...", zipExtractWait: "Sedang membaca dan memulihkan isi buku dari file ZIP...",
+        zipRestoreConfirm: "Ada {n} buku paket lengkap di file ZIP ini. Semuanya bakal dipulihkan ke library lu. Lanjut?"
     },
     en: {
         libEmpty: "Library is Empty.", searchBooks: "Search books...", loadingDocs: "Reading Document...", 
@@ -204,7 +166,7 @@ const i18n = {
         extractingCover: "Extracting Cover...", readingPage: "Reading Page", formattingText: "Formatting Text...",
         extractingEpub: "Extracting EPUB...", analyzingStructure: "Analyzing Structure...", extractingChapter: "Extracting Chapter",
         welcomeTitle: "Welcome to Baca.", welcomeDesc: "Please read these instructions for the optimal reading experience.",
-        welBackup: "Data Backup", welBackupDesc: "Use the Backup feature in Settings. Data is saved as a JSON file directly to the <b>Documents</b> folder on your device's main storage (not DCIM or Downloads). To restore, simply find and select that backup file from the Documents folder.",
+        welBackup: "Data Backup", welBackupDesc: "Use the Backup feature in Settings. Available in <b>JSON</b> (progress only) and <b>ZIP</b> (full backup). Files are saved to the <b>Documents</b> folder.",
         welFormat: "Format Limitations", welFormatDesc: "<b>PDF:</b> Text only. Images ignored.<br><b>EPUB:</b> Fully supported.",
         welPrivacy: "Total Privacy", welPrivacyDesc: "Processed locally on your device.", welBtn: "Got it",
         setMainTitle: "Settings", setPalette: "Theme Palette", setLang: "Language", setInfo: "Info & Support",
@@ -230,7 +192,7 @@ const i18n = {
         editTitle: "Edit Details", editBookTitle: "Book Title", editBookCover: "Cover Image", editBookShape: "Card Shape", editCancel: "Cancel", editSave: "Save", optCancel: "Cancel", themeLight: "Light Mode", themeDark: "Dark Mode", amoledLabel: "AMOLED (Pitch Black)",
         shapeDyn: "Dynamic", shapeRound: "Rounded", shapeSquare: "Square",               
         rawBakTitle: "Raw Backup Data", rawBakDesc: "Due to device restrictions, please copy the text below and save it safely in your Notes or a text file.", rawBakCopy: "Copy Text", rawBakClose: "Close",
-        rawResTitle: "Restore Data", rawResDesc: "Paste your raw backup JSON text here, OR choose a JSON file from your device.", rawResFile: "Select File", rawResProcess: "Process Text", rawResClose: "Cancel",
+        rawResTitle: "Restore Data", rawResDesc: "Select a JSON file (for progress) or ZIP file (for full backup) from your device.", rawResFile: "Select File", rawResProcess: "Process Text", rawResClose: "Cancel",
         setAiConfig: "AI Configuration", geminiPlaceholder: "Gemini API Key...", geminiDesc: "Add your API Key to get smart definitions from AI. (Optimal setup: use Gemini 2.5 Flash Lite for maximum speed).", keySaved: "API Key saved successfully.",
 
         statTitle: "Statistics", statTotal: "Collection", statReading: "Reading", statCompleted: "Completed", statNotes: "Notes",
@@ -241,52 +203,14 @@ const i18n = {
         clearCoversDesc: "All book covers will be permanently deleted to save memory. Book text and reading progress are 100% safe. Continue?",
         clearCoversSuccess: "All covers successfully cleared! The app is now lighter.",
 
-        // Backup JSON (progress only)
-        backupEmpty: "No books to back up.",
-        backupProcessingTitle: "Processing Backup",
-        backupProcessingDesc: "Please wait a moment, preparing your file...",
-        backupSuccessTitle: "Backup Successful",
-        backupSuccessDesc: "Progress backup file saved to your device's Documents folder.\nFile name: {f}\n\n⚠️ Note: this backup only stores progress & notes, NOT book content. To restore, you'll need to re-upload your book files first.",
-        backupSuccessBtn: "Got it",
-        backupFallbackTitle: "Raw Backup Info",
-        backupFallbackDesc: "Saving to native file failed. Please copy this JSON text and save it in Notes/WhatsApp/a text file.\n\n⚠️ Note: this only backs up progress & notes, NOT book content. Re-upload your books when restoring.",
-        backupFallbackBtn: "Understood",
-        copiedConfirm: "Copied!",
-
-        // Backup ZIP (full)
-        backupZipProcessingTitle: "Creating Full ZIP Backup",
-        backupZipProcessingDesc: "Packaging all book content, progress & notes into a ZIP... This may take a few minutes depending on the number of books. Please don't close the app.",
-        backupZipCompressing: "Compressing... {p}%",
-        backupZipSuccessTitle: "Full ZIP Backup Complete!",
-        backupZipSuccessDesc: "ZIP file ({s} MB) saved to your device's Documents folder.\nFile name: {f}\n\n✅ This ZIP stores ALL book content + progress + notes. Restore ZIP = read immediately, no re-upload needed.",
-        backupZipSuccessDescWeb: "ZIP file ({s} MB) downloaded successfully.\n\n✅ This ZIP stores ALL book content + progress + notes. Restore ZIP = read immediately, no re-upload needed.",
-        backupZipError: "ZIP backup failed: ",
-        zipLibMissing: "JSZip library not found. Make sure jszip.min.js is loaded.",
-
-        // Restore — choose format
-        restoreChooseTitle: "Restore Data",
-        restoreChooseDesc: "Choose the backup format you have:\n\n📦 ZIP — FULL backup (book content + progress + notes). After restoring you can read immediately, no re-upload needed.\n📄 JSON — LIGHTWEIGHT backup (progress & notes only). After restoring, book files need to be re-uploaded first.",
-        restoreChooseZip: "📦 ZIP File (Full)",
-        restoreChooseJson: "📄 JSON File / Text (Progress only)",
-
-        // Restore ZIP
-        zipRestoreProcessingTitle: "Reading ZIP File...",
-        zipRestoreProcessingDesc: "Opening the ZIP archive, please wait...",
-        zipNoJsonFound: "ZIP file does not contain valid backup data.",
-        restoreConfirmTitle: "Confirm Restore",
-        restoreConfirmBtn: "Proceed",
-        zipRestoreProgressTitle: "Restoring...",
-        zipRestoreProgressDesc: "Restoring books one by one, please wait...",
-        zipRestoreProgress: "Restoring book {n} of {t}...",
-        restoreSuccessTitle: "Restore Successful!",
-        zipRestoreError: "Failed to restore from ZIP: ",
-
-        // Restore JSON
-        restoreEmptyBox: "Text box is empty.",
-        restoreInvalidFormat: "Invalid file or text format.",
-        restoreCorrupted: "Backup data is corrupted or incompatible.",
-        restoreFailedPrefix: "Restore failed: ",
-        restoreDone: "Restore complete."
+        // Opsi Backup Baru
+        bakModalTitle: "Select Backup Type", bakModalDesc: "Choose the backup format you need:",
+        bakJsonTitle: "JSON (Progress Only)", bakJsonDesc: "Very lightweight. Saves only your book list, progress, and notes. You must re-upload the original books later.",
+        bakZipTitle: "ZIP (Full Backup)", bakZipDesc: "Complete package. Saves all book texts, covers, progress, and notes. Ready to read immediately after restore.",
+        btnBakJson: "Backup JSON", btnBakZip: "Backup ZIP",
+        zipProcess: "Creating ZIP...", zipWait: "Please wait, compiling and compressing your files...",
+        zipExtract: "Extracting ZIP...", zipExtractWait: "Reading and restoring books from the ZIP file...",
+        zipRestoreConfirm: "Found {n} complete books in this ZIP. They will be restored to your library. Continue?"
     },
     es: {
         libEmpty: "La biblioteca está vacía.", searchBooks: "Buscar libros...", loadingDocs: "Leyendo documento...", 
@@ -310,7 +234,7 @@ const i18n = {
         extractingCover: "Extrayendo portada...", readingPage: "Leyendo página", formattingText: "Formateando texto...",
         extractingEpub: "Extrayendo EPUB...", analyzingStructure: "Analizando estructura...", extractingChapter: "Extrayendo capítulo",
         welcomeTitle: "Bienvenido a Baca.", welcomeDesc: "Por favor, lee estas instrucciones para una experiencia de lectura óptima.",
-        welBackup: "Copia de seguridad", welBackupDesc: "Usa la función de copia de seguridad en Ajustes. Los datos se guardan como un archivo JSON directamente en la carpeta <b>Documentos</b> del almacenamiento principal de tu dispositivo. Para restaurar, simplemente selecciona ese archivo desde la carpeta Documentos.",
+        welBackup: "Copia de seguridad", welBackupDesc: "Usa la función en Ajustes. Disponible en <b>JSON</b> (solo progreso) y <b>ZIP</b> (completo). Se guardan en la carpeta <b>Documentos</b>.",
         welFormat: "Limitaciones de formato", welFormatDesc: "<b>PDF:</b> Solo texto. Se ignoran las imágenes.<br><b>EPUB:</b> Totalmente compatible.",
         welPrivacy: "Privacidad total", welPrivacyDesc: "Procesado localmente en tu dispositivo.", welBtn: "Entendido",
         setMainTitle: "Ajustes", setPalette: "Paleta de temas", setLang: "Idioma", setInfo: "Información y soporte",
@@ -336,7 +260,7 @@ const i18n = {
         editTitle: "Editar detalles", editBookTitle: "Título del libro", editBookCover: "Imagen de portada", editBookShape: "Forma de la tarjeta", editCancel: "Cancelar", editSave: "Guardar", optCancel: "Cancelar", themeLight: "Modo claro", themeDark: "Modo oscuro", amoledLabel: "AMOLED (Negro puro)",
         shapeDyn: "Dinámico", shapeRound: "Redondeado", shapeSquare: "Cuadrado",               
         rawBakTitle: "Datos de copia de seguridad sin procesar", rawBakDesc: "Debido a restricciones del dispositivo, copia el texto a continuación y guárdalo de forma segura en tus Notas.", rawBakCopy: "Copiar texto", rawBakClose: "Cerrar",
-        rawResTitle: "Restaurar datos", rawResDesc: "Pega el texto JSON de tu copia de seguridad aquí, O elige un archivo JSON de tu dispositivo.", rawResFile: "Seleccionar archivo", rawResProcess: "Procesar texto", rawResClose: "Cancelar",
+        rawResTitle: "Restaurar datos", rawResDesc: "Selecciona un archivo JSON (progreso) o ZIP (completo) desde tu dispositivo.", rawResFile: "Seleccionar archivo", rawResProcess: "Procesar texto", rawResClose: "Cancelar",
         setAiConfig: "Configuración de IA", geminiPlaceholder: "Clave API de Gemini...", geminiDesc: "Añade tu clave API para obtener definiciones inteligentes de la IA. (Configuración óptima: usa Gemini 2.5 Flash Lite para máxima velocidad).", keySaved: "Clave API guardada con éxito.",
 
         statTitle: "Estadísticas", statTotal: "Colección", statReading: "Leyendo", statCompleted: "Completados", statNotes: "Notas",
@@ -347,52 +271,14 @@ const i18n = {
         clearCoversDesc: "Todas las portadas se eliminarán permanentemente para ahorrar memoria. El texto y el progreso están 100% seguros. ¿Continuar?",
         clearCoversSuccess: "¡Portadas borradas! La aplicación ahora es más ligera.",
 
-        // Backup JSON (solo progreso)
-        backupEmpty: "No hay libros para hacer copia de seguridad.",
-        backupProcessingTitle: "Procesando copia de seguridad",
-        backupProcessingDesc: "Por favor espera un momento, preparando tu archivo...",
-        backupSuccessTitle: "Copia de seguridad exitosa",
-        backupSuccessDesc: "Archivo de progreso guardado en la carpeta Documentos de tu dispositivo.\nNombre de archivo: {f}\n\n⚠️ Recuerda: esta copia solo guarda el progreso y las notas, NO el contenido. Al restaurar, deberás volver a subir los archivos de libro.",
-        backupSuccessBtn: "Entendido",
-        backupFallbackTitle: "Info de copia sin procesar",
-        backupFallbackDesc: "No se pudo guardar en archivo nativo. Copia este texto JSON y guárdalo en Notas/WhatsApp/archivo de texto.\n\n⚠️ Recuerda: esto solo respalda el progreso y las notas, NO el contenido del libro. Vuelve a subir los libros al restaurar.",
-        backupFallbackBtn: "Entendido",
-        copiedConfirm: "¡Copiado!",
-
-        // Backup ZIP (completo)
-        backupZipProcessingTitle: "Creando copia ZIP completa",
-        backupZipProcessingDesc: "Empaquetando todo el contenido del libro, progreso y notas en un ZIP... Esto puede tardar varios minutos según la cantidad de libros. Por favor no cierres la aplicación.",
-        backupZipCompressing: "Comprimiendo... {p}%",
-        backupZipSuccessTitle: "¡Copia ZIP completa exitosa!",
-        backupZipSuccessDesc: "Archivo ZIP ({s} MB) guardado en la carpeta Documentos de tu dispositivo.\nNombre de archivo: {f}\n\n✅ Este ZIP almacena TODO el contenido + progreso + notas. Restaurar ZIP = leer de inmediato, sin volver a subir nada.",
-        backupZipSuccessDescWeb: "Archivo ZIP ({s} MB) descargado exitosamente.\n\n✅ Este ZIP almacena TODO el contenido + progreso + notas. Restaurar ZIP = leer de inmediato, sin volver a subir nada.",
-        backupZipError: "Error en copia ZIP: ",
-        zipLibMissing: "Librería JSZip no encontrada. Asegúrate de que jszip.min.js esté cargado.",
-
-        // Restaurar — elegir formato
-        restoreChooseTitle: "Restaurar datos",
-        restoreChooseDesc: "Elige el formato de copia que tienes:\n\n📦 ZIP — copia COMPLETA (contenido + progreso + notas). Tras restaurar puedes leer de inmediato, sin volver a subir nada.\n📄 JSON — copia LIGERA (solo progreso y notas). Tras restaurar, debes volver a subir los archivos de libro.",
-        restoreChooseZip: "📦 Archivo ZIP (Completo)",
-        restoreChooseJson: "📄 Archivo / Texto JSON (Solo progreso)",
-
-        // Restaurar ZIP
-        zipRestoreProcessingTitle: "Leyendo archivo ZIP...",
-        zipRestoreProcessingDesc: "Abriendo el archivo ZIP, por favor espera...",
-        zipNoJsonFound: "El archivo ZIP no contiene datos de copia de seguridad válidos.",
-        restoreConfirmTitle: "Confirmar restauración",
-        restoreConfirmBtn: "Proceder",
-        zipRestoreProgressTitle: "Restaurando...",
-        zipRestoreProgressDesc: "Restaurando libros uno por uno, por favor espera...",
-        zipRestoreProgress: "Restaurando libro {n} de {t}...",
-        restoreSuccessTitle: "¡Restauración exitosa!",
-        zipRestoreError: "Error al restaurar desde ZIP: ",
-
-        // Restaurar JSON
-        restoreEmptyBox: "El cuadro de texto está vacío.",
-        restoreInvalidFormat: "Formato de archivo o texto no válido.",
-        restoreCorrupted: "Los datos de copia están dañados o son incompatibles.",
-        restoreFailedPrefix: "Error al restaurar: ",
-        restoreDone: "Restauración completa."
+        // Opsi Backup Baru
+        bakModalTitle: "Tipo de copia", bakModalDesc: "Elige el formato de copia de seguridad:",
+        bakJsonTitle: "JSON (Solo progreso)", bakJsonDesc: "Muy ligero. Guarda solo la lista, progreso y notas. Debes volver a subir los libros originales después.",
+        bakZipTitle: "ZIP (Copia completa)", bakZipDesc: "Paquete completo. Guarda todos los textos, portadas, progreso y notas. Listo para leer al restaurar.",
+        btnBakJson: "Copia JSON", btnBakZip: "Copia ZIP",
+        zipProcess: "Creando ZIP...", zipWait: "Por favor espera, comprimiendo tus archivos...",
+        zipExtract: "Extrayendo ZIP...", zipExtractWait: "Leyendo y restaurando libros del archivo ZIP...",
+        zipRestoreConfirm: "Se encontraron {n} libros completos en este ZIP. Se restaurarán en tu biblioteca. ¿Continuar?"
     }
 };
 
