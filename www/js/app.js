@@ -673,45 +673,75 @@ async function executeRestoreLogic(jsonString) {
     try {
         const parsedData = JSON.parse(jsonString);
         if (!Array.isArray(parsedData)) throw new Error("Format file/teks tidak valid.");
-        
+
         const isValid = parsedData.every(b => b.id && b.title);
         if (!isValid) throw new Error("Data backup rusak atau tidak kompatibel.");
-        
+
+        // Hitung berapa buku yang sudah ada di library (kontennya ada = langsung bisa baca)
+        const existingIds = new Set(library.map(b => b.id));
+        const matchCount = parsedData.filter(b => existingIds.has(b.id)).length;
+        const newCount = parsedData.length - matchCount;
+
+        const confirmMsg = wikiLang === 'id'
+            ? `Ditemukan ${matchCount} buku yang cocok (progress & catatan akan dipulihkan) dan ${newCount} buku baru (perlu import ulang file aslinya). Lanjut?`
+            : `Found ${matchCount} matching books (progress & notes restored) and ${newCount} new books (re-import original files). Continue?`;
+
         showDialog(
             wikiLang === 'id' ? "Konfirmasi Restore" : "Confirm Restore",
-            wikiLang === 'id' ? "PERINGATAN: Semua data buku saat ini akan ketimpa total. Yakin mau lanjut?" : "WARNING: Current books will be completely replaced. Continue?",
+            confirmMsg,
             "alert-triangle",
             [
-                { text: "Batal", primary: false },
-                { text: "Lanjut", primary: true, action: async () => {
+                { text: wikiLang === 'id' ? "Batal" : "Cancel", primary: false },
+                { text: wikiLang === 'id' ? "Lanjut" : "Continue", primary: true, action: async () => {
                     window.closeDialog();
-                    
-                    let newLibrary = [];
-                    for(let b of parsedData) {
-                        // Kalo ada nodes di file backup, balikin ke DB terpisah
-                        if(b.nodes && b.nodes.length > 0) {
+
+                    // [MERGE CERDAS]: Buku yang sudah ada → update progress + annotations saja
+                    // Buku baru dari backup → masuk sebagai entri kosong, tunggu import ulang file asli
+                    let mergedLibrary = [...library];
+
+                    for (let b of parsedData) {
+                        // Kalo ada nodes di file backup (format backup lama), balikin ke DB terpisah
+                        if (b.nodes && b.nodes.length > 0) {
                             await localforage.setItem('content_' + b.id, b.nodes);
                         }
-                        
+
                         let meta = {...b};
                         delete meta.nodes;
-                        delete meta.coverBase64; // Cover otomatis kosong (biar enteng)
-                        newLibrary.push(meta);
+                        delete meta.coverBase64;
+
+                        const existingIndex = mergedLibrary.findIndex(lib => lib.id === b.id);
+                        if (existingIndex > -1) {
+                            // Buku cocok — pertahankan konten lokal, timpa hanya progress + annotations
+                            mergedLibrary[existingIndex] = {
+                                ...mergedLibrary[existingIndex],
+                                progressPct: meta.progressPct,
+                                lastReadId: meta.lastReadId,
+                                annotations: meta.annotations || [],
+                                isPinned: meta.isPinned,
+                                title: meta.title,
+                            };
+                        } else {
+                            // Buku baru dari backup — masuk library, konten kosong sampai di-import ulang
+                            mergedLibrary.push(meta);
+                        }
                     }
 
-                    await localforage.setItem('pdf_epub_master', newLibrary);
-                    library = newLibrary;
+                    await localforage.setItem('pdf_epub_master', mergedLibrary);
+                    library = mergedLibrary;
                     renderLibrary(DOM.globalSearch.value);
-                    
+
                     if (!document.getElementById('raw-restore-modal').classList.contains('hidden')) history.back();
                     setTimeout(() => {
                         if (!document.getElementById('global-settings-modal').classList.contains('hidden')) history.back();
                     }, 300);
-                    
+
                     setTimeout(() => {
+                        const successMsg = wikiLang === 'id'
+                            ? `Restore selesai! ${matchCount} buku langsung bisa dibaca, ${newCount} buku perlu import ulang file aslinya.`
+                            : `Restore done! ${matchCount} books ready to read, ${newCount} books need original files re-imported.`;
                         showDialog(
                             wikiLang === 'id' ? "Restore Berhasil!" : "Restore Success!",
-                            wikiLang === 'id' ? "Data aplikasi lu udah berhasil dipulihin dengan super ringan." : "Your data has been successfully restored.",
+                            successMsg,
                             "check-circle",
                             [{ text: "Oke", primary: true }]
                         );
