@@ -563,10 +563,6 @@ window.exportData = async function() {
                         for (let i = 0; i < library.length; i++) {
                             let strippedBook = { ...library[i] };
                             
-                            // Tarik nodes dari database pecahan
-                            let contentNodes = await localforage.getItem('content_' + strippedBook.id);
-                            strippedBook.nodes = contentNodes || [];
-                            
                             // PASTIKAN COVER GA IKUT DIBACKUP. Kalo ngikut, file JSON bakal Gede & Force Close pas Restore.
                             delete strippedBook.coverBase64;
 
