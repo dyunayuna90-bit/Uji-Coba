@@ -1,3 +1,8 @@
+window.onerror = function(msg, src, line, col, err) {
+    document.body.innerHTML = '<div style="padding:20px;font-size:14px;color:red">' + 
+        '<b>ERROR:</b><br>' + msg + '<br><b>Line:</b> ' + line + '</div>';
+};
+
 // --- APP LOGIC ---
 // Mengurus interaksi UI, Tema, Render Library, Fitur In-Book Bookmark, & Manajemen Memori Tingkat Dewa
 
