@@ -1959,8 +1959,7 @@ window.filterBookmarkPanel = function(query) {
 
 // 12. SWIPE TO DISMISS LOGIC & SCROLL LOCK
 function setupSwipeToDismiss() {
-    // FIX 1: backup-type-sheet udah dimasukin array
-    const sheets = ['global-settings-sheet', 'b-opt-sheet', 'edit-sheet', 'bookmark-sheet', 'raw-backup-sheet', 'raw-restore-sheet', 'welcome-sheet', 'backup-type-sheet'];
+    const sheets = ['global-settings-sheet', 'b-opt-sheet', 'edit-sheet', 'bookmark-sheet', 'raw-backup-sheet', 'raw-restore-sheet', 'welcome-sheet', 'backup-type-sheet', 'ai-sheet'];
     
     sheets.forEach(sheetId => {
         const sheet = document.getElementById(sheetId);
@@ -1968,11 +1967,11 @@ function setupSwipeToDismiss() {
         let touchStartY = 0; let isPulling = false;
         
         sheet.addEventListener('touchstart', (e) => {
-            // FIX 2: Cek apakah user lagi scroll di dalam area scrollable (misal di Lihat Instruksi)
             let target = e.target;
             let isScrollableArea = false;
             
-            while (target && target !== sheet && target !== document.body) {
+            // FIX: Cek dari target sentuhan sampai ke elemen sheet itu sendiri
+            while (target && target !== document.body) {
                 const style = window.getComputedStyle(target);
                 if (style.overflowY === 'auto' || style.overflowY === 'scroll') {
                     if (target.scrollTop > 0) {
@@ -1980,6 +1979,7 @@ function setupSwipeToDismiss() {
                         break;
                     }
                 }
+                if (target === sheet) break; // Berhenti ngecek setelah ngetes badan sheet-nya
                 target = target.parentNode;
             }
             
@@ -1994,7 +1994,12 @@ function setupSwipeToDismiss() {
             const deltaY = e.touches[0].clientY - touchStartY;
             if (deltaY > 0) { 
                 isPulling = true; if(e.cancelable) e.preventDefault(); 
-                sheet.style.transform = `translateY(${deltaY * 0.5}px)`; 
+                
+                if (sheetId === 'global-settings-sheet' || sheetId === 'b-opt-sheet' || sheetId === 'ai-sheet') {
+                    sheet.style.transform = `translateY(${deltaY * 0.5}px)`; 
+                } else {
+                    sheet.style.transform = `scale(0.75) translateY(${12 + (deltaY * 0.5)}px)`;
+                }
             }
         }, { passive: false });
 
@@ -2006,55 +2011,17 @@ function setupSwipeToDismiss() {
             sheet.style.transition = 'transform 0.3s cubic-bezier(0.2, 0, 0, 1)';
             
             if (deltaY > 100) { 
-                sheet.style.transform = 'translateY(100%)'; 
-                setTimeout(() => { history.back(); setTimeout(() => { sheet.style.transform = ''; }, 100); }, 100);
-            } else { sheet.style.transform = ''; }
+                if (sheetId === 'global-settings-sheet' || sheetId === 'b-opt-sheet' || sheetId === 'ai-sheet') {
+                    sheet.style.transform = 'translateY(100%)'; 
+                } else {
+                    sheet.style.transform = 'scale(0.75) translateY(100vh)'; 
+                }
+                setTimeout(() => { history.back(); setTimeout(() => { sheet.style.transform = ''; }, 100); }, 10);
+            } else { 
+                sheet.style.transform = ''; 
+            }
         });
     });
-
-    const aiSheet = document.getElementById('ai-sheet');
-    if (aiSheet) {
-        let aiTouchStartY = 0; let aiIsPulling = false;
-        aiSheet.addEventListener('touchstart', (e) => {
-            let target = e.target;
-            let isScrollableArea = false;
-            while (target && target !== aiSheet && target !== document.body) {
-                const style = window.getComputedStyle(target);
-                if (style.overflowY === 'auto' || style.overflowY === 'scroll') {
-                    if (target.scrollTop > 0) {
-                        isScrollableArea = true;
-                        break;
-                    }
-                }
-                target = target.parentNode;
-            }
-            aiSheet.dataset.preventSwipe = isScrollableArea ? "true" : "false";
-            aiTouchStartY = e.touches[0].clientY;
-            aiIsPulling = false;
-            aiSheet.style.transition = 'none';
-        }, { passive: true });
-        
-        aiSheet.addEventListener('touchmove', (e) => {
-            if (aiSheet.dataset.preventSwipe === "true") return;
-            const deltaY = e.touches[0].clientY - aiTouchStartY;
-            if (deltaY > 0) {
-                aiIsPulling = true;
-                if(e.cancelable) e.preventDefault();
-                aiSheet.style.transform = `translateY(${deltaY * 0.5}px)`;
-            }
-        }, { passive: false });
-        
-        aiSheet.addEventListener('touchend', (e) => {
-            if (aiSheet.dataset.preventSwipe === "true") return;
-            if (!aiIsPulling) return; aiIsPulling = false;
-            const deltaY = e.changedTouches[0].clientY - aiTouchStartY;
-            aiSheet.style.transition = 'transform 0.3s cubic-bezier(0.2, 0, 0, 1)';
-            if (deltaY > 100) {
-                aiSheet.style.transform = 'translateY(100%)';
-                setTimeout(() => { history.back(); setTimeout(() => { aiSheet.style.transform = ''; }, 100); }, 100);
-            } else { aiSheet.style.transform = ''; }
-        });
-    }
 
     const panels = ['toc-panel', 'settings-panel', 'bookmark-panel'];
     panels.forEach(panelId => {
@@ -2115,4 +2082,3 @@ document.addEventListener("DOMContentLoaded", () => {
         }
     }, 500);
 });
-
