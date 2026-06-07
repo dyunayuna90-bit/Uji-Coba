@@ -133,7 +133,54 @@ const i18n = {
         btnClearCovers: "Hapus Semua Sampul (Biar Ringan)",
         clearCoversTitle: "Hapus Semua Sampul?",
         clearCoversDesc: "Semua gambar sampul akan dihapus permanen untuk menghemat memori. Buku dan progres bacaan tetap aman 100%. Lanjutkan?",
-        clearCoversSuccess: "Semua sampul berhasil dihapus! Aplikasi sekarang jauh lebih ringan."
+        clearCoversSuccess: "Semua sampul berhasil dihapus! Aplikasi sekarang jauh lebih ringan.",
+
+        // Backup JSON (progress saja)
+        backupEmpty: "Ga ada buku untuk di-backup.",
+        backupProcessingTitle: "Memproses Backup",
+        backupProcessingDesc: "Mohon tunggu sebentar, menyiapkan file lu...",
+        backupSuccessTitle: "Backup Sukses",
+        backupSuccessDesc: "File backup progress berhasil disimpan di folder Documents HP lu.\nNama file: {f}\n\n⚠️ Ingat: backup ini hanya menyimpan progress & catatan, BUKAN isi buku. Saat restore, kamu perlu upload ulang file bukunya terlebih dahulu.",
+        backupSuccessBtn: "Mantap",
+        backupFallbackTitle: "Info Backup Mentah",
+        backupFallbackDesc: "Simpan ke file native gagal. Salin teks JSON ini dan simpan di Notes/WhatsApp/file teks.\n\n⚠️ Ingat: ini hanya backup progress & catatan, BUKAN isi buku. Saat restore, upload ulang bukunya dulu.",
+        backupFallbackBtn: "Mengerti",
+        copiedConfirm: "Berhasil Disalin!",
+
+        // Backup ZIP (komplit)
+        backupZipProcessingTitle: "Membuat Backup ZIP Komplit",
+        backupZipProcessingDesc: "Mengemas seluruh isi buku, progress & catatan ke dalam ZIP... Proses ini bisa memakan waktu beberapa menit tergantung jumlah buku. Mohon jangan tutup aplikasi.",
+        backupZipCompressing: "Mengompresi... {p}%",
+        backupZipSuccessTitle: "Backup ZIP Komplit Sukses!",
+        backupZipSuccessDesc: "File ZIP ({s} MB) berhasil disimpan di folder Documents HP lu.\nNama file: {f}\n\n✅ ZIP ini menyimpan SELURUH isi buku + progress + catatan. Restore ZIP = langsung bisa baca, tanpa upload ulang.",
+        backupZipSuccessDescWeb: "File ZIP ({s} MB) berhasil diunduh.\n\n✅ ZIP ini menyimpan SELURUH isi buku + progress + catatan. Restore ZIP = langsung bisa baca, tanpa upload ulang.",
+        backupZipError: "Backup ZIP gagal: ",
+        zipLibMissing: "Library JSZip tidak ditemukan. Pastikan jszip.min.js sudah ter-load.",
+
+        // Restore — pilih format
+        restoreChooseTitle: "Pulihkan Data",
+        restoreChooseDesc: "Pilih format backup yang kamu punya:\n\n📦 ZIP — backup KOMPLIT (isi buku + progress + catatan). Setelah restore langsung bisa baca, tanpa upload ulang.\n📄 JSON — backup RINGAN (progress & catatan saja). Setelah restore, file buku perlu diupload ulang dulu.",
+        restoreChooseZip: "📦 File ZIP (Komplit)",
+        restoreChooseJson: "📄 File / Teks JSON (Progress saja)",
+
+        // Restore ZIP
+        zipRestoreProcessingTitle: "Membaca File ZIP...",
+        zipRestoreProcessingDesc: "Sedang membuka arsip ZIP, mohon tunggu...",
+        zipNoJsonFound: "File ZIP tidak mengandung data backup yang valid.",
+        restoreConfirmTitle: "Konfirmasi Restore",
+        restoreConfirmBtn: "Lanjut Restore",
+        zipRestoreProgressTitle: "Memulihkan...",
+        zipRestoreProgressDesc: "Sedang memulihkan buku satu per satu, mohon tunggu...",
+        zipRestoreProgress: "Memulihkan buku {n} dari {t}...",
+        restoreSuccessTitle: "Restore Berhasil!",
+        zipRestoreError: "Gagal memulihkan dari ZIP: ",
+
+        // Restore JSON
+        restoreEmptyBox: "Kotak teks masih kosong.",
+        restoreInvalidFormat: "Format file/teks tidak valid.",
+        restoreCorrupted: "Data backup rusak atau tidak kompatibel.",
+        restoreFailedPrefix: "Gagal memulihkan: ",
+        restoreDone: "Restore selesai."
     },
     en: {
         libEmpty: "Library is Empty.", searchBooks: "Search books...", loadingDocs: "Reading Document...", 
@@ -192,7 +239,54 @@ const i18n = {
         btnClearCovers: "Clear All Covers (Save Memory)",
         clearCoversTitle: "Clear All Covers?",
         clearCoversDesc: "All book covers will be permanently deleted to save memory. Book text and reading progress are 100% safe. Continue?",
-        clearCoversSuccess: "All covers successfully cleared! The app is now lighter."
+        clearCoversSuccess: "All covers successfully cleared! The app is now lighter.",
+
+        // Backup JSON (progress only)
+        backupEmpty: "No books to back up.",
+        backupProcessingTitle: "Processing Backup",
+        backupProcessingDesc: "Please wait a moment, preparing your file...",
+        backupSuccessTitle: "Backup Successful",
+        backupSuccessDesc: "Progress backup file saved to your device's Documents folder.\nFile name: {f}\n\n⚠️ Note: this backup only stores progress & notes, NOT book content. To restore, you'll need to re-upload your book files first.",
+        backupSuccessBtn: "Got it",
+        backupFallbackTitle: "Raw Backup Info",
+        backupFallbackDesc: "Saving to native file failed. Please copy this JSON text and save it in Notes/WhatsApp/a text file.\n\n⚠️ Note: this only backs up progress & notes, NOT book content. Re-upload your books when restoring.",
+        backupFallbackBtn: "Understood",
+        copiedConfirm: "Copied!",
+
+        // Backup ZIP (full)
+        backupZipProcessingTitle: "Creating Full ZIP Backup",
+        backupZipProcessingDesc: "Packaging all book content, progress & notes into a ZIP... This may take a few minutes depending on the number of books. Please don't close the app.",
+        backupZipCompressing: "Compressing... {p}%",
+        backupZipSuccessTitle: "Full ZIP Backup Complete!",
+        backupZipSuccessDesc: "ZIP file ({s} MB) saved to your device's Documents folder.\nFile name: {f}\n\n✅ This ZIP stores ALL book content + progress + notes. Restore ZIP = read immediately, no re-upload needed.",
+        backupZipSuccessDescWeb: "ZIP file ({s} MB) downloaded successfully.\n\n✅ This ZIP stores ALL book content + progress + notes. Restore ZIP = read immediately, no re-upload needed.",
+        backupZipError: "ZIP backup failed: ",
+        zipLibMissing: "JSZip library not found. Make sure jszip.min.js is loaded.",
+
+        // Restore — choose format
+        restoreChooseTitle: "Restore Data",
+        restoreChooseDesc: "Choose the backup format you have:\n\n📦 ZIP — FULL backup (book content + progress + notes). After restoring you can read immediately, no re-upload needed.\n📄 JSON — LIGHTWEIGHT backup (progress & notes only). After restoring, book files need to be re-uploaded first.",
+        restoreChooseZip: "📦 ZIP File (Full)",
+        restoreChooseJson: "📄 JSON File / Text (Progress only)",
+
+        // Restore ZIP
+        zipRestoreProcessingTitle: "Reading ZIP File...",
+        zipRestoreProcessingDesc: "Opening the ZIP archive, please wait...",
+        zipNoJsonFound: "ZIP file does not contain valid backup data.",
+        restoreConfirmTitle: "Confirm Restore",
+        restoreConfirmBtn: "Proceed",
+        zipRestoreProgressTitle: "Restoring...",
+        zipRestoreProgressDesc: "Restoring books one by one, please wait...",
+        zipRestoreProgress: "Restoring book {n} of {t}...",
+        restoreSuccessTitle: "Restore Successful!",
+        zipRestoreError: "Failed to restore from ZIP: ",
+
+        // Restore JSON
+        restoreEmptyBox: "Text box is empty.",
+        restoreInvalidFormat: "Invalid file or text format.",
+        restoreCorrupted: "Backup data is corrupted or incompatible.",
+        restoreFailedPrefix: "Restore failed: ",
+        restoreDone: "Restore complete."
     },
     es: {
         libEmpty: "La biblioteca está vacía.", searchBooks: "Buscar libros...", loadingDocs: "Leyendo documento...", 
@@ -251,6 +345,53 @@ const i18n = {
         btnClearCovers: "Borrar Todas las Portadas (Ahorrar Memoria)",
         clearCoversTitle: "¿Borrar Todas las Portadas?",
         clearCoversDesc: "Todas las portadas se eliminarán permanentemente para ahorrar memoria. El texto y el progreso están 100% seguros. ¿Continuar?",
-        clearCoversSuccess: "¡Portadas borradas! La aplicación ahora es más ligera."
+        clearCoversSuccess: "¡Portadas borradas! La aplicación ahora es más ligera.",
+
+        // Backup JSON (solo progreso)
+        backupEmpty: "No hay libros para hacer copia de seguridad.",
+        backupProcessingTitle: "Procesando copia de seguridad",
+        backupProcessingDesc: "Por favor espera un momento, preparando tu archivo...",
+        backupSuccessTitle: "Copia de seguridad exitosa",
+        backupSuccessDesc: "Archivo de progreso guardado en la carpeta Documentos de tu dispositivo.\nNombre de archivo: {f}\n\n⚠️ Recuerda: esta copia solo guarda el progreso y las notas, NO el contenido. Al restaurar, deberás volver a subir los archivos de libro.",
+        backupSuccessBtn: "Entendido",
+        backupFallbackTitle: "Info de copia sin procesar",
+        backupFallbackDesc: "No se pudo guardar en archivo nativo. Copia este texto JSON y guárdalo en Notas/WhatsApp/archivo de texto.\n\n⚠️ Recuerda: esto solo respalda el progreso y las notas, NO el contenido del libro. Vuelve a subir los libros al restaurar.",
+        backupFallbackBtn: "Entendido",
+        copiedConfirm: "¡Copiado!",
+
+        // Backup ZIP (completo)
+        backupZipProcessingTitle: "Creando copia ZIP completa",
+        backupZipProcessingDesc: "Empaquetando todo el contenido del libro, progreso y notas en un ZIP... Esto puede tardar varios minutos según la cantidad de libros. Por favor no cierres la aplicación.",
+        backupZipCompressing: "Comprimiendo... {p}%",
+        backupZipSuccessTitle: "¡Copia ZIP completa exitosa!",
+        backupZipSuccessDesc: "Archivo ZIP ({s} MB) guardado en la carpeta Documentos de tu dispositivo.\nNombre de archivo: {f}\n\n✅ Este ZIP almacena TODO el contenido + progreso + notas. Restaurar ZIP = leer de inmediato, sin volver a subir nada.",
+        backupZipSuccessDescWeb: "Archivo ZIP ({s} MB) descargado exitosamente.\n\n✅ Este ZIP almacena TODO el contenido + progreso + notas. Restaurar ZIP = leer de inmediato, sin volver a subir nada.",
+        backupZipError: "Error en copia ZIP: ",
+        zipLibMissing: "Librería JSZip no encontrada. Asegúrate de que jszip.min.js esté cargado.",
+
+        // Restaurar — elegir formato
+        restoreChooseTitle: "Restaurar datos",
+        restoreChooseDesc: "Elige el formato de copia que tienes:\n\n📦 ZIP — copia COMPLETA (contenido + progreso + notas). Tras restaurar puedes leer de inmediato, sin volver a subir nada.\n📄 JSON — copia LIGERA (solo progreso y notas). Tras restaurar, debes volver a subir los archivos de libro.",
+        restoreChooseZip: "📦 Archivo ZIP (Completo)",
+        restoreChooseJson: "📄 Archivo / Texto JSON (Solo progreso)",
+
+        // Restaurar ZIP
+        zipRestoreProcessingTitle: "Leyendo archivo ZIP...",
+        zipRestoreProcessingDesc: "Abriendo el archivo ZIP, por favor espera...",
+        zipNoJsonFound: "El archivo ZIP no contiene datos de copia de seguridad válidos.",
+        restoreConfirmTitle: "Confirmar restauración",
+        restoreConfirmBtn: "Proceder",
+        zipRestoreProgressTitle: "Restaurando...",
+        zipRestoreProgressDesc: "Restaurando libros uno por uno, por favor espera...",
+        zipRestoreProgress: "Restaurando libro {n} de {t}...",
+        restoreSuccessTitle: "¡Restauración exitosa!",
+        zipRestoreError: "Error al restaurar desde ZIP: ",
+
+        // Restaurar JSON
+        restoreEmptyBox: "El cuadro de texto está vacío.",
+        restoreInvalidFormat: "Formato de archivo o texto no válido.",
+        restoreCorrupted: "Los datos de copia están dañados o son incompatibles.",
+        restoreFailedPrefix: "Error al restaurar: ",
+        restoreDone: "Restauración completa."
     }
 };
