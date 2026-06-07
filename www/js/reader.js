@@ -142,8 +142,7 @@ async function processMultipleFiles(files) {
             imported++;
         } catch (err) {
             console.error(`Gagal import: ${bookTitle}`, err);
-            const errMsg = err && err.message ? err.message : String(err);
-            failed.push(`${bookTitle} [ERROR: ${errMsg}]`);
+            failed.push(bookTitle);
         }
         _importDoneCount++;
 
