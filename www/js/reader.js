@@ -200,15 +200,18 @@ async function handleTxt(file, bookTitle) {
 
     if (parsedNodes.length === 0) throw new Error("File TXT kosong atau tidak bisa dibaca.");
 
+    const bookId = Date.now().toString() + Math.floor(Math.random() * 1000);
+
+    // [OPTIMASI DEWA]: Langsung mutilasi data di sumber — teks ke laci sendiri, library cuma KTP
+    await localforage.setItem('content_' + bookId, parsedNodes);
+
     library.push({
-        id: Date.now().toString() + Math.floor(Math.random() * 1000), 
+        id: bookId,
         type: 'txt',
         title: bookTitle,
-        nodes: parsedNodes,
         pages: Math.ceil(parsedNodes.length / 10),
         progressPct: 0,
         lastReadId: null,
-        coverBase64: null,
         shape: 'square'
     });
 
@@ -261,15 +264,18 @@ async function handleMd(file, bookTitle) {
 
     if (parsedNodes.length === 0) throw new Error("File MD kosong atau tidak valid.");
 
+    const bookId = Date.now().toString() + Math.floor(Math.random() * 1000);
+
+    // [OPTIMASI DEWA]: Langsung mutilasi data di sumber — teks ke laci sendiri, library cuma KTP
+    await localforage.setItem('content_' + bookId, parsedNodes);
+
     library.push({
-        id: Date.now().toString() + Math.floor(Math.random() * 1000),
+        id: bookId,
         type: 'md',
         title: bookTitle,
-        nodes: parsedNodes,
         pages: Math.ceil(parsedNodes.length / 10),
         progressPct: 0,
         lastReadId: null,
-        coverBase64: null,
         shape: 'square'
     });
 
@@ -813,13 +819,16 @@ async function handlePdf(file, bookTitle) {
         id: Date.now().toString() + Math.floor(Math.random() * 1000),
         type: 'pdf',
         title: bookTitle,
-        nodes: mergedNodes,
         pages: total,
         progressPct: 0,
         lastReadId: null,
-        coverBase64: coverBase64,
         shape: 'square'
     });
+
+    // [OPTIMASI DEWA]: Langsung mutilasi data di sumber — teks & cover ke laci sendiri, library cuma KTP
+    const newBookId = library[library.length - 1].id;
+    await localforage.setItem('content_' + newBookId, mergedNodes);
+    await localforage.setItem('cover_' + newBookId, coverBase64);
 
     await localforage.setItem('pdf_epub_master', library);
     renderLibrary();
@@ -997,14 +1006,17 @@ async function handleEpub(file, bookTitle) {
         id: Date.now().toString() + Math.floor(Math.random() * 1000), 
         type: 'epub', 
         title: bookTitle, 
-        nodes: parsedNodes, 
         pages: spine.length, 
         progressPct: 0, 
         lastReadId: null, 
-        coverBase64: coverBase64, 
         shape: 'square' 
     });
-    
+
+    // [OPTIMASI DEWA]: Langsung mutilasi data di sumber — teks & cover ke laci sendiri, library cuma KTP
+    const newBookId = library[library.length - 1].id;
+    await localforage.setItem('content_' + newBookId, parsedNodes);
+    if (coverBase64) await localforage.setItem('cover_' + newBookId, coverBase64);
+
     await localforage.setItem('pdf_epub_master', library); 
     renderLibrary();
 }
