@@ -159,6 +159,7 @@ function updateBottomNavUI(activeId) {
 window.addEventListener('popstate', (e) => {
     if (!document.getElementById('raw-backup-modal').classList.contains('opacity-0')) { _closeModalAction('raw-backup-modal', 'raw-backup-sheet', true, true); }
     else if (!document.getElementById('raw-restore-modal').classList.contains('opacity-0')) { _closeModalAction('raw-restore-modal', 'raw-restore-sheet', true, true); }
+    else if (!document.getElementById('zip-restore-modal').classList.contains('opacity-0')) { _closeModalAction('zip-restore-modal', 'zip-restore-sheet', true, true); }
     else if (!document.getElementById('custom-dialog').classList.contains('opacity-0')) { window.closeDialog(true); }
     else if (!document.getElementById('ai-modal').classList.contains('opacity-0')) { closeAiModal(true); }
     else if (!document.getElementById('bookmark-modal').classList.contains('opacity-0')) { _closeModalAction('bookmark-modal', 'bookmark-sheet', true, true); }
@@ -526,18 +527,30 @@ window.clearAllCoversConfirm = function() {
     );
 };
 
-// 7. BACKUP & RESTORE DATA (OPTIMASI STREAMING APPEND + NO COVER BACKUP)
+// 7. BACKUP & RESTORE DATA (OPTIMASI STREAMING APPEND + NO COVER BACKUP + ZIP SUPPORT)
+
+// ─── HELPER: Siapkan array progress-only (no nodes, no cover) ─────────────────
+function _buildProgressOnlyArray() {
+    return library.map(b => {
+        let stripped = { ...b };
+        delete stripped.nodes;
+        delete stripped.coverBase64;
+        return stripped;
+    });
+}
+
+// ─── BACKUP JSON (Native Streaming / Fallback Raw Text) ───────────────────────
 window.exportData = async function() {
     const d = typeof i18n !== 'undefined' ? (i18n[wikiLang] || i18n['id']) : {};
     try {
         if (!library || library.length === 0) {
-            showDialog("Info", wikiLang === 'id' ? "Ga ada buku untuk di-backup." : "No books to backup.", "info", [{ text: "Oke", primary: true }]);
+            showDialog("Info", d.backupEmpty || "Ga ada buku untuk di-backup.", "info", [{ text: "Oke", primary: true }]);
             return;
         }
 
         showDialog(
-            wikiLang === 'id' ? "Memproses Backup" : "Processing Backup",
-            wikiLang === 'id' ? "Mohon tunggu sebentar, menyiapkan file lu..." : "Please wait, preparing your file...",
+            d.backupProcessingTitle || "Memproses Backup",
+            d.backupProcessingDesc || "Mohon tunggu sebentar, menyiapkan file lu...",
             "loader", 
             []
         );
@@ -550,8 +563,8 @@ window.exportData = async function() {
                 // KALO NATIVE APP (CAPACITOR ADA) -> PAKE APPEND FILE (Anti Force Close)
                 if (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.Filesystem) {
                     const dt = new Date();
-                    const fileName = `Baca_Backup_${dt.getFullYear()}${('0'+(dt.getMonth()+1)).slice(-2)}${('0'+dt.getDate()).slice(-2)}_${dt.getTime()}.json`;
-                    let displayFileName = fileName.length > 25 ? fileName.substring(0, 16) + "..." + fileName.slice(-10) : fileName;
+                    const fileName = `Baca_Progress_${dt.getFullYear()}${('0'+(dt.getMonth()+1)).slice(-2)}${('0'+dt.getDate()).slice(-2)}_${dt.getTime()}.json`;
+                    let displayFileName = fileName.length > 30 ? fileName.substring(0, 20) + "..." + fileName.slice(-10) : fileName;
                     
                     try {
                         // Tulis Kurung Kotak Awal
@@ -559,12 +572,14 @@ window.exportData = async function() {
                             path: fileName, data: '[\n', directory: 'DOCUMENTS', encoding: 'utf8'
                         });
 
-                        // Tulis data per buku (Streaming Output)
+                        // Tulis data per buku (Streaming Output — anti force close)
                         for (let i = 0; i < library.length; i++) {
                             let strippedBook = { ...library[i] };
                             
-                            // PASTIKAN COVER GA IKUT DIBACKUP. Kalo ngikut, file JSON bakal Gede & Force Close pas Restore.
+                            // PASTIKAN COVER & NODES GA IKUT DIBACKUP.
+                            // Ini BUKAN backup isi buku — hanya progress & catatan.
                             delete strippedBook.coverBase64;
+                            delete strippedBook.nodes;
 
                             let chunk = JSON.stringify(strippedBook);
                             if (i < library.length - 1) chunk += ',\n';
@@ -584,10 +599,10 @@ window.exportData = async function() {
                         });
                         
                         showDialog(
-                            wikiLang === 'id' ? "Backup Sukses" : "Backup Success", 
-                            wikiLang === 'id' ? `File backup berhasil disimpan di folder Documents HP lu.\nNama file: ${displayFileName}` : `Backup file saved in your device's Documents folder.\nFile name: ${displayFileName}`, 
+                            d.backupSuccessTitle || "Backup Sukses",
+                            (d.backupSuccessDesc || "File backup progress berhasil disimpan di folder Documents HP lu.\nNama file: {f}\n\n⚠️ Ingat: backup ini hanya menyimpan progress & catatan, BUKAN isi buku. Saat restore, kamu perlu upload ulang file bukunya terlebih dahulu.").replace('{f}', displayFileName),
                             "check-circle", 
-                            [{ text: "Mantap", primary: true }]
+                            [{ text: d.backupSuccessBtn || "Mantap", primary: true }]
                         );
                         return; 
                     } catch (fsError) {
@@ -596,13 +611,7 @@ window.exportData = async function() {
                 }
                 
                 // FALLBACK JIKA BUKAN APK / CAPACITOR GAGAL (Raw Backup)
-                // Kita gaboleh masukin nodes, karena browser bakal langsung nge-freeze/nge-crash textareanya.
-                let rawData = library.map(b => {
-                    let min = {...b};
-                    delete min.nodes;
-                    delete min.coverBase64;
-                    return min;
-                });
+                let rawData = _buildProgressOnlyArray();
                 const rawStr = JSON.stringify(rawData);
                 document.getElementById('raw-backup-textarea').value = rawStr;
                 
@@ -610,9 +619,12 @@ window.exportData = async function() {
                 setTimeout(() => {
                     openModal('raw-backup-modal', 'raw-backup-sheet', true);
                     setTimeout(() => {
-                        showDialog("Info Fallback", 
-                            wikiLang === 'id' ? "Simpan file native gagal. Ini adalah metadata mentahnya. Teks buku disembunyikan demi keamanan memori." : "Native file save failed. This is the metadata. Text nodes hidden for memory safety.", 
-                            "info", [{ text: "Mengerti", primary: true }]);
+                        showDialog(
+                            d.backupFallbackTitle || "Info Backup Mentah",
+                            d.backupFallbackDesc || "Simpan ke file native gagal. Salin teks JSON ini dan simpan di Notes/WhatsApp/file teks.\n\n⚠️ Ingat: ini hanya backup progress & catatan, BUKAN isi buku. Saat restore, upload ulang bukunya dulu.",
+                            "info",
+                            [{ text: d.backupFallbackBtn || "Mengerti", primary: true }]
+                        );
                     }, 400);
                 }, 350);
                 
@@ -628,7 +640,145 @@ window.exportData = async function() {
     }
 };
 
+// ─── BACKUP ZIP (KOMPLIT: nodes + progress + catatan + cover, streaming per-buku) ──
+window.exportDataZip = async function() {
+    const d = typeof i18n !== 'undefined' ? (i18n[wikiLang] || i18n['id']) : {};
+    try {
+        if (!library || library.length === 0) {
+            showDialog("Info", d.backupEmpty || "Ga ada buku untuk di-backup.", "info", [{ text: "Oke", primary: true }]);
+            return;
+        }
+        if (typeof JSZip === 'undefined') {
+            showDialog("Error", d.zipLibMissing || "Library JSZip tidak ditemukan. Pastikan jszip.min.js sudah ter-load.", "alert-triangle", [{ text: "Tutup", primary: true }]);
+            return;
+        }
+
+        showDialog(
+            d.backupZipProcessingTitle || "Membuat Backup ZIP Komplit",
+            d.backupZipProcessingDesc || "Mengemas seluruh isi buku, progress & catatan ke dalam ZIP... Proses ini bisa memakan waktu beberapa menit tergantung jumlah buku. Mohon jangan tutup aplikasi.",
+            "loader",
+            []
+        );
+        const iconContainer = document.getElementById('dialog-icon-container');
+        if(iconContainer) iconContainer.classList.add('animate-spin');
+
+        // Beri waktu UI render dulu sebelum kerja berat
+        await new Promise(r => setTimeout(r, 200));
+
+        try {
+            const zip = new JSZip();
+            const manifest = []; // Index buku yang masuk ZIP
+
+            // Proses per-buku: ambil nodes dari localforage, masukkan ke ZIP satu per satu
+            for (let i = 0; i < library.length; i++) {
+                const book = library[i];
+
+                // Ambil nodes (isi teks parsed) dari localforage — ini data terbesarnya
+                const nodes = await localforage.getItem('content_' + book.id) || book.nodes || [];
+
+                // Ambil cover jika ada
+                const cover = await localforage.getItem('cover_' + book.id) || null;
+
+                // Susun objek buku komplit
+                const fullBook = {
+                    ...book,
+                    nodes: nodes,
+                    coverBase64: cover || undefined
+                };
+                // Hapus field undefined supaya JSON bersih
+                if (!fullBook.coverBase64) delete fullBook.coverBase64;
+
+                // Masukkan setiap buku sebagai file JSON tersendiri di dalam ZIP
+                // Format: books/buku-0.json, books/buku-1.json, dst.
+                // Ini supaya ZIP ga perlu parse satu JSON raksasa sekaligus saat restore
+                zip.file(`books/book_${i}.json`, JSON.stringify(fullBook));
+
+                // Tambahkan ke manifest (ringan, cuma metadata)
+                manifest.push({ index: i, id: book.id, title: book.title, type: book.type || '' });
+
+                // Yield ke event loop tiap buku — anti force close
+                await new Promise(r => setTimeout(r, 30));
+            }
+
+            // Tambahkan manifest sebagai index utama di ZIP
+            zip.file('manifest.json', JSON.stringify({ version: window.APP_VERSION || '2.0.5', totalBooks: library.length, books: manifest }));
+
+            const dt = new Date();
+            const zipFileName = `Baca_Full_${dt.getFullYear()}${('0'+(dt.getMonth()+1)).slice(-2)}${('0'+dt.getDate()).slice(-2)}_${dt.getTime()}.zip`;
+
+            // Generate ZIP (DEFLATE level 6 — balance speed vs size)
+            // Teks sangat compressible, ukuran akhir bisa 60-80% lebih kecil dari JSON mentah
+            const zipBlob = await zip.generateAsync(
+                { type: "blob", compression: "DEFLATE", compressionOptions: { level: 6 } },
+                (metadata) => {
+                    // Update dialog progress jika bisa
+                    const pct = Math.round(metadata.percent);
+                    const iconEl = document.getElementById('dialog-message');
+                    if (iconEl) iconEl.innerText = (d.backupZipCompressing || "Mengompresi... {p}%").replace('{p}', pct);
+                }
+            );
+
+            // KALO NATIVE APP (CAPACITOR ADA) → tulis langsung ke Documents
+            if (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.Filesystem) {
+                try {
+                    const base64Data = await new Promise((resolve, reject) => {
+                        const reader = new FileReader();
+                        reader.onload = () => resolve(reader.result.split(',')[1]);
+                        reader.onerror = reject;
+                        reader.readAsDataURL(zipBlob);
+                    });
+
+                    await window.Capacitor.Plugins.Filesystem.writeFile({
+                        path: zipFileName, data: base64Data, directory: 'DOCUMENTS'
+                    });
+
+                    let displayFileName = zipFileName.length > 30 ? zipFileName.substring(0, 20) + "..." + zipFileName.slice(-8) : zipFileName;
+                    const sizeMB = (zipBlob.size / (1024 * 1024)).toFixed(1);
+
+                    showDialog(
+                        d.backupZipSuccessTitle || "Backup ZIP Komplit Sukses!",
+                        (d.backupZipSuccessDesc || "File ZIP ({s} MB) berhasil disimpan di folder Documents HP lu.\nNama file: {f}\n\n✅ ZIP ini menyimpan SELURUH isi buku + progress + catatan. Restore ZIP = langsung bisa baca, tanpa upload ulang.").replace('{f}', displayFileName).replace('{s}', sizeMB),
+                        "check-circle",
+                        [{ text: d.backupSuccessBtn || "Mantap", primary: true }]
+                    );
+                    return;
+                } catch (fsError) {
+                    console.log("Capacitor ZIP write gagal, fallback ke download browser.", fsError);
+                }
+            }
+
+            // FALLBACK: Download via browser (PWA / Web)
+            const url = URL.createObjectURL(zipBlob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = zipFileName;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            setTimeout(() => URL.revokeObjectURL(url), 5000);
+
+            const sizeMB = (zipBlob.size / (1024 * 1024)).toFixed(1);
+            showDialog(
+                d.backupZipSuccessTitle || "Backup ZIP Komplit Sukses!",
+                (d.backupZipSuccessDescWeb || "File ZIP ({s} MB) berhasil diunduh.\n\n✅ ZIP ini menyimpan SELURUH isi buku + progress + catatan. Restore ZIP = langsung bisa baca, tanpa upload ulang.").replace('{s}', sizeMB),
+                "check-circle",
+                [{ text: d.backupSuccessBtn || "Mantap", primary: true }]
+            );
+
+        } catch (err) {
+            console.error("Backup ZIP failed:", err);
+            showDialog("Error", (d.backupZipError || "Backup ZIP gagal: ") + err.message, "alert-triangle", [{ text: "Tutup", primary: true }]);
+        }
+
+    } catch (err) {
+        console.error("Backup ZIP failed:", err);
+        showDialog("Error", (d.backupZipError || "Backup ZIP gagal: ") + err.message, "alert-triangle", [{ text: "Tutup", primary: true }]);
+    }
+};
+
+// ─── COPY RAW BACKUP ──────────────────────────────────────────────────────────
 window.copyRawBackup = function() {
+    const d = typeof i18n !== 'undefined' ? (i18n[wikiLang] || i18n['id']) : {};
     const textarea = document.getElementById('raw-backup-textarea');
     textarea.select();
     textarea.setSelectionRange(0, 9999999); 
@@ -637,62 +787,286 @@ window.copyRawBackup = function() {
         document.execCommand('copy');
         const btnSpan = document.getElementById('str-raw-bak-btn-copy');
         const originalText = btnSpan.innerText;
-        btnSpan.innerText = wikiLang === 'id' ? "Berhasil Disalin!" : "Copied!";
+        btnSpan.innerText = d.copiedConfirm || "Berhasil Disalin!";
         setTimeout(() => { btnSpan.innerText = originalText; }, 2000);
     } catch (err) {
         showDialog("Error", "Gagal menyalin otomatis. Silakan blok semua teks secara manual dan salin.", "alert-circle", [{ text: "Tutup", primary: true }]);
     }
 };
 
+// ─── BUKA OPSI RESTORE (JSON) ─────────────────────────────────────────────────
 window.openRestoreOptions = function() {
-    document.getElementById('raw-restore-textarea').value = '';
-    openModal('raw-restore-modal', 'raw-restore-sheet', true);
+    const d = typeof i18n !== 'undefined' ? (i18n[wikiLang] || i18n['id']) : {};
+    // Tampilkan dialog pilih metode restore dulu
+    showDialog(
+        d.restoreChooseTitle || "Pulihkan Data",
+        d.restoreChooseDesc || "File backup Baca hanya menyimpan progress & catatan — BUKAN isi buku.\n\nSetelah restore, buku yang belum ada di library harus diupload ulang filenya supaya bisa dibaca lagi. Pilih format backup kamu:",
+        "download-cloud",
+        [
+            { text: d.restoreChooseZip || "File ZIP", primary: false, action: () => {
+                window.closeDialog();
+                setTimeout(() => { document.getElementById('import-upload-zip').click(); }, 300);
+            }},
+            { text: d.restoreChooseJson || "File / Teks JSON", primary: true, action: () => {
+                window.closeDialog();
+                setTimeout(() => {
+                    document.getElementById('raw-restore-textarea').value = '';
+                    openModal('raw-restore-modal', 'raw-restore-sheet', true);
+                }, 300);
+            }}
+        ]
+    );
 };
 
+// ─── PROSES RESTORE JSON (dari textarea) ─────────────────────────────────────
 window.processRawRestore = function() {
+    const d = typeof i18n !== 'undefined' ? (i18n[wikiLang] || i18n['id']) : {};
     const val = document.getElementById('raw-restore-textarea').value.trim();
     if(!val) {
-        showDialog("Info", wikiLang === 'id' ? "Kotak teks masih kosong." : "Text box is empty.", "info", [{ text: "Oke", primary: true }]);
+        showDialog("Info", d.restoreEmptyBox || "Kotak teks masih kosong.", "info", [{ text: "Oke", primary: true }]);
         return;
     }
-    executeRestoreLogic(val);
+    // Tutup modal restore dulu sebelum proses agar dialog konfirmasi tidak tertindih
+    _closeModalAction('raw-restore-modal', 'raw-restore-sheet', true, true);
+    history.back();
+    setTimeout(() => { executeRestoreLogic(val); }, 350);
 };
 
+// ─── IMPORT FILE JSON ─────────────────────────────────────────────────────────
 window.importDataFile = function(event) {
     const file = event.target.files[0];
     if (!file) return;
     const reader = new FileReader();
     reader.onload = function(e) {
-        executeRestoreLogic(e.target.result);
+        // Tutup modal restore jika masih terbuka
+        const restoreModal = document.getElementById('raw-restore-modal');
+        if (restoreModal && !restoreModal.classList.contains('hidden')) {
+            _closeModalAction('raw-restore-modal', 'raw-restore-sheet', true, true);
+            history.back();
+            setTimeout(() => { executeRestoreLogic(e.target.result); }, 350);
+        } else {
+            executeRestoreLogic(e.target.result);
+        }
         event.target.value = ''; 
     };
     reader.readAsText(file);
 };
 
-async function executeRestoreLogic(jsonString) {
+// ─── IMPORT FILE ZIP (RESTORE KOMPLIT) ───────────────────────────────────────
+window.importDataZip = async function(event) {
+    const d = typeof i18n !== 'undefined' ? (i18n[wikiLang] || i18n['id']) : {};
+    const file = event.target.files[0];
+    if (!file) return;
+    event.target.value = '';
+
+    if (typeof JSZip === 'undefined') {
+        showDialog("Error", d.zipLibMissing || "Library JSZip tidak ditemukan.", "alert-triangle", [{ text: "Tutup", primary: true }]);
+        return;
+    }
+
+    showDialog(
+        d.zipRestoreProcessingTitle || "Membaca File ZIP...",
+        d.zipRestoreProcessingDesc || "Sedang membuka arsip ZIP, mohon tunggu...",
+        "loader",
+        []
+    );
+    const iconContainer = document.getElementById('dialog-icon-container');
+    if(iconContainer) iconContainer.classList.add('animate-spin');
+
+    await new Promise(r => setTimeout(r, 200));
+
+    try {
+        const zip = await JSZip.loadAsync(file);
+
+        // ── Cek apakah ini format ZIP baru (ada manifest.json) atau format lama ──
+        const manifestFile = zip.file('manifest.json');
+
+        if (manifestFile) {
+            // ── FORMAT ZIP BARU (multi-file per buku) ─────────────────────────
+            const manifestStr = await manifestFile.async('string');
+            const manifest = JSON.parse(manifestStr);
+
+            if (!manifest.books || !Array.isArray(manifest.books)) {
+                showDialog("Error", d.zipNoJsonFound || "File ZIP tidak mengandung data backup yang valid.", "alert-circle", [{ text: "Tutup", primary: true }]);
+                return;
+            }
+
+            const totalBooks = manifest.totalBooks || manifest.books.length;
+
+            // Konfirmasi dulu ke user sebelum proses berat
+            window.closeDialog(true);
+            await new Promise(r => setTimeout(r, 200));
+
+            const confirmMsg = wikiLang === 'id'
+                ? `ZIP ini berisi ${totalBooks} buku (backup komplit: isi buku + progress + catatan).\n\nSemua buku akan dipulihkan penuh — langsung bisa dibaca tanpa upload ulang. Lanjutkan?`
+                : wikiLang === 'es'
+                ? `Este ZIP contiene ${totalBooks} libro(s) (copia completa: contenido + progreso + notas).\n\nTodos los libros se restaurarán completamente — podrás leerlos de inmediato sin volver a subir nada. ¿Continuar?`
+                : `This ZIP contains ${totalBooks} book(s) (full backup: content + progress + notes).\n\nAll books will be fully restored — ready to read immediately, no re-upload needed. Continue?`;
+
+            showDialog(
+                d.restoreConfirmTitle || "Konfirmasi Restore ZIP",
+                confirmMsg,
+                "archive",
+                [
+                    { text: d.cancel || "Batal", primary: false },
+                    { text: d.restoreConfirmBtn || "Lanjut Restore", primary: true, action: async () => {
+                        window.closeDialog();
+
+                        showDialog(
+                            d.zipRestoreProgressTitle || "Memulihkan...",
+                            d.zipRestoreProgressDesc || "Sedang memulihkan buku satu per satu, mohon tunggu...",
+                            "loader",
+                            []
+                        );
+                        const ic2 = document.getElementById('dialog-icon-container');
+                        if(ic2) ic2.classList.add('animate-spin');
+
+                        await new Promise(r => setTimeout(r, 200));
+
+                        try {
+                            let mergedLibrary = [...library];
+                            let restoredCount = 0;
+
+                            for (let i = 0; i < totalBooks; i++) {
+                                const bookFile = zip.file(`books/book_${i}.json`);
+                                if (!bookFile) continue;
+
+                                const bookStr = await bookFile.async('string');
+                                const fullBook = JSON.parse(bookStr);
+
+                                if (!fullBook.id || !fullBook.title) continue;
+
+                                // Simpan nodes ke localforage (DB konten terpisah)
+                                if (fullBook.nodes && fullBook.nodes.length > 0) {
+                                    await localforage.setItem('content_' + fullBook.id, fullBook.nodes);
+                                }
+
+                                // Simpan cover ke localforage jika ada
+                                if (fullBook.coverBase64 && fullBook.coverBase64.length > 50) {
+                                    await localforage.setItem('cover_' + fullBook.id, fullBook.coverBase64);
+                                }
+
+                                // Metadata yang masuk library (tanpa nodes & cover — sudah di DB terpisah)
+                                let meta = { ...fullBook };
+                                delete meta.nodes;
+                                delete meta.coverBase64;
+
+                                const existingIndex = mergedLibrary.findIndex(lib => lib.id === fullBook.id);
+                                if (existingIndex > -1) {
+                                    // Buku sudah ada: timpa semua data termasuk progress & konten
+                                    mergedLibrary[existingIndex] = {
+                                        ...mergedLibrary[existingIndex],
+                                        ...meta
+                                    };
+                                } else {
+                                    // Buku baru: masuk library langsung siap baca
+                                    mergedLibrary.push(meta);
+                                }
+
+                                restoredCount++;
+
+                                // Update pesan progress di dialog
+                                const msgEl = document.getElementById('dialog-message');
+                                if (msgEl) msgEl.innerText = (d.zipRestoreProgress || "Memulihkan buku {n} dari {t}...").replace('{n}', restoredCount).replace('{t}', totalBooks);
+
+                                // Yield per buku — anti force close
+                                await new Promise(r => setTimeout(r, 30));
+                            }
+
+                            await localforage.setItem('pdf_epub_master', mergedLibrary);
+                            library = mergedLibrary;
+                            renderLibrary(DOM.globalSearch.value);
+
+                            // Tutup modal settings jika masih terbuka
+                            setTimeout(() => {
+                                if (!document.getElementById('global-settings-modal').classList.contains('hidden')) history.back();
+                            }, 300);
+
+                            setTimeout(() => {
+                                const msg = wikiLang === 'id'
+                                    ? `${restoredCount} buku berhasil dipulihkan penuh. Semua buku langsung bisa dibaca — tidak perlu upload ulang apapun.`
+                                    : wikiLang === 'es'
+                                    ? `${restoredCount} libro(s) restaurado(s) completamente. Todos listos para leer de inmediato.`
+                                    : `${restoredCount} book(s) fully restored. All books are ready to read immediately.`;
+                                showDialog(
+                                    d.restoreSuccessTitle || "Restore ZIP Berhasil!",
+                                    msg,
+                                    "check-circle",
+                                    [{ text: "Oke", primary: true }]
+                                );
+                            }, 700);
+
+                        } catch (err) {
+                            console.error("ZIP restore (full) failed:", err);
+                            showDialog("Error", (d.zipRestoreError || "Gagal memulihkan dari ZIP: ") + err.message, "alert-circle", [{ text: "Tutup", primary: true }]);
+                        }
+                    }}
+                ]
+            );
+
+        } else {
+            // ── FORMAT ZIP LAMA (satu file JSON di dalam ZIP) — backward compat ──
+            const targetFile = zip.file("baca_progress.json") || zip.file(/\.json$/i)[0];
+            if (!targetFile) {
+                showDialog("Error", d.zipNoJsonFound || "File ZIP tidak mengandung data backup JSON yang valid.", "alert-circle", [{ text: "Tutup", primary: true }]);
+                return;
+            }
+            window.closeDialog(true);
+            await new Promise(r => setTimeout(r, 200));
+            const jsonContent = await targetFile.async("string");
+            executeRestoreLogic(jsonContent, false);
+        }
+
+    } catch (err) {
+        console.error("ZIP restore failed:", err);
+        showDialog("Error", (d.zipRestoreError || "Gagal membaca file ZIP: ") + err.message, "alert-circle", [{ text: "Tutup", primary: true }]);
+    }
+};
+
+// ─── INTI LOGIC RESTORE JSON (progress + catatan saja, tanpa nodes) ───────────
+// isFullZip = false selalu di sini; ZIP komplit punya handler sendiri (importDataZip)
+async function executeRestoreLogic(jsonString, isFullZip = false) {
+    const d = typeof i18n !== 'undefined' ? (i18n[wikiLang] || i18n['id']) : {};
     try {
         const parsedData = JSON.parse(jsonString);
-        if (!Array.isArray(parsedData)) throw new Error("Format file/teks tidak valid.");
+        if (!Array.isArray(parsedData)) throw new Error(d.restoreInvalidFormat || "Format file/teks tidak valid.");
 
         const isValid = parsedData.every(b => b.id && b.title);
-        if (!isValid) throw new Error("Data backup rusak atau tidak kompatibel.");
+        if (!isValid) throw new Error(d.restoreCorrupted || "Data backup rusak atau tidak kompatibel.");
 
-        // Hitung berapa buku yang sudah ada di library (kontennya ada = langsung bisa baca)
+        // Deteksi apakah ini backup lama yang mengandung nodes (format jadul)
+        const hasNodes = parsedData.some(b => b.nodes && b.nodes.length > 0);
+
+        // Hitung match: buku yg ID-nya udah ada di library (langsung bisa baca setelah restore)
         const existingIds = new Set(library.map(b => b.id));
         const matchCount = parsedData.filter(b => existingIds.has(b.id)).length;
         const newCount = parsedData.length - matchCount;
 
-        const confirmMsg = wikiLang === 'id'
-            ? `Ditemukan ${matchCount} buku yang cocok (progress & catatan akan dipulihkan) dan ${newCount} buku baru (perlu import ulang file aslinya). Lanjut?`
-            : `Found ${matchCount} matching books (progress & notes restored) and ${newCount} new books (re-import original files). Continue?`;
+        // Pesan konfirmasi berbeda tergantung apakah backup lama (ada nodes) atau baru (progress only)
+        let confirmMsg;
+        if (hasNodes) {
+            // Backup lama format jadul — ada nodes di dalamnya, jadi bisa restore penuh
+            confirmMsg = wikiLang === 'id'
+                ? `Terdeteksi format backup lama (versi lama Baca) yang mengandung isi buku.\n\nDitemukan ${parsedData.length} buku — semua akan dipulihkan penuh termasuk isi teksnya. Lanjutkan?`
+                : wikiLang === 'es'
+                ? `Se detectó un formato de copia de seguridad antiguo que contiene el contenido del libro.\n\nSe encontraron ${parsedData.length} libros — todos se restaurarán completamente. ¿Continuar?`
+                : `Old backup format detected (contains book content).\n\nFound ${parsedData.length} books — all will be fully restored including text content. Continue?`;
+        } else {
+            // Backup JSON modern — progress & catatan saja
+            confirmMsg = wikiLang === 'id'
+                ? `Ditemukan ${matchCount} buku yang ada di library kamu (progress & catatan akan dipulihkan langsung ✓) dan ${newCount} buku yang tidak ada di library (akan muncul sebagai entri kosong — kamu perlu upload ulang file bukunya supaya bisa dibaca).\n\n⚠️ Backup JSON hanya menyimpan progress & catatan, BUKAN isi buku. Kalau mau backup + restore isi buku sekaligus, gunakan Backup ZIP.`
+                : wikiLang === 'es'
+                ? `Se encontraron ${matchCount} libro(s) en tu biblioteca (progreso y notas restaurados ✓) y ${newCount} libro(s) nuevo(s) (aparecerán vacíos — necesitas volver a subir el archivo para leerlos).\n\n⚠️ El JSON solo guarda el progreso y las notas, NO el contenido. Para restaurar también el contenido, usa Backup ZIP.`
+                : `Found ${matchCount} book(s) in your library (progress & notes restored ✓) and ${newCount} new book(s) (will appear empty — re-upload the book file to read them).\n\n⚠️ JSON backup only stores progress & notes, NOT book content. To restore everything including content, use ZIP Backup.`;
+        }
 
         showDialog(
-            wikiLang === 'id' ? "Konfirmasi Restore" : "Confirm Restore",
+            d.restoreConfirmTitle || "Konfirmasi Restore",
             confirmMsg,
             "alert-triangle",
             [
-                { text: wikiLang === 'id' ? "Batal" : "Cancel", primary: false },
-                { text: wikiLang === 'id' ? "Lanjut" : "Continue", primary: true, action: async () => {
+                { text: d.cancel || "Batal", primary: false },
+                { text: d.restoreConfirmBtn || "Lanjut Restore", primary: true, action: async () => {
                     window.closeDialog();
 
                     // [MERGE CERDAS]: Buku yang sudah ada → update progress + annotations saja
@@ -730,17 +1104,39 @@ async function executeRestoreLogic(jsonString) {
                     library = mergedLibrary;
                     renderLibrary(DOM.globalSearch.value);
 
-                    if (!document.getElementById('raw-restore-modal').classList.contains('hidden')) history.back();
+                    // Tutup modal settings jika masih terbuka
                     setTimeout(() => {
                         if (!document.getElementById('global-settings-modal').classList.contains('hidden')) history.back();
                     }, 300);
 
                     setTimeout(() => {
-                        const successMsg = wikiLang === 'id'
-                            ? `Restore selesai! ${matchCount} buku langsung bisa dibaca, ${newCount} buku perlu import ulang file aslinya.`
-                            : `Restore done! ${matchCount} books ready to read, ${newCount} books need original files re-imported.`;
+                        let successMsg;
+                        if (hasNodes) {
+                            // Backup lama dengan nodes — restore penuh
+                            successMsg = wikiLang === 'id'
+                                ? `${parsedData.length} buku dipulihkan penuh dari backup lama. Semua langsung bisa dibaca.`
+                                : wikiLang === 'es'
+                                ? `${parsedData.length} libro(s) restaurado(s) completamente desde el respaldo antiguo.`
+                                : `${parsedData.length} book(s) fully restored from old backup. All ready to read.`;
+                        } else {
+                            // Progress-only JSON
+                            const matchedMsg = wikiLang === 'id'
+                                ? (matchCount > 0 ? `${matchCount} buku langsung terpulihkan progress & catatannya. ` : '')
+                                : wikiLang === 'es'
+                                ? (matchCount > 0 ? `${matchCount} libro(s) con progreso restaurado. ` : '')
+                                : (matchCount > 0 ? `${matchCount} book(s) had progress & notes restored. ` : '');
+
+                            const uploadMsg = wikiLang === 'id'
+                                ? (newCount > 0 ? `${newCount} buku perlu upload ulang file aslinya supaya bisa dibaca — ketuk buku tersebut untuk upload.` : '')
+                                : wikiLang === 'es'
+                                ? (newCount > 0 ? `${newCount} libro(s) necesitan que vuelvas a subir el archivo original.` : '')
+                                : (newCount > 0 ? `${newCount} book(s) need the original file re-uploaded to be readable.` : '');
+
+                            successMsg = (matchedMsg + uploadMsg).trim() || (d.restoreDone || "Restore selesai.");
+                        }
+
                         showDialog(
-                            wikiLang === 'id' ? "Restore Berhasil!" : "Restore Success!",
+                            d.restoreSuccessTitle || "Restore Berhasil!",
                             successMsg,
                             "check-circle",
                             [{ text: "Oke", primary: true }]
@@ -751,7 +1147,7 @@ async function executeRestoreLogic(jsonString) {
         );
     } catch (err) {
         console.error("Restore failed:", err);
-        showDialog("Error", (wikiLang === 'id' ? "Gagal memulihkan: " : "Failed to restore: ") + err.message, "alert-circle", [{ text: "Tutup", primary: true }]);
+        showDialog("Error", (d.restoreFailedPrefix || "Gagal memulihkan: ") + err.message, "alert-circle", [{ text: "Tutup", primary: true }]);
     }
 }
 
@@ -1608,367 +2004,4 @@ window.copySelection = function() {
     if (navigator.clipboard && navigator.clipboard.writeText) {
         navigator.clipboard.writeText(text).catch(() => {
             const ta = document.createElement('textarea');
-            ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
-            document.body.appendChild(ta); ta.select(); document.execCommand('copy');
-            document.body.removeChild(ta);
-        });
-    } else {
-        const ta = document.createElement('textarea');
-        ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
-        document.body.appendChild(ta); ta.select(); document.execCommand('copy');
-        document.body.removeChild(ta);
-    }
-}
-
-async function registerAnnotation(annotObj) {
-    window.hideSelectionMenu(); const bookIndex = library.findIndex(b => b.id === activeBookId); if(bookIndex === -1) return;
-    const book = library[bookIndex]; if(!book.annotations) book.annotations = [];
-    book.annotations.push(annotObj); await localforage.setItem('pdf_epub_master', library);
-    
-    const nodeEl = document.getElementById(`node-${annotObj.nodeIdx}`);
-    if(nodeEl && book.nodes && book.nodes[annotObj.nodeIdx]) {
-        const currentAnnots = book.annotations.filter(a => a.nodeIdx === annotObj.nodeIdx);
-        nodeEl.innerHTML = window.renderNodeText(book.nodes[annotObj.nodeIdx].text, currentAnnots);
-    }
-    window.getSelection().removeAllRanges();
-    window.renderBookmarkPanel();
-    updateStatistics(); 
-}
-
-window.openBookmarkModal = function(color) {
-    if(currentSelection.nodeIdx === -1) return;
-    
-    activeNoteColor = color; 
-    editingAnnotId = null; 
-    
-    document.getElementById('bookmark-input-title').value = '';
-    document.getElementById('bookmark-input-text').value = '';
-    document.getElementById('btn-delete-bookmark').classList.add('hidden');
-    
-    openModal('bookmark-modal', 'bookmark-sheet', true);
-};
-
-window.saveBookmarkAnnotation = function() {
-    const titleVal = document.getElementById('bookmark-input-title').value.trim();
-    const noteVal = document.getElementById('bookmark-input-text').value.trim();
-    history.back(); 
-    
-    if(editingAnnotId) {
-        const bookIndex = library.findIndex(b => b.id === activeBookId);
-        if(bookIndex > -1) {
-            const annotIndex = library[bookIndex].annotations.findIndex(a => a.id === editingAnnotId);
-            if(annotIndex > -1) {
-                library[bookIndex].annotations[annotIndex].title = titleVal;
-                library[bookIndex].annotations[annotIndex].note = noteVal;
-                localforage.setItem('pdf_epub_master', library).then(() => {
-                    window.renderBookmarkPanel();
-                });
-            }
-        }
-    } else {
-        const book = library.find(b => b.id === activeBookId);
-        if (!book || !book.nodes) return;
-
-        const totalNodes = book.nodes.length;
-        const pct = Math.round(((currentSelection.nodeIdx + 1) / totalNodes) * 100);
-
-        let closestChapterName = wikiLang === 'id' ? "Bagian Buku" : "Book Section";
-        for (let i = currentSelection.nodeIdx; i >= 0; i--) {
-            if (book.nodes[i].tag === 'h1' || book.nodes[i].tag === 'h2') {
-                closestChapterName = book.nodes[i].text;
-                break;
-            }
-        }
-        const chapterPreview = closestChapterName.length > 15 ? closestChapterName.substring(0, 15) + '...' : closestChapterName;
-
-        const newAnnot = { 
-            id: 'BM_' + Date.now().toString(), 
-            nodeIdx: currentSelection.nodeIdx, 
-            startOff: currentSelection.startOff, 
-            endOff: currentSelection.endOff,
-            text: currentSelection.text, 
-            color: activeNoteColor, 
-            title: titleVal || (wikiLang === 'id' ? "Bookmark Baru" : "New Bookmark"), 
-            note: noteVal,
-            meta: `${chapterPreview} — ${pct}%`
-        };
-        
-        setTimeout(() => { registerAnnotation(newAnnot); }, 300);
-    }
-};
-
-window.showAnnotationDetails = function(annotId) {
-    event.preventDefault(); event.stopPropagation();
-    const book = library.find(b => b.id === activeBookId); if(!book || !book.annotations) return;
-    const annot = book.annotations.find(a => a.id === annotId); if(!annot) return;
-    
-    editingAnnotId = annotId;
-    currentSelection = { nodeIdx: annot.nodeIdx, text: annot.text };
-    
-    document.getElementById('bookmark-input-title').value = annot.title || '';
-    document.getElementById('bookmark-input-text').value = annot.note || '';
-    document.getElementById('btn-delete-bookmark').classList.remove('hidden');
-    
-    openModal('bookmark-modal', 'bookmark-sheet', true);
-};
-
-window.deleteBookmarkInsideModal = function() {
-    const d = i18n[wikiLang] || i18n['id'];
-    showDialog("Hapus Bookmark", d.deleteNoteConfirm, "trash-2", [
-        { text: d.bookmarkCancel || "Batal", primary: false },
-        { text: d.delete || "Hapus", primary: true, action: () => {
-            window.closeDialog();
-            window.deleteAnnotationById(editingAnnotId);
-            history.back(); 
-        }}
-    ]);
-}
-
-window.deleteAnnotationById = async function(annotId) {
-    if(!annotId || !activeBookId) return; 
-    const bookIndex = library.findIndex(b => b.id === activeBookId); if(bookIndex === -1) return;
-    const book = library[bookIndex]; 
-    const annotIndex = book.annotations.findIndex(a => a.id === annotId); if(annotIndex === -1) return;
-    
-    const nodeIdx = book.annotations[annotIndex].nodeIdx; 
-    book.annotations.splice(annotIndex, 1);
-    await localforage.setItem('pdf_epub_master', library);
-    
-    const nodeEl = document.getElementById(`node-${nodeIdx}`);
-    if(nodeEl && book.nodes && book.nodes[nodeIdx]) {
-        const currentAnnots = book.annotations.filter(a => a.nodeIdx === nodeIdx);
-        nodeEl.innerHTML = window.renderNodeText(book.nodes[nodeIdx].text, currentAnnots);
-    }
-
-    window.renderBookmarkPanel();
-    updateStatistics(); 
-};
-
-window.renderBookmarkPanel = function() {
-    if(!DOM.bookmarkList || !DOM.bookmarkPanel || !activeBookId) return;
-    const book = library.find(b => b.id === activeBookId);
-    if (!book) return;
-
-    const searchInput = document.getElementById('bookmark-search-input');
-    if (searchInput) searchInput.value = '';
-
-    _renderBookmarkList(book.annotations || []);
-};
-
-function _renderBookmarkList(annotations) {
-    if(!DOM.bookmarkList) return;
-    DOM.bookmarkList.innerHTML = '';
-    const emptyState = document.getElementById('bookmark-empty');
-
-    const bookmarks = [...annotations].sort((a,b) => a.nodeIdx - b.nodeIdx);
-
-    if(bookmarks.length === 0) {
-        if(emptyState) emptyState.classList.remove('hidden');
-    } else {
-        if(emptyState) emptyState.classList.add('hidden');
-        
-        bookmarks.forEach(bm => {
-            const btn = document.createElement('div');
-            btn.className = "group relative flex flex-col p-4 mb-3 rounded-3xl bg-m3-surface shadow-sm overflow-hidden text-left transition-all hover:shadow-md cursor-pointer";
-            
-            btn.onclick = () => {
-                const markTarget = document.querySelector(`mark[data-id="${bm.id}"]`);
-                const paragraphTarget = document.getElementById(`node-${bm.nodeIdx}`);
-                const container = DOM.readContent;
-                
-                if (container) {
-                    let targetEl = markTarget || paragraphTarget;
-                    if (targetEl) {
-                        const cRect = container.getBoundingClientRect();
-                        const tRect = targetEl.getBoundingClientRect();
-                        const offset = tRect.top - cRect.top + container.scrollTop - (cRect.height / 2) + (tRect.height / 2);
-                        
-                        container.scrollTo({ top: offset, behavior: 'smooth' });
-                    }
-                }
-                history.back(); 
-            };
-            
-            let iconColorCls = "text-yellow-600 bg-yellow-500/20 dark:text-yellow-400 dark:bg-yellow-400/20";
-            let quoteBgCls = "bg-yellow-500/10 text-yellow-800 dark:bg-yellow-400/10 dark:text-yellow-100";
-            
-            if (bm.color === 'green') { 
-                iconColorCls = "text-green-600 bg-green-500/20 dark:text-green-400 dark:bg-green-400/20"; 
-                quoteBgCls = "bg-green-500/10 text-green-800 dark:bg-green-400/10 dark:text-green-100";
-            }
-            else if (bm.color === 'pink') { 
-                iconColorCls = "text-pink-600 bg-pink-500/20 dark:text-pink-400 dark:bg-pink-400/20"; 
-                quoteBgCls = "bg-pink-500/10 text-pink-800 dark:bg-pink-400/10 dark:text-pink-100";
-            }
-
-            let noteHtml = bm.note ? `
-                <div class="mt-3 p-3 rounded-2xl bg-m3-surfaceVariant text-m3-onSurfaceVariant font-bold text-xs leading-relaxed">
-                    ${bm.note}
-                </div>` : '';
-            
-            let quoteHtml = `
-                <div class="mt-2 p-3 rounded-2xl ${quoteBgCls}">
-                    <span class="text-[11px] font-medium opacity-90 italic line-clamp-2 leading-relaxed">"${bm.text}"</span>
-                </div>
-            `;
-            
-            let metaText = bm.meta || 'Chapter';
-            if (metaText.length > 15) metaText = metaText.substring(0, 15) + '...';
-
-            btn.innerHTML = `
-                <div class="flex items-start justify-between gap-2 mb-2 w-full">
-                    <span class="text-sm font-bold text-m3-onSurface leading-tight line-clamp-2 pr-6">${bm.title}</span>
-                </div>
-                
-                <div class="flex items-center gap-1.5 w-max px-2.5 py-1 rounded-lg ${iconColorCls}">
-                    <i data-lucide="bookmark" class="w-3 h-3 fill-current"></i>
-                    <span class="text-[9px] font-bold uppercase tracking-wider">${metaText}</span>
-                </div>
-                
-                ${noteHtml}
-                ${quoteHtml}
-            `;
-
-            const delBtn = document.createElement('button');
-            delBtn.className = "absolute top-4 right-4 w-7 h-7 rounded-full text-red-500/40 hover:text-red-500 hover:bg-red-500/10 transition-all flex items-center justify-center";
-            delBtn.innerHTML = `<i data-lucide="trash-2" class="w-4 h-4"></i>`;
-            delBtn.onclick = (e) => {
-                e.stopPropagation(); 
-                window.deleteAnnotationById(bm.id);
-            };
-
-            btn.appendChild(delBtn);
-            DOM.bookmarkList.appendChild(btn);
-        });
-        if(window.lucide) window.lucide.createIcons();
-    }
-}
-
-window.filterBookmarkPanel = function(query) {
-    const book = library.find(b => b.id === activeBookId);
-    if (!book) return;
-    const all = book.annotations || [];
-    const q = query.trim().toLowerCase();
-    const filtered = q ? all.filter(bm => (bm.title || '').toLowerCase().includes(q)) : all;
-    _renderBookmarkList(filtered);
-};
-
-// 12. SWIPE TO DISMISS LOGIC
-function setupSwipeToDismiss() {
-    const sheets = ['global-settings-sheet', 'b-opt-sheet', 'edit-sheet', 'bookmark-sheet', 'raw-backup-sheet', 'raw-restore-sheet', 'welcome-sheet'];
-    sheets.forEach(sheetId => {
-        const sheet = document.getElementById(sheetId);
-        if (!sheet) return;
-        let touchStartY = 0; let initialScrollTop = 0; let isPulling = false;
-        sheet.addEventListener('touchstart', (e) => {
-            touchStartY = e.touches[0].clientY; initialScrollTop = sheet.scrollTop; sheet.style.transition = 'none'; 
-        }, { passive: true });
-        sheet.addEventListener('touchmove', (e) => {
-            if (initialScrollTop <= 0) {
-                const deltaY = e.touches[0].clientY - touchStartY;
-                if (deltaY > 0) { 
-                    isPulling = true; if(e.cancelable) e.preventDefault(); 
-                    sheet.style.transform = `translateY(${deltaY * 0.5}px)`; 
-                }
-            }
-        }, { passive: false });
-        sheet.addEventListener('touchend', (e) => {
-            if (!isPulling) return; isPulling = false;
-            const deltaY = e.changedTouches[0].clientY - touchStartY;
-            sheet.style.transition = 'transform 0.3s cubic-bezier(0.2, 0, 0, 1)';
-            if (deltaY > 100) { 
-                sheet.style.transform = 'translateY(100%)'; 
-                setTimeout(() => { history.back(); setTimeout(() => { sheet.style.transform = ''; }, 100); }, 100);
-            } else { sheet.style.transform = ''; }
-        });
-    });
-
-    const aiSheet = document.getElementById('ai-sheet');
-    if (aiSheet) {
-        let aiTouchStartY = 0; let aiIsPulling = false;
-        aiSheet.addEventListener('touchstart', (e) => {
-            aiTouchStartY = e.touches[0].clientY;
-            aiIsPulling = false;
-            aiSheet.style.transition = 'none';
-        }, { passive: true });
-        aiSheet.addEventListener('touchmove', (e) => {
-            const scrollableInner = aiSheet.querySelector('.overflow-y-auto');
-            const innerScrollTop = scrollableInner ? scrollableInner.scrollTop : 0;
-            const deltaY = e.touches[0].clientY - aiTouchStartY;
-            if (innerScrollTop <= 0 && deltaY > 0) {
-                aiIsPulling = true;
-                if(e.cancelable) e.preventDefault();
-                aiSheet.style.transform = `translateY(${deltaY * 0.5}px)`;
-            }
-        }, { passive: false });
-        aiSheet.addEventListener('touchend', (e) => {
-            if (!aiIsPulling) return; aiIsPulling = false;
-            const deltaY = e.changedTouches[0].clientY - aiTouchStartY;
-            aiSheet.style.transition = 'transform 0.3s cubic-bezier(0.2, 0, 0, 1)';
-            if (deltaY > 100) {
-                aiSheet.style.transform = 'translateY(100%)';
-                setTimeout(() => { history.back(); setTimeout(() => { aiSheet.style.transform = ''; }, 100); }, 100);
-            } else { aiSheet.style.transform = ''; }
-        });
-    }
-
-    const panels = ['toc-panel', 'settings-panel', 'bookmark-panel'];
-    panels.forEach(panelId => {
-        const panel = document.getElementById(panelId);
-        if(!panel) return;
-        let touchStartX = 0; let touchStartY = 0; let isSwipingPanel = false;
-        panel.addEventListener('touchstart', (e) => {
-            touchStartX = e.touches[0].clientX; touchStartY = e.touches[0].clientY; panel.style.transition = 'none';
-        }, { passive: true });
-        panel.addEventListener('touchmove', (e) => {
-            const deltaX = e.touches[0].clientX - touchStartX;
-            const deltaY = Math.abs(e.touches[0].clientY - touchStartY);
-            if (deltaX > 0 && deltaX > deltaY) { 
-                isSwipingPanel = true;
-                if(e.cancelable) e.preventDefault();
-                panel.style.transform = `translateX(${deltaX}px)`;
-            }
-        }, { passive: false }); 
-        panel.addEventListener('touchend', (e) => {
-            if (!isSwipingPanel) return; isSwipingPanel = false;
-            const deltaX = e.changedTouches[0].clientX - touchStartX;
-            panel.style.transition = 'transform 0.3s cubic-bezier(0.2, 0, 0, 1), opacity 0.3s ease';
-            if (deltaX > 80) { 
-                panel.style.transform = 'translateX(100%)';
-                setTimeout(() => { history.back(); setTimeout(() => { panel.style.transform = ''; }, 100); }, 100);
-            } else { 
-                panel.style.transform = 'translateX(0)';
-            }
-        });
-    });
-}
-
-// 13. PWA & CAPACITOR SETUP
-if ('serviceWorker' in navigator) {
-    const swCode = `
-    const CACHE_NAME = 'baca-pwa-v5';
-    self.addEventListener('install', (e) => {
-        self.skipWaiting();
-        e.waitUntil(caches.open(CACHE_NAME).then(c => c.addAll([
-            '/', 'libs/tailwindcss.js', 'libs/pdf.min.js', 'libs/pdf.worker.min.js', 'libs/localforage.min.js', 'libs/jszip.min.js', 'libs/lucide.js',
-            'css/style.css', 'js/config.js', 'js/reader.js', 'js/app.js'
-       ])));
-    });
-    self.addEventListener('fetch', (e) => { e.respondWith(caches.match(e.request).then(r => r || fetch(e.request))); });
-    `;
-    const blob = new Blob([swCode], {type: 'application/javascript'});
-    navigator.serviceWorker.register(URL.createObjectURL(blob)).catch(err => console.log("SW Error:", err));
-}
-
-document.addEventListener("DOMContentLoaded", () => {
-    setTimeout(() => {
-        if (window.Capacitor && window.Capacitor.Plugins) {
-            const capApp = window.Capacitor.Plugins.App;
-            const capStatusBar = window.Capacitor.Plugins.StatusBar;
-            
-            if (capApp) capApp.addListener('backButton', () => { window.history.back(); });
-            if (capStatusBar) capStatusBar.hide().catch(()=>{});
-        }
-    }, 500);
-});
-
+            ta.value = text; ta.style.position = 'fixed'; ta.s
