@@ -364,7 +364,7 @@
             </div>
 
             <h4 id="str-set-data" class="text-xs font-bold opacity-70 mb-3 px-1 mt-6 uppercase tracking-wider">Data Aplikasi</h4>
-            <div class="flex gap-2 mb-4">
+            <div class="flex gap-2 mb-2">
                 <button onclick="exportData()" class="flex-1 flex flex-col items-center justify-center gap-2 p-3 bg-m3-surfaceVariant text-m3-onSurfaceVariant rounded-2xl font-bold btn-morph text-xs relative overflow-hidden group">
                     <i data-lucide="copy" class="w-5 h-5 transition-transform group-active:scale-90"></i> 
                     <span id="str-btn-backup">Backup Data</span>
@@ -375,6 +375,12 @@
                 </button>
                 <input type="file" id="import-upload" accept=".json" class="hidden" onchange="importDataFile(event)">
             </div>
+            
+            <!-- TOMBOL BARU: HAPUS SEMUA SAMPUL -->
+            <button onclick="clearAllCoversConfirm()" id="btn-clear-covers" class="flex items-center justify-center gap-2 w-full p-3 bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-400 rounded-2xl font-bold btn-morph mb-4 mt-2">
+                <i data-lucide="image-off" class="w-5 h-5"></i>
+                <span id="str-btn-clear-covers">Hapus Semua Sampul (Biar Ringan)</span>
+            </button>
 
             <h4 id="str-set-info" class="text-xs font-bold opacity-70 mb-3 px-1 mt-6 uppercase tracking-wider">Info & Dukungan</h4>
             <button onclick="openModal('welcome-modal', 'welcome-sheet', true)" class="flex items-center justify-center gap-2 w-full p-4 bg-m3-secondaryContainer text-m3-onSecondaryContainer rounded-2xl font-bold btn-morph mb-3">
@@ -583,4 +589,3 @@
 
 </body>
 </html>
-
