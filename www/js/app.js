@@ -164,6 +164,7 @@ window.addEventListener('popstate', (e) => {
     else if (!document.getElementById('bookmark-modal').classList.contains('opacity-0')) { _closeModalAction('bookmark-modal', 'bookmark-sheet', true, true); }
     else if (!document.getElementById('b-opt-modal').classList.contains('opacity-0')) { _closeModalAction('b-opt-modal', 'b-opt-sheet', false, true); }
     else if (!document.getElementById('edit-modal').classList.contains('opacity-0')) { _closeModalAction('edit-modal', 'edit-sheet', true, true); }
+    else if (!document.getElementById('backup-type-modal').classList.contains('opacity-0')) { _closeModalAction('backup-type-modal', 'backup-type-sheet', true, true); }
     else if (!document.getElementById('global-settings-modal').classList.contains('opacity-0')) { _closeModalAction('global-settings-modal', 'global-settings-sheet', false, true); }
     else if (!document.getElementById('welcome-modal').classList.contains('opacity-0')) { closeWelcome(true); }
     else if (isBatchDeleteMode) { window.toggleBatchDelete(true); }
@@ -307,6 +308,11 @@ function applyLanguage() {
     setElementText('str-raw-res-title', d.rawResTitle); setElementText('str-raw-res-desc', d.rawResDesc);
     setElementText('str-raw-res-btn-file', d.rawResFile); setElementText('str-raw-res-btn-process', d.rawResProcess);
     setElementText('str-raw-res-btn-close', d.rawResClose);
+
+    setElementText('str-bak-modal-title', d.bakModalTitle); setElementText('str-bak-modal-desc', d.bakModalDesc);
+    setElementText('str-bak-json-title', d.bakJsonTitle); setElementText('str-bak-json-desc', d.bakJsonDesc);
+    setElementText('str-bak-zip-title', d.bakZipTitle); setElementText('str-bak-zip-desc', d.bakZipDesc);
+    setElementText('str-bak-zip-warn', d.bakZipWarn); setElementText('str-bak-modal-cancel', d.bakModalCancel);
 
     if(DOM.globalSearch) DOM.globalSearch.placeholder = d.searchBooks;
     if(DOM.searchInput) DOM.searchInput.placeholder = d.searchPlaceholder;
@@ -528,116 +534,184 @@ window.clearAllCoversConfirm = function() {
 
 // 7. BACKUP & RESTORE DATA (JSON PROGRESS & ZIP FULL)
 window.executeBackup = async function(type) {
-    _closeModalAction('backup-type-modal', 'backup-type-sheet');
+    // Tutup backup-type-modal dulu, baru jalankan proses
+    _closeModalAction('backup-type-modal', 'backup-type-sheet', true, true);
+
+    const d = typeof i18n !== 'undefined' ? (i18n[wikiLang] || i18n['id']) : {};
+
     if (!library || library.length === 0) {
-        showDialog("Info", wikiLang === 'id' ? "Perpustakaan kosong. Ga ada yang bisa di-backup." : "Library is empty.", "info", [{ text: "Oke", primary: true }]);
+        setTimeout(() => {
+            showDialog("Info", d.libEmpty || "Perpustakaan kosong. Ga ada yang bisa di-backup.", "info", [{ text: "Oke", primary: true }]);
+        }, 350);
         return;
     }
 
-    try {
-        if (type === 'json') {
+    if (type === 'json') {
+        // Tampilkan loading dialog dulu
+        setTimeout(() => {
             showDialog(
-                wikiLang === 'id' ? "Memproses JSON" : "Processing JSON",
-                wikiLang === 'id' ? "Menyiapkan file backup ringan..." : "Preparing lightweight backup...",
-                "loader", []
+                d.bakLoadingJsonTitle || (wikiLang === 'id' ? "Menyiapkan Backup..." : wikiLang === 'es' ? "Preparando copia..." : "Preparing Backup..."),
+                d.bakLoadingJsonMsg || (wikiLang === 'id' ? "Mohon tunggu, sedang menyusun data progres lu..." : wikiLang === 'es' ? "Por favor espera, preparando tus datos de progreso..." : "Please wait, compiling your progress data..."),
+                "loader",
+                []
             );
             const iconContainer = document.getElementById('dialog-icon-container');
-            if(iconContainer) iconContainer.classList.add('animate-spin');
+            if (iconContainer) iconContainer.classList.add('animate-spin');
 
             setTimeout(async () => {
                 try {
-                    const lightLib = library.map(b => ({ ...b })); // Hanya meta, karena cover dan nodes udah di-split di localforage
+                    const lightLib = library.map(b => ({ ...b }));
                     const dataStr = JSON.stringify(lightLib);
                     await saveFileNativeOrWeb(dataStr, `Baca_ProgressOnly_${Date.now()}.json`, 'application/json');
                 } catch (e) {
                     console.error(e);
-                    showDialog("Error", "Backup gagal: " + e.message, "alert-triangle", [{ text: "Tutup", primary: true }]);
+                    window.closeDialog(true);
+                    setTimeout(() => {
+                        showDialog(
+                            "Error",
+                            (d.bakErrorMsg || (wikiLang === 'id' ? "Backup gagal: " : wikiLang === 'es' ? "Error al hacer copia: " : "Backup failed: ")) + e.message,
+                            "alert-triangle",
+                            [{ text: "Tutup", primary: true }]
+                        );
+                    }, 350);
                 }
-            }, 150);
+            }, 200);
+        }, 350);
 
-        } else if (type === 'zip') {
-            DOM.load.classList.remove('hidden');
-            if(DOM.loadTxt) DOM.loadTxt.innerText = wikiLang === 'id' ? "Membuat ZIP..." : "Creating ZIP...";
-            DOM.loadBar.style.width = '20%';
+    } else if (type === 'zip') {
+        // Tampilkan loading dialog ZIP
+        setTimeout(() => {
+            showDialog(
+                d.bakLoadingZipTitle || (wikiLang === 'id' ? "Membuat ZIP..." : wikiLang === 'es' ? "Creando ZIP..." : "Creating ZIP..."),
+                d.bakLoadingZipMsg || (wikiLang === 'id' ? "Mohon tunggu, sedang menyusun dan mengompres semua isi buku lu. Proses ini bisa memakan waktu beberapa saat." : wikiLang === 'es' ? "Por favor espera, comprimiendo todos tus libros. Este proceso puede tardar un momento." : "Please wait, compiling and compressing all your books. This may take a moment."),
+                "loader",
+                []
+            );
+            const iconContainer = document.getElementById('dialog-icon-container');
+            if (iconContainer) iconContainer.classList.add('animate-spin');
+        }, 350);
 
-            const zip = new JSZip();
-            // Simpan Meta
-            zip.file("library.json", JSON.stringify(library));
-            
-            const contentsFolder = zip.folder("contents");
-            const coversFolder = zip.folder("covers");
+        // Jalankan proses ZIP setelah delay animasi close modal
+        setTimeout(async () => {
+            try {
+                const zip = new JSZip();
+                zip.file("library.json", JSON.stringify(library));
 
-            let count = 0;
-            for (const b of library) {
-                const nodes = await localforage.getItem('content_' + b.id);
-                if (nodes) contentsFolder.file(`${b.id}.json`, JSON.stringify(nodes));
-                
-                const cover = await localforage.getItem('cover_' + b.id);
-                if (cover) coversFolder.file(`${b.id}.txt`, cover);
-                
-                count++;
-                DOM.loadBar.style.width = `${20 + (count / library.length * 70)}%`;
+                const contentsFolder = zip.folder("contents");
+                const coversFolder = zip.folder("covers");
+
+                for (const b of library) {
+                    const nodes = await localforage.getItem('content_' + b.id);
+                    if (nodes) contentsFolder.file(`${b.id}.json`, JSON.stringify(nodes));
+
+                    const cover = await localforage.getItem('cover_' + b.id);
+                    if (cover) coversFolder.file(`${b.id}.txt`, cover);
+                }
+
+                const content = await zip.generateAsync({ type: "blob", compression: "DEFLATE", compressionOptions: { level: 6 } });
+                await saveFileNativeOrWebBlob(content, `Baca_FullBackup_${Date.now()}.zip`);
+
+            } catch (err) {
+                console.error("Backup ZIP failed:", err);
+                window.closeDialog(true);
+                setTimeout(() => {
+                    showDialog(
+                        "Error",
+                        (d.bakErrorMsg || (wikiLang === 'id' ? "Backup gagal: " : wikiLang === 'es' ? "Error al hacer copia: " : "Backup failed: ")) + err.message,
+                        "alert-triangle",
+                        [{ text: "Tutup", primary: true }]
+                    );
+                }, 350);
             }
-
-            if(DOM.loadTxt) DOM.loadTxt.innerText = wikiLang === 'id' ? "Mengompres ZIP..." : "Compressing ZIP...";
-            const content = await zip.generateAsync({ type: "blob", compression: "DEFLATE", compressionOptions: { level: 6 } });
-            
-            DOM.loadBar.style.width = '100%';
-            await saveFileNativeOrWebBlob(content, `Baca_FullBackup_${Date.now()}.zip`);
-            DOM.load.classList.add('hidden');
-        }
-    } catch (err) {
-        DOM.load.classList.add('hidden');
-        console.error("Backup failed:", err);
-        showDialog("Error", "Backup gagal: " + err.message, "alert-triangle", [{ text: "Tutup", primary: true }]);
+        }, 450);
     }
 };
 
 async function saveFileNativeOrWeb(text, filename, mime) {
+    const d = typeof i18n !== 'undefined' ? (i18n[wikiLang] || i18n['id']) : {};
+    const successTitle = d.bakSuccessTitle || (wikiLang === 'id' ? "Backup Sukses!" : wikiLang === 'es' ? "¡Copia exitosa!" : "Backup Successful!");
+    const successMsgNative = (d.bakSuccessMsgNative || (wikiLang === 'id' ? "File JSON berhasil disimpan di folder Documents:\n{f}" : wikiLang === 'es' ? "Archivo JSON guardado en la carpeta Documentos:\n{f}" : "JSON file saved to Documents folder:\n{f}")).replace('{f}', filename);
+    const successMsgWeb = (d.bakSuccessMsgWeb || (wikiLang === 'id' ? "File JSON berhasil diunduh:\n{f}" : wikiLang === 'es' ? "Archivo JSON descargado:\n{f}" : "JSON file downloaded:\n{f}")).replace('{f}', filename);
+    const okBtn = wikiLang === 'id' ? "Mantap" : wikiLang === 'es' ? "Genial" : "Great";
+
     if (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.Filesystem) {
         try {
             await window.Capacitor.Plugins.Filesystem.writeFile({
                 path: filename, data: text, directory: 'DOCUMENTS', encoding: 'utf8'
             });
-            showDialog("Backup Sukses", `File disimpan di folder Documents:\n${filename}`, "check-circle", [{text: "Mantap", primary: true}]);
+            window.closeDialog(true);
+            setTimeout(() => {
+                showDialog(successTitle, successMsgNative, "check-circle", [{ text: okBtn, primary: true }]);
+            }, 350);
             return;
         } catch (e) {
             console.log("Capacitor write gagal, beralih ke teks raw.", e);
-            // Fallback to RAW Modal
-            document.getElementById('raw-backup-textarea').value = text;
+            // Fallback ke RAW Modal
             window.closeDialog(true);
-            setTimeout(() => openModal('raw-backup-modal', 'raw-backup-sheet', true), 350);
+            setTimeout(() => {
+                document.getElementById('raw-backup-textarea').value = text;
+                openModal('raw-backup-modal', 'raw-backup-sheet', true);
+            }, 350);
             return;
         }
     }
     // Fallback Web
-    const blob = new Blob([text], {type: mime});
+    const blob = new Blob([text], { type: mime });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a'); a.href = url; a.download = filename;
     document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
-    showDialog("Backup Sukses", `File berhasil diunduh:\n${filename}`, "check-circle", [{text: "Mantap", primary: true}]);
+    window.closeDialog(true);
+    setTimeout(() => {
+        showDialog(successTitle, successMsgWeb, "check-circle", [{ text: okBtn, primary: true }]);
+    }, 350);
 }
 
 async function saveFileNativeOrWebBlob(blob, filename) {
+    const d = typeof i18n !== 'undefined' ? (i18n[wikiLang] || i18n['id']) : {};
+    const successTitle = d.bakSuccessTitle || (wikiLang === 'id' ? "Backup Sukses!" : wikiLang === 'es' ? "¡Copia exitosa!" : "Backup Successful!");
+    const successMsgNative = (d.bakZipSuccessMsgNative || (wikiLang === 'id' ? "File ZIP berhasil disimpan di folder Documents:\n{f}" : wikiLang === 'es' ? "Archivo ZIP guardado en la carpeta Documentos:\n{f}" : "ZIP file saved to Documents folder:\n{f}")).replace('{f}', filename);
+    const successMsgWeb = (d.bakZipSuccessMsgWeb || (wikiLang === 'id' ? "File ZIP berhasil diunduh:\n{f}" : wikiLang === 'es' ? "Archivo ZIP descargado:\n{f}" : "ZIP file downloaded:\n{f}")).replace('{f}', filename);
+    const okBtn = wikiLang === 'id' ? "Mantap" : wikiLang === 'es' ? "Genial" : "Great";
+
     if (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.Filesystem) {
         try {
             const reader = new FileReader();
             reader.readAsDataURL(blob);
             reader.onloadend = async function() {
-                const base64data = reader.result.split(',')[1];
-                await window.Capacitor.Plugins.Filesystem.writeFile({
-                    path: filename, data: base64data, directory: 'DOCUMENTS'
-                });
-                showDialog("Backup Sukses", `File ZIP disimpan di folder Documents:\n${filename}`, "check-circle", [{text: "Mantap", primary: true}]);
-            }
+                try {
+                    const base64data = reader.result.split(',')[1];
+                    await window.Capacitor.Plugins.Filesystem.writeFile({
+                        path: filename, data: base64data, directory: 'DOCUMENTS'
+                    });
+                    window.closeDialog(true);
+                    setTimeout(() => {
+                        showDialog(successTitle, successMsgNative, "check-circle", [{ text: okBtn, primary: true }]);
+                    }, 350);
+                } catch (writeErr) {
+                    console.log("Capacitor write blob gagal", writeErr);
+                    window.closeDialog(true);
+                    setTimeout(() => {
+                        showDialog("Error", (d.bakErrorMsg || "Backup gagal: ") + writeErr.message, "alert-triangle", [{ text: "Tutup", primary: true }]);
+                    }, 350);
+                }
+            };
+            reader.onerror = function() {
+                window.closeDialog(true);
+                setTimeout(() => {
+                    showDialog("Error", d.bakErrorMsg || "Gagal membaca file untuk backup.", "alert-triangle", [{ text: "Tutup", primary: true }]);
+                }, 350);
+            };
             return;
-        } catch (e) { console.log("Capacitor write blob gagal", e); }
+        } catch (e) { console.log("Capacitor write blob gagal (outer)", e); }
     }
     // Fallback Web
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a'); a.href = url; a.download = filename;
     document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
-    showDialog("Backup Sukses", `File ZIP berhasil diunduh:\n${filename}`, "check-circle", [{text: "Mantap", primary: true}]);
+    window.closeDialog(true);
+    setTimeout(() => {
+        showDialog(successTitle, successMsgWeb, "check-circle", [{ text: okBtn, primary: true }]);
+    }, 350);
 }
 
 window.copyRawBackup = function() {
@@ -1943,7 +2017,7 @@ window.filterBookmarkPanel = function(query) {
 
 // 12. SWIPE TO DISMISS LOGIC
 function setupSwipeToDismiss() {
-    const sheets = ['global-settings-sheet', 'b-opt-sheet', 'edit-sheet', 'bookmark-sheet', 'raw-backup-sheet', 'raw-restore-sheet', 'welcome-sheet'];
+    const sheets = ['global-settings-sheet', 'b-opt-sheet', 'edit-sheet', 'bookmark-sheet', 'raw-backup-sheet', 'raw-restore-sheet', 'backup-type-sheet'];
     sheets.forEach(sheetId => {
         const sheet = document.getElementById(sheetId);
         if (!sheet) return;
@@ -1971,91 +2045,20 @@ function setupSwipeToDismiss() {
         });
     });
 
-    const aiSheet = document.getElementById('ai-sheet');
-    if (aiSheet) {
-        let aiTouchStartY = 0; let aiIsPulling = false;
-        aiSheet.addEventListener('touchstart', (e) => {
-            aiTouchStartY = e.touches[0].clientY;
-            aiIsPulling = false;
-            aiSheet.style.transition = 'none';
+    // Welcome sheet: swipe to dismiss HANYA aktif kalau scroll posisi paling atas
+    const welcomeSheet = document.getElementById('welcome-sheet');
+    if (welcomeSheet) {
+        let wTouchStartY = 0; let wIsPulling = false;
+        welcomeSheet.addEventListener('touchstart', (e) => {
+            wTouchStartY = e.touches[0].clientY;
+            wIsPulling = false;
+            welcomeSheet.style.transition = 'none';
         }, { passive: true });
-        aiSheet.addEventListener('touchmove', (e) => {
-            const scrollableInner = aiSheet.querySelector('.overflow-y-auto');
+        welcomeSheet.addEventListener('touchmove', (e) => {
+            const scrollableInner = welcomeSheet.querySelector('.overflow-y-auto') || welcomeSheet;
             const innerScrollTop = scrollableInner ? scrollableInner.scrollTop : 0;
-            const deltaY = e.touches[0].clientY - aiTouchStartY;
+            const deltaY = e.touches[0].clientY - wTouchStartY;
+            // Swipe down hanya aktif kalau konten sudah di posisi paling atas (scrollTop <= 0)
             if (innerScrollTop <= 0 && deltaY > 0) {
-                aiIsPulling = true;
-                if(e.cancelable) e.preventDefault();
-                aiSheet.style.transform = `translateY(${deltaY * 0.5}px)`;
-            }
-        }, { passive: false });
-        aiSheet.addEventListener('touchend', (e) => {
-            if (!aiIsPulling) return; aiIsPulling = false;
-            const deltaY = e.changedTouches[0].clientY - aiTouchStartY;
-            aiSheet.style.transition = 'transform 0.3s cubic-bezier(0.2, 0, 0, 1)';
-            if (deltaY > 100) {
-                aiSheet.style.transform = 'translateY(100%)';
-                setTimeout(() => { history.back(); setTimeout(() => { aiSheet.style.transform = ''; }, 100); }, 100);
-            } else { aiSheet.style.transform = ''; }
-        });
-    }
-
-    const panels = ['toc-panel', 'settings-panel', 'bookmark-panel'];
-    panels.forEach(panelId => {
-        const panel = document.getElementById(panelId);
-        if(!panel) return;
-        let touchStartX = 0; let touchStartY = 0; let isSwipingPanel = false;
-        panel.addEventListener('touchstart', (e) => {
-            touchStartX = e.touches[0].clientX; touchStartY = e.touches[0].clientY; panel.style.transition = 'none';
-        }, { passive: true });
-        panel.addEventListener('touchmove', (e) => {
-            const deltaX = e.touches[0].clientX - touchStartX;
-            const deltaY = Math.abs(e.touches[0].clientY - touchStartY);
-            if (deltaX > 0 && deltaX > deltaY) { 
-                isSwipingPanel = true;
-                if(e.cancelable) e.preventDefault();
-                panel.style.transform = `translateX(${deltaX}px)`;
-            }
-        }, { passive: false }); 
-        panel.addEventListener('touchend', (e) => {
-            if (!isSwipingPanel) return; isSwipingPanel = false;
-            const deltaX = e.changedTouches[0].clientX - touchStartX;
-            panel.style.transition = 'transform 0.3s cubic-bezier(0.2, 0, 0, 1), opacity 0.3s ease';
-            if (deltaX > 80) { 
-                panel.style.transform = 'translateX(100%)';
-                setTimeout(() => { history.back(); setTimeout(() => { panel.style.transform = ''; }, 100); }, 100);
-            } else { 
-                panel.style.transform = 'translateX(0)';
-            }
-        });
-    });
-}
-
-// 13. PWA & CAPACITOR SETUP
-if ('serviceWorker' in navigator) {
-    const swCode = `
-    const CACHE_NAME = 'baca-pwa-v5';
-    self.addEventListener('install', (e) => {
-        self.skipWaiting();
-        e.waitUntil(caches.open(CACHE_NAME).then(c => c.addAll([
-            '/', 'libs/tailwindcss.js', 'libs/pdf.min.js', 'libs/pdf.worker.min.js', 'libs/localforage.min.js', 'libs/jszip.min.js', 'libs/lucide.js',
-            'css/style.css', 'js/config.js', 'js/reader.js', 'js/app.js'
-       ])));
-    });
-    self.addEventListener('fetch', (e) => { e.respondWith(caches.match(e.request).then(r => r || fetch(e.request))); });
-    `;
-    const blob = new Blob([swCode], {type: 'application/javascript'});
-    navigator.serviceWorker.register(URL.createObjectURL(blob)).catch(err => console.log("SW Error:", err));
-}
-
-document.addEventListener("DOMContentLoaded", () => {
-    setTimeout(() => {
-        if (window.Capacitor && window.Capacitor.Plugins) {
-            const capApp = window.Capacitor.Plugins.App;
-            const capStatusBar = window.Capacitor.Plugins.StatusBar;
-            
-            if (capApp) capApp.addListener('backButton', () => { window.history.back(); });
-            if (capStatusBar) capStatusBar.hide().catch(()=>{});
-        }
-    }, 500);
-});
+                wIsPulling = true;
+                if (e.cancelable) e.preventDe
