@@ -1,4 +1,3 @@
-```javascript
 // --- READER ENGINE ---
 // File ini mengurus semua logika berat: Parsing PDF, Ekstrak EPUB, In-Book Search, & Gemini AI.
 
@@ -826,7 +825,7 @@ async function handlePdf(file, bookTitle) {
     renderLibrary();
 }
 
-// 3. FUNGSI EKSTRAK EPUB (DIKEMBALIKAN 100% KE LOGIKA LAMA ANDA YANG TERBUKTI BERHASIL)
+// 3. FUNGSI EKSTRAK EPUB
 async function handleEpub(file, bookTitle) {
     const zip = await JSZip.loadAsync(file); 
     let parsedNodes = []; 
@@ -874,8 +873,9 @@ async function handleEpub(file, bookTitle) {
     const spine = Array.from(opfDoc.getElementsByTagName("itemref")).map(item => item.getAttribute("idref"));
     let order = 0;
     
-    // Tag yang sah buat dijadiin blok paragraf / heading
     const validBlockTags = ['p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'li', 'blockquote', 'div', 'section', 'article', 'header'];
+    // Deduplication heading di luar loop — deteksi duplikat antar chapter juga
+    const seenEpubHeadings = new Set();
 
     for (const idref of spine) {
         order++;
@@ -889,17 +889,15 @@ async function handleEpub(file, bookTitle) {
 
         const htmlStr = await htmlFile.async("text");
         const doc = (new DOMParser()).parseFromString(htmlStr, "text/html");
-        
-        // Bersihin sampah yang bikin layout kotor
+        if (!doc || !doc.body) continue;
+
         doc.querySelectorAll('script, style, nav, footer, iframe, svg, button').forEach(el => el.remove());
 
-        // Scan semua elemen secara berurutan dari atas ke bawah (Pre-order Traversal)
         const allElements = doc.body.querySelectorAll('*');
 
         for (let el of allElements) {
             let tag = el.tagName.toLowerCase();
             
-            // 1. Eksekusi Gambar
             if (tag === 'img' || tag === 'image') {
                 let src = el.getAttribute('src') || el.getAttribute('href');
                 if (src && !src.startsWith('http') && !src.startsWith('data:')) {
@@ -918,9 +916,7 @@ async function handleEpub(file, bookTitle) {
                 continue;
             }
 
-            // 2. Eksekusi Blok Teks
             if (validBlockTags.includes(tag)) {
-                // Cek apakah elemen ini punya anak blok lain di dalamnya (Kalo punya, ini cuma Wrapper, lewatin aja)
                 let hasBlockChild = false;
                 const descendants = el.querySelectorAll('*');
                 for (let i = 0; i < descendants.length; i++) {
@@ -930,19 +926,64 @@ async function handleEpub(file, bookTitle) {
                     }
                 }
                 
-                if (hasBlockChild) continue; // Jangan ambil teksnya, tunggu iterasi sampai ke anak terdalamnya
+                if (hasBlockChild) continue; 
                 
                 let text = el.textContent.trim().replace(/\s+/g, ' ');
                 if (text.length === 0) continue;
-                
-                let finalTag = 'p';
-                if (['h1', 'h2', 'h3', 'h4'].includes(tag)) finalTag = tag === 'h1' ? 'h1' : 'h2';
-                
-                // Pembersihan kasus Bab spasi alay ("B a B", "B A B")
+
+                // Normalisasi: spasi antar huruf scatter (e.g. "B A B" → "BAB")
+                // Pakai pendekatan aman tanpa lookbehind (kompatibel semua WebView)
+                text = text.replace(/([A-Z]) (?=[A-Z])/g, '$1');
                 text = text.replace(/B\s*A\s*B/gi, 'BAB');
 
-                // Kalau teks h1/h2 tapi panjangnya ngotak (kayak paragraf utuh), turunin pangkas jadi paragraf
-                if ((finalTag === 'h1' || finalTag === 'h2') && text.length > 150) finalTag = 'p';
+                // Buang teks yang tidak mengandung karakter konten sama sekali
+                if (text.length < 2) continue;
+                if (!/\w/.test(text) && !/[\u00C0-\u024F\u0600-\u06FF\u4E00-\u9FFF]/.test(text)) continue;
+
+                let finalTag = 'p';
+
+                if (['h1', 'h2', 'h3', 'h4', 'h5', 'h6'].includes(tag)) {
+                    // Heading semantik dari HTML EPUB: percaya sepenuhnya, tapi validasi
+                    // h1/h2/h3 → h1 (bab), h4/h5/h6 → h2 (sub-bab)
+                    const level = parseInt(tag[1]);
+
+                    // Heading yang terlalu panjang kemungkinan salah tag oleh penerbit → turunkan ke p
+                    if (text.length > 200) {
+                        finalTag = 'p';
+                    } else if (level <= 3) {
+                        finalTag = 'h1';
+                    } else {
+                        finalTag = 'h2';
+                    }
+
+                    // Deduplication: heading persis sama yang sudah muncul → ubah ke p
+                    if (finalTag !== 'p') {
+                        const textKey = text.toLowerCase().trim();
+                        if (seenEpubHeadings.has(textKey)) {
+                            finalTag = 'p';
+                        } else {
+                            seenEpubHeadings.add(textKey);
+                        }
+                    }
+                } else {
+                    // Bukan tag heading → p, tapi cek apakah konten class-nya adalah heading
+                    // Beberapa EPUB pake <p class="chapter-title"> dll
+                    const cls = (el.getAttribute('class') || '').toLowerCase();
+                    const isHeadingClass = /\b(chapter|heading|title|bab|judul|h[1-6]|header)\b/.test(cls);
+
+                    if (isHeadingClass && text.length < 120) {
+                        // Cek lebih lanjut: harus punya "nilai heading"
+                        const hasChapterKeyword = /^(bab|chapter|bagian|part|section|pendahuluan|penutup|kesimpulan|kata\s+pengantar|prakata|prolog|epilog)\b/i.test(text);
+                        finalTag = hasChapterKeyword ? 'h1' : 'h2';
+
+                        const textKey = text.toLowerCase().trim();
+                        if (seenEpubHeadings.has(textKey)) {
+                            finalTag = 'p';
+                        } else if (finalTag !== 'p') {
+                            seenEpubHeadings.add(textKey);
+                        }
+                    }
+                }
 
                 parsedNodes.push({ tag: finalTag, text: text });
             }
@@ -1103,4 +1144,3 @@ window.closeAiModal = function(isFromHistory = false) {
 }
 
 
-```
