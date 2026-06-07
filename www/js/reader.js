@@ -200,20 +200,27 @@ async function handleTxt(file, bookTitle) {
 
     if (parsedNodes.length === 0) throw new Error("File TXT kosong atau tidak bisa dibaca.");
 
-    const bookId = Date.now().toString() + Math.floor(Math.random() * 1000);
+    // [ID PERMANEN]: ID dari nama file, bukan timestamp — supaya restore + import ulang nyambung otomatis
+    const bookId = btoa(unescape(encodeURIComponent(file.name))).replace(/[^a-zA-Z0-9]/g, '').substring(0, 32);
+    const existingIndex = library.findIndex(b => b.id === bookId);
 
     // [OPTIMASI DEWA]: Langsung mutilasi data di sumber — teks ke laci sendiri, library cuma KTP
     await localforage.setItem('content_' + bookId, parsedNodes);
 
-    library.push({
-        id: bookId,
-        type: 'txt',
-        title: bookTitle,
-        pages: Math.ceil(parsedNodes.length / 10),
-        progressPct: 0,
-        lastReadId: null,
-        shape: 'square'
-    });
+    if (existingIndex === -1) {
+        library.push({
+            id: bookId,
+            type: 'txt',
+            title: bookTitle,
+            pages: Math.ceil(parsedNodes.length / 10),
+            progressPct: 0,
+            lastReadId: null,
+            shape: 'square'
+        });
+    } else {
+        library[existingIndex].pages = Math.ceil(parsedNodes.length / 10);
+        library[existingIndex].title = bookTitle;
+    }
 
     await localforage.setItem('pdf_epub_master', library);
     renderLibrary();
@@ -264,20 +271,27 @@ async function handleMd(file, bookTitle) {
 
     if (parsedNodes.length === 0) throw new Error("File MD kosong atau tidak valid.");
 
-    const bookId = Date.now().toString() + Math.floor(Math.random() * 1000);
+    // [ID PERMANEN]: ID dari nama file, bukan timestamp
+    const bookId = btoa(unescape(encodeURIComponent(file.name))).replace(/[^a-zA-Z0-9]/g, '').substring(0, 32);
+    const existingIndex = library.findIndex(b => b.id === bookId);
 
     // [OPTIMASI DEWA]: Langsung mutilasi data di sumber — teks ke laci sendiri, library cuma KTP
     await localforage.setItem('content_' + bookId, parsedNodes);
 
-    library.push({
-        id: bookId,
-        type: 'md',
-        title: bookTitle,
-        pages: Math.ceil(parsedNodes.length / 10),
-        progressPct: 0,
-        lastReadId: null,
-        shape: 'square'
-    });
+    if (existingIndex === -1) {
+        library.push({
+            id: bookId,
+            type: 'md',
+            title: bookTitle,
+            pages: Math.ceil(parsedNodes.length / 10),
+            progressPct: 0,
+            lastReadId: null,
+            shape: 'square'
+        });
+    } else {
+        library[existingIndex].pages = Math.ceil(parsedNodes.length / 10);
+        library[existingIndex].title = bookTitle;
+    }
 
     await localforage.setItem('pdf_epub_master', library);
     renderLibrary();
@@ -815,20 +829,28 @@ async function handlePdf(file, bookTitle) {
         }
     }
 
-    library.push({
-        id: Date.now().toString() + Math.floor(Math.random() * 1000),
-        type: 'pdf',
-        title: bookTitle,
-        pages: total,
-        progressPct: 0,
-        lastReadId: null,
-        shape: 'square'
-    });
+    // [ID PERMANEN]: ID dari nama file, bukan timestamp
+    const newBookId = btoa(unescape(encodeURIComponent(file.name))).replace(/[^a-zA-Z0-9]/g, '').substring(0, 32);
+    const existingIndex = library.findIndex(b => b.id === newBookId);
 
     // [OPTIMASI DEWA]: Langsung mutilasi data di sumber — teks & cover ke laci sendiri, library cuma KTP
-    const newBookId = library[library.length - 1].id;
     await localforage.setItem('content_' + newBookId, mergedNodes);
     await localforage.setItem('cover_' + newBookId, coverBase64);
+
+    if (existingIndex === -1) {
+        library.push({
+            id: newBookId,
+            type: 'pdf',
+            title: bookTitle,
+            pages: total,
+            progressPct: 0,
+            lastReadId: null,
+            shape: 'square'
+        });
+    } else {
+        library[existingIndex].pages = total;
+        library[existingIndex].title = bookTitle;
+    }
 
     await localforage.setItem('pdf_epub_master', library);
     renderLibrary();
@@ -1002,20 +1024,28 @@ async function handleEpub(file, bookTitle) {
         }
     }
     
-    library.push({ 
-        id: Date.now().toString() + Math.floor(Math.random() * 1000), 
-        type: 'epub', 
-        title: bookTitle, 
-        pages: spine.length, 
-        progressPct: 0, 
-        lastReadId: null, 
-        shape: 'square' 
-    });
+    // [ID PERMANEN]: ID dari nama file, bukan timestamp
+    const newBookId = btoa(unescape(encodeURIComponent(file.name))).replace(/[^a-zA-Z0-9]/g, '').substring(0, 32);
+    const existingIndex = library.findIndex(b => b.id === newBookId);
 
     // [OPTIMASI DEWA]: Langsung mutilasi data di sumber — teks & cover ke laci sendiri, library cuma KTP
-    const newBookId = library[library.length - 1].id;
     await localforage.setItem('content_' + newBookId, parsedNodes);
     if (coverBase64) await localforage.setItem('cover_' + newBookId, coverBase64);
+
+    if (existingIndex === -1) {
+        library.push({
+            id: newBookId,
+            type: 'epub',
+            title: bookTitle,
+            pages: spine.length,
+            progressPct: 0,
+            lastReadId: null,
+            shape: 'square'
+        });
+    } else {
+        library[existingIndex].pages = spine.length;
+        library[existingIndex].title = bookTitle;
+    }
 
     await localforage.setItem('pdf_epub_master', library); 
     renderLibrary();
