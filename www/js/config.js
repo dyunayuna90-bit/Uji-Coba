@@ -127,7 +127,13 @@ const i18n = {
         rawResTitle: "Pulihkan Data", rawResDesc: "Paste teks mentah (JSON) backup lu di kotak ini, ATAU pilih file JSON dari perangkat.", rawResFile: "Pilih File", rawResProcess: "Proses Teks", rawResClose: "Batal",
         setAiConfig: "Konfigurasi AI", geminiPlaceholder: "Gemini API Key...", geminiDesc: "Tambahkan API Key untuk mendapatkan penjelasan pintar dari AI. (Saran optimal: gunakan Gemini 2.5 Flash Lite untuk kecepatan maksimal).", keySaved: "API Key berhasil disimpan.",
 
-        statTitle: "Statistik Membaca", statTotal: "Koleksi", statReading: "Dibaca", statCompleted: "Selesai", statNotes: "Catatan"
+        statTitle: "Statistik Membaca", statTotal: "Koleksi", statReading: "Dibaca", statCompleted: "Selesai", statNotes: "Catatan",
+
+        // Fitur Hapus Sampul
+        btnClearCovers: "Hapus Semua Sampul (Biar Ringan)",
+        clearCoversTitle: "Hapus Semua Sampul?",
+        clearCoversDesc: "Semua gambar sampul akan dihapus permanen untuk menghemat memori. Buku dan progres bacaan tetap aman 100%. Lanjutkan?",
+        clearCoversSuccess: "Semua sampul berhasil dihapus! Aplikasi sekarang jauh lebih ringan."
     },
     en: {
         libEmpty: "Library is Empty.", searchBooks: "Search books...", loadingDocs: "Reading Document...", 
@@ -180,7 +186,13 @@ const i18n = {
         rawResTitle: "Restore Data", rawResDesc: "Paste your raw backup JSON text here, OR choose a JSON file from your device.", rawResFile: "Select File", rawResProcess: "Process Text", rawResClose: "Cancel",
         setAiConfig: "AI Configuration", geminiPlaceholder: "Gemini API Key...", geminiDesc: "Add your API Key to get smart definitions from AI. (Optimal setup: use Gemini 2.5 Flash Lite for maximum speed).", keySaved: "API Key saved successfully.",
 
-        statTitle: "Statistics", statTotal: "Collection", statReading: "Reading", statCompleted: "Completed", statNotes: "Notes"
+        statTitle: "Statistics", statTotal: "Collection", statReading: "Reading", statCompleted: "Completed", statNotes: "Notes",
+
+        // Fitur Hapus Sampul
+        btnClearCovers: "Clear All Covers (Save Memory)",
+        clearCoversTitle: "Clear All Covers?",
+        clearCoversDesc: "All book covers will be permanently deleted to save memory. Book text and reading progress are 100% safe. Continue?",
+        clearCoversSuccess: "All covers successfully cleared! The app is now lighter."
     },
     es: {
         libEmpty: "La biblioteca está vacía.", searchBooks: "Buscar libros...", loadingDocs: "Leyendo documento...", 
@@ -233,7 +245,12 @@ const i18n = {
         rawResTitle: "Restaurar datos", rawResDesc: "Pega el texto JSON de tu copia de seguridad aquí, O elige un archivo JSON de tu dispositivo.", rawResFile: "Seleccionar archivo", rawResProcess: "Procesar texto", rawResClose: "Cancelar",
         setAiConfig: "Configuración de IA", geminiPlaceholder: "Clave API de Gemini...", geminiDesc: "Añade tu clave API para obtener definiciones inteligentes de la IA. (Configuración óptima: usa Gemini 2.5 Flash Lite para máxima velocidad).", keySaved: "Clave API guardada con éxito.",
 
-        statTitle: "Estadísticas", statTotal: "Colección", statReading: "Leyendo", statCompleted: "Completados", statNotes: "Notas"
+        statTitle: "Estadísticas", statTotal: "Colección", statReading: "Leyendo", statCompleted: "Completados", statNotes: "Notas",
+
+        // Fitur Hapus Sampul
+        btnClearCovers: "Borrar Todas las Portadas (Ahorrar Memoria)",
+        clearCoversTitle: "¿Borrar Todas las Portadas?",
+        clearCoversDesc: "Todas las portadas se eliminarán permanentemente para ahorrar memoria. El texto y el progreso están 100% seguros. ¿Continuar?",
+        clearCoversSuccess: "¡Portadas borradas! La aplicación ahora es más ligera."
     }
 };
-
