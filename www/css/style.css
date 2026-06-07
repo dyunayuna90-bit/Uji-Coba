@@ -69,7 +69,7 @@ html, body {
 .side-panel { transition: transform 0.3s cubic-bezier(0.2, 0, 0, 1), opacity 0.3s ease; }
 
 /* Mencegah default browser gesture (kayak pull-to-refresh) di modal/panel saat swipe-dismiss */
-#global-settings-sheet, #b-opt-sheet, #edit-sheet, #bookmark-sheet, #raw-backup-sheet, #raw-restore-sheet, #welcome-sheet,
+#global-settings-sheet, #b-opt-sheet, #edit-sheet, #bookmark-sheet, #raw-backup-sheet, #raw-restore-sheet, #welcome-sheet, #backup-type-sheet,
 #toc-panel, #settings-panel, #bookmark-panel {
     overscroll-behavior-y: contain; 
 }
@@ -94,7 +94,30 @@ mark.search-hl { background-color: var(--md-sys-color-primary) !important; color
 .hide-scroll::-webkit-scrollbar { display: none; }
 .hide-scroll { -ms-overflow-style: none; scrollbar-width: none; }
 
-:root { --reader-font: 'Lora', serif; --reader-size: 1.2rem; --reader-align: left; --reader-line-height: 1.8; }
+:root {
+    /* Fallback M3 Color Variables — pakai orchid dark sebagai default
+       supaya semua elemen langsung keliatan sebelum JS inject tema yang bener */
+    --md-sys-color-primary: #C084FC;
+    --md-sys-color-on-primary: #3B0764;
+    --md-sys-color-primary-container: #C2410C;
+    --md-sys-color-on-primary-container: #FFEDD5;
+    --md-sys-color-secondary-container: #831843;
+    --md-sys-color-on-secondary-container: #FCE7F3;
+    --md-sys-color-tertiary-container: #4A044E;
+    --md-sys-color-on-tertiary-container: #FCE7F3;
+    --md-sys-color-background: #0A0314;
+    --md-sys-color-on-background: #F5E0FF;
+    --md-sys-color-surface: #12091F;
+    --md-sys-color-on-surface: #F3E8FF;
+    --md-sys-color-surface-variant: #3B0764;
+    --md-sys-color-on-surface-variant: #F5D0FE;
+
+    /* Reader typography */
+    --reader-font: 'Lora', serif;
+    --reader-size: 1.2rem;
+    --reader-align: left;
+    --reader-line-height: 1.8;
+}
 
 .reader-dynamic-text { word-wrap: break-word; overflow-wrap: anywhere; hyphens: auto; }
 .reader-dynamic-text p { font-family: var(--reader-font) !important; font-size: var(--reader-size) !important; text-align: var(--reader-align) !important; line-height: var(--reader-line-height) !important; max-width: 100%; overflow-x: hidden; }
