@@ -1,5 +1,5 @@
 // --- APP LOGIC ---
-// Mengurus interaksi UI, Tema, Render Library, & Fitur In-Book Bookmark Berwarna
+// Mengurus interaksi UI, Tema, Render Library, Fitur In-Book Bookmark, & Manajemen Memori Tingkat Dewa
 
 // 1. GLOBAL STATE & DOM REFERENCES
 let library = []; 
@@ -37,7 +37,7 @@ document.addEventListener("DOMContentLoaded", () => {
         file: document.getElementById('doc-upload'), 
         backBtn: document.getElementById('btn-back'),
         tocBtn: document.getElementById('btn-toc'), 
-        setBtn: document.getElementById('btn-settings'),
+        setBtn: document.getElementById('settings-btn'), // Fix id
         inner: document.getElementById('reader-inner'), 
         title: document.getElementById('reader-title'), 
         count: document.getElementById('library-count'),
@@ -77,7 +77,7 @@ document.addEventListener("DOMContentLoaded", () => {
     if (verDisplay && window.APP_VERSION) verDisplay.textContent = `v${window.APP_VERSION}`;
 });
 
-// [FITUR BARU]: Fungsi buat update UI Statistik
+// Update UI Statistik
 window.updateStatistics = function() {
     let totalBooks = library.length;
     let readingBooks = 0;
@@ -194,7 +194,7 @@ function setupSearchListeners() {
             }
         });
         DOM.globalSearch.addEventListener('input', (e) => {
-            // [MODIFIKASI] Auto-hide statistik saat search
+            // Auto-hide statistik saat search
             const statSection = document.getElementById('statistics-section');
             if(statSection) {
                 if(e.target.value.trim().length > 0) {
@@ -228,7 +228,7 @@ window.closeSearch = function(fromHistory = false) {
         searchArea.classList.remove('search-active');
         DOM.globalSearch.blur(); DOM.globalSearch.value = ''; 
         
-        // [MODIFIKASI] Tampilkan kembali statistik saat search ditutup
+        // Tampilkan kembali statistik saat search ditutup
         if(statSection) {
              statSection.style.height = '';
              statSection.style.opacity = '1';
@@ -280,7 +280,6 @@ function applyLanguage() {
     if(document.getElementById('gemini-api-key')) document.getElementById('gemini-api-key').placeholder = d.geminiPlaceholder;
     setElementText('gemini-desc', d.geminiDesc);
     
-    // Teks Cek Update & Hapus Sampul
     setElementText('str-btn-update', d.btnUpdate);
     setElementText('str-btn-clear-covers', d.btnClearCovers);
 
@@ -319,7 +318,6 @@ function applyLanguage() {
 
     updateBatchSelectionUI();
 
-    // Menerjemahkan Label Statistik
     setElementText('str-stat-title', d.statTitle || "Statistik");
     setElementText('str-stat-total', d.statTotal || "Koleksi");
     setElementText('str-stat-reading', d.statReading || "Dibaca");
@@ -441,17 +439,17 @@ window.closeWelcome = function(isFromHistory = false) {
     localStorage.setItem('first_time_seen_v5', 'true');
 };
 
-// 6. LOGIKA CEK PEMBARUAN (GITHUB CHECKER) & HAPUS SAMPUL
+// 6. LOGIKA CEK PEMBARUAN & HAPUS SAMPUL
 function compareVersions(v1, v2) {
     const p1 = v1.split('.').map(Number);
     const p2 = v2.split('.').map(Number);
     for (let i = 0; i < Math.max(p1.length, p2.length); i++) {
         const num1 = p1[i] || 0;
         const num2 = p2[i] || 0;
-        if (num1 > num2) return 1; // v1 lebih gede
-        if (num1 < num2) return -1; // v2 lebih gede
+        if (num1 > num2) return 1; 
+        if (num1 < num2) return -1; 
     }
-    return 0; // sama
+    return 0; 
 }
 
 window.checkForUpdate = async function() {
@@ -460,11 +458,9 @@ window.checkForUpdate = async function() {
     
     if(!window.UPDATE_URL) return;
 
-    // Puter icon
     if(icon) icon.classList.add('animate-spin');
     
     try {
-        // Pake parameter ?t buat nembus cache GitHub Raw
         const res = await fetch(window.UPDATE_URL + '?t=' + new Date().getTime());
         if (!res.ok) throw new Error("Gagal terhubung ke GitHub");
         
@@ -474,7 +470,6 @@ window.checkForUpdate = async function() {
 
         if(icon) icon.classList.remove('animate-spin');
 
-        // Komparasi Semver
         const isNewer = compareVersions(latestVersion, currentVersion) > 0;
 
         if (isNewer) {
@@ -526,15 +521,11 @@ window.clearAllCoversConfirm = function() {
             { text: d.delete || "Hapus", primary: true, action: async () => {
                 window.closeDialog();
                 
-                // Proses hapus semua cover Base64
                 library.forEach(book => {
                     book.coverBase64 = null;
                 });
                 
-                // Simpan ke db
                 await localforage.setItem('pdf_epub_master', library);
-                
-                // Render ulang UI
                 renderLibrary(DOM.globalSearch ? DOM.globalSearch.value : "");
                 
                 setTimeout(() => {
@@ -550,12 +541,11 @@ window.clearAllCoversConfirm = function() {
     );
 };
 
-// 7. BACKUP & RESTORE DATA
+// 7. BACKUP & RESTORE DATA (OPTIMASI STRINGIFY & CHUNKING DEWA)
 window.exportData = async function() {
     const d = typeof i18n !== 'undefined' ? (i18n[wikiLang] || i18n['id']) : {};
     try {
-        const data = await localforage.getItem('pdf_epub_master');
-        if (!data || data.length === 0) {
+        if (!library || library.length === 0) {
             showDialog("Info", wikiLang === 'id' ? "Ga ada buku untuk di-backup." : (wikiLang === 'es' ? "No hay libros para hacer copia de seguridad." : "No books to backup."), "info", [{ text: "Oke", primary: true }]);
             return;
         }
@@ -570,16 +560,27 @@ window.exportData = async function() {
         const iconContainer = document.getElementById('dialog-icon-container');
         if(iconContainer) iconContainer.classList.add('animate-spin');
 
-        // PERBAIKAN MUTLAK: Mapping TextOnlyData DILAKUKAN SEBELUM PROSES CAPACITOR
-        // Biar yg di-save via Native File juga bebas dari beban Base64! Anti Force Close!
-        const textOnlyData = data.map(book => {
-            let strippedBook = { ...book };
-            delete strippedBook.coverBase64; 
-            return strippedBook;
-        });
-
         setTimeout(async () => {
             try {
+                // [OPTIMASI DEWA]: Chunking JSON Stringifier. 
+                // Kita rakit manual string JSON-nya, biar Engine JS HP lu ga meledak nampung Array Memory raksasa.
+                let jsonStr = '[';
+                for (let i = 0; i < library.length; i++) {
+                    let strippedBook = { ...library[i] };
+                    delete strippedBook.coverBase64; // Sampul ga di-backup biar ringan
+
+                    // Ambil Teks Konten (nodes) dari storage terpisah yg udah kita normalisasi
+                    let contentNodes = await localforage.getItem('content_' + strippedBook.id);
+                    strippedBook.nodes = contentNodes || [];
+
+                    jsonStr += JSON.stringify(strippedBook);
+                    if (i < library.length - 1) jsonStr += ',';
+
+                    // Yield ke event loop (ngasih jeda 10ms per buku biar UI/HP ga freeze/ngelag)
+                    await new Promise(r => setTimeout(r, 10));
+                }
+                jsonStr += ']';
+
                 if (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.Filesystem) {
                     const dt = new Date();
                     const fileName = `Baca_Backup_${dt.getFullYear()}${('0'+(dt.getMonth()+1)).slice(-2)}${('0'+dt.getDate()).slice(-2)}_${dt.getTime()}.json`;
@@ -589,13 +590,10 @@ window.exportData = async function() {
                         displayFileName = fileName.substring(0, 16) + "..." + fileName.slice(-10);
                     }
                     
-                    // Gunakan textOnlyData yg udah disunat Base64-nya biar ringan pass ke API sistem
-                    const fullDataStr = JSON.stringify(textOnlyData);
-                    
                     try {
                         await window.Capacitor.Plugins.Filesystem.writeFile({
                             path: fileName,
-                            data: fullDataStr,
+                            data: jsonStr, // Tulis String utuh langsung tanpa stringify lagi
                             directory: 'DOCUMENTS',
                             encoding: 'utf8'
                         });
@@ -612,9 +610,8 @@ window.exportData = async function() {
                     }
                 }
                 
-                // Fallback Raw Text jg pake textOnlyData (udah ringan)
-                const rawStr = JSON.stringify(textOnlyData);
-                document.getElementById('raw-backup-textarea').value = rawStr;
+                // Fallback Raw Text
+                document.getElementById('raw-backup-textarea').value = jsonStr;
                 
                 window.closeDialog(true);
                 
@@ -624,7 +621,7 @@ window.exportData = async function() {
                     setTimeout(() => {
                         showDialog("Info Fallback", 
                             wikiLang === 'id' ? 
-                            "Simpan file native gagal. Ini adalah teks mentahnya.\n\nCATATAN: Demi menghindari error sistem (ukuran file terlalu besar), data Sampul Buku otomatis DIHAPUS pada versi ini. Data teks buku tetap aman." : 
+                            "Simpan file native gagal. Ini adalah teks mentahnya.\n\nCATATAN: Demi menghindari error sistem, data Sampul otomatis DIHAPUS pada versi ini. Data teks buku tetap aman." : 
                             (wikiLang === 'es' ? "Error al guardar el archivo nativo. Este es el texto sin procesar.\n\nNOTA: Para evitar errores de memoria del sistema, las portadas de los libros se ELIMINAN en esta versión. Los datos de texto están seguros." : "Native file save failed. This is the raw text.\n\nNOTE: To prevent system memory errors, Book Covers are REMOVED in this version. Text data is safe."), 
                             "info", [{ text: "Mengerti", primary: true }]);
                     }, 400);
@@ -683,7 +680,7 @@ window.importDataFile = function(event) {
     reader.readAsText(file);
 };
 
-function executeRestoreLogic(jsonString) {
+async function executeRestoreLogic(jsonString) {
     try {
         const parsedData = JSON.parse(jsonString);
         if (!Array.isArray(parsedData)) throw new Error("Format file/teks tidak valid.");
@@ -699,8 +696,18 @@ function executeRestoreLogic(jsonString) {
                 { text: "Batal", primary: false },
                 { text: "Lanjut", primary: true, action: async () => {
                     window.closeDialog();
-                    await localforage.setItem('pdf_epub_master', parsedData);
-                    library = parsedData;
+                    
+                    // [OPTIMASI DEWA]: Langsung normalize saat restore, pisahin nodes ke DB tersendiri
+                    let newLibrary = [];
+                    for(let b of parsedData) {
+                        await localforage.setItem('content_' + b.id, b.nodes);
+                        let meta = {...b};
+                        delete meta.nodes;
+                        newLibrary.push(meta);
+                    }
+
+                    await localforage.setItem('pdf_epub_master', newLibrary);
+                    library = newLibrary;
                     renderLibrary(DOM.globalSearch.value);
                     
                     if (!document.getElementById('raw-restore-modal').classList.contains('hidden')) history.back();
@@ -711,7 +718,7 @@ function executeRestoreLogic(jsonString) {
                     setTimeout(() => {
                         showDialog(
                             wikiLang === 'id' ? "Restore Berhasil!" : (wikiLang === 'es' ? "¡Restauración exitosa!" : "Restore Success!"),
-                            wikiLang === 'id' ? "Data aplikasi lu udah berhasil dipulihin." : (wikiLang === 'es' ? "Tus datos han sido restaurados con éxito." : "Your data has been successfully restored."),
+                            wikiLang === 'id' ? "Data aplikasi lu udah berhasil dipulihin dengan super ringan." : (wikiLang === 'es' ? "Tus datos han sido restaurados con éxito." : "Your data has been successfully restored."),
                             "check-circle",
                             [{ text: "Oke", primary: true }]
                         );
@@ -725,10 +732,26 @@ function executeRestoreLogic(jsonString) {
     }
 }
 
-// 8. LIBRARY & BOOK MANAGEMENT
+// 8. LIBRARY & BOOK MANAGEMENT (AUTO-MIGRASI MEMORY)
 async function loadLibrary() { 
     try { 
         library = await localforage.getItem('pdf_epub_master') || []; 
+        let needsMigration = false;
+
+        // [OPTIMASI DEWA]: Auto-Migrasi. Kalo masih ada array nodes di master, pindahin diam-diam!
+        for (let i = 0; i < library.length; i++) {
+            if (library[i].nodes && library[i].nodes.length > 0) {
+                needsMigration = true;
+                await localforage.setItem('content_' + library[i].id, library[i].nodes);
+                delete library[i].nodes; // Babad dari RAM HP lu!
+            }
+        }
+
+        if (needsMigration) {
+            await localforage.setItem('pdf_epub_master', library);
+            console.log("Database dipisah biar RAM ga jebol. Mantap!");
+        }
+
         renderLibrary(); 
     } catch (e) { console.error(e); } 
 }
@@ -775,8 +798,7 @@ function renderLibrary(filterText = "") {
         regularBooks.forEach((book, index) => { DOM.grid.appendChild(createBookCard(book, false, index)); });
     }
 
-    updateStatistics(); // PANGGIL STATISTIK SETIAP LIBRARY SELESAI RENDER
-    
+    updateStatistics(); 
     if(window.lucide) window.lucide.createIcons();
     window.updateBatchSelectionUI();
 }
@@ -1004,6 +1026,12 @@ window.executeBatchDelete = async function() {
         { text: "Hapus", primary: true, action: async () => {
             window.closeDialog();
             const toDeleteSet = new Set(selectedForDelete.map(String));
+            
+            // [OPTIMASI]: Bersihkan juga database kontennya!
+            for(let id of selectedForDelete) {
+                await localforage.removeItem('content_' + id);
+            }
+
             library = library.filter(b => !toDeleteSet.has(String(b.id)));
             await localforage.setItem('pdf_epub_master', library);
             window.toggleBatchDelete(); 
@@ -1019,6 +1047,10 @@ window.triggerDeleteView = async function() {
         { text: "Batal", primary: false },
         { text: "Hapus", primary: true, action: async () => {
             window.closeDialog();
+            
+            // [OPTIMASI]: Bersihkan DB Konten terpisah
+            await localforage.removeItem('content_' + activeOptsId);
+
             library = library.filter(b => !selectedForDelete.includes(b.id) && b.id !== activeOptsId); 
             await localforage.setItem('pdf_epub_master', library); 
             history.back(); setTimeout(() => renderLibrary(DOM.globalSearch ? DOM.globalSearch.value : ""), 350);
@@ -1202,7 +1234,7 @@ window.changeTypo = function(type, value) { typoPrefs[type] = value; applyTypo()
 
 
 // 10. READER INTERACTIONS
-window.openBook = function(book) {
+window.openBook = async function(book) {
     activeBookId = book.id; pushAppHistory(`reader-${book.id}`);
     DOM.libView.style.transform = 'scale(0.95)'; DOM.readView.classList.remove('translate-y-full');
     DOM.title.textContent = book.title; 
@@ -1214,6 +1246,16 @@ window.openBook = function(book) {
     if (observer) observer.disconnect();
 
     DOM.progBar.style.width = `${book.progressPct || 0}%`; DOM.progTxt.textContent = `${book.progressPct || 0}%`;
+
+    // [OPTIMASI DEWA]: Fetch nodes dari storage independen (Lazy Loading)
+    if (!book.nodes) {
+        const savedNodes = await localforage.getItem('content_' + book.id);
+        if(savedNodes) {
+            book.nodes = savedNodes;
+        } else {
+            book.nodes = [{tag: 'p', text: 'Error: Konten teks gagal dimuat atau korup.'}];
+        }
+    }
 
     setTimeout(() => {
         let hCounter = 0; const fragment = document.createDocumentFragment(); let currentHeadingId = null;
@@ -1274,13 +1316,23 @@ window.openBook = function(book) {
             
         });
 
-    }, 600); 
+    }, 300); 
 }
 
 window._closeReaderAction = function(isFromHistory = false) {
     if (!isFromHistory) { history.back(); return; }
     DOM.readView.classList.add('translate-y-full'); DOM.libView.style.transform = 'scale(1)';
-    if(observer) observer.disconnect(); renderLibrary(DOM.globalSearch.value); activeBookId = null;
+    if(observer) observer.disconnect(); 
+    
+    // [OPTIMASI DEWA]: Hapus nodes dari RAM pas buku ditutup
+    if (activeBookId) {
+        let bIdx = library.findIndex(b => b.id === activeBookId);
+        if (bIdx > -1 && library[bIdx].nodes) {
+            delete library[bIdx].nodes; // Free RAM!
+        }
+    }
+
+    renderLibrary(DOM.globalSearch.value); activeBookId = null;
     window.getSelection().removeAllRanges();
     const menu = document.getElementById('selection-menu');
     if(menu) { menu.classList.add('opacity-0', 'scale-75'); setTimeout(() => menu.classList.add('hidden'), 200); }
@@ -1450,11 +1502,9 @@ window.renderNodeText = function(text, annots) {
 let _selChangeDebounce = null;
 let _isTouchDragging = false;
 
-// Di HP: pakai touchstart/touchend buat deteksi kapan user lagi drag
 document.addEventListener('touchstart', () => { _isTouchDragging = true; }, { passive: true });
 document.addEventListener('touchend', () => {
     _isTouchDragging = false;
-    // Waktu jari diangkat, baru tampilkan menu
     if (activeBookId) {
         clearTimeout(_selChangeDebounce);
         _selChangeDebounce = setTimeout(_handleSelectionChange, 80);
@@ -1494,7 +1544,6 @@ function _handleSelectionChange() {
 
 document.addEventListener('selectionchange', () => {
     if(!activeBookId) return;
-    // Saat masih drag, debounce lebih lama supaya ga berat
     clearTimeout(_selChangeDebounce);
     _selChangeDebounce = setTimeout(_handleSelectionChange, _isTouchDragging ? 300 : 50);
 });
@@ -1502,9 +1551,7 @@ document.addEventListener('selectionchange', () => {
 if(document.getElementById('reader-content')) {
     document.getElementById('reader-content').addEventListener('mousedown', (e) => { 
         const menu = document.getElementById('selection-menu');
-        // Kalau klik di dalam menu, jangan lakukan apapun
         if(menu && !menu.classList.contains('hidden') && menu.contains(e.target)) return;
-        // Clear menu hanya kalau memang tidak ada teks terseleksi
         if(!window.getSelection().toString().trim()) { window.hideSelectionMenu(); } 
     });
 }
@@ -1555,7 +1602,7 @@ async function registerAnnotation(annotObj) {
     book.annotations.push(annotObj); await localforage.setItem('pdf_epub_master', library);
     
     const nodeEl = document.getElementById(`node-${annotObj.nodeIdx}`);
-    if(nodeEl && book.nodes[annotObj.nodeIdx]) {
+    if(nodeEl && book.nodes && book.nodes[annotObj.nodeIdx]) {
         const currentAnnots = book.annotations.filter(a => a.nodeIdx === annotObj.nodeIdx);
         nodeEl.innerHTML = window.renderNodeText(book.nodes[annotObj.nodeIdx].text, currentAnnots);
     }
@@ -1596,7 +1643,7 @@ window.saveBookmarkAnnotation = function() {
         }
     } else {
         const book = library.find(b => b.id === activeBookId);
-        if (!book) return;
+        if (!book || !book.nodes) return;
 
         const totalNodes = book.nodes.length;
         const pct = Math.round(((currentSelection.nodeIdx + 1) / totalNodes) * 100);
@@ -1664,7 +1711,7 @@ window.deleteAnnotationById = async function(annotId) {
     await localforage.setItem('pdf_epub_master', library);
     
     const nodeEl = document.getElementById(`node-${nodeIdx}`);
-    if(nodeEl && book.nodes[nodeIdx]) {
+    if(nodeEl && book.nodes && book.nodes[nodeIdx]) {
         const currentAnnots = book.annotations.filter(a => a.nodeIdx === nodeIdx);
         nodeEl.innerHTML = window.renderNodeText(book.nodes[nodeIdx].text, currentAnnots);
     }
@@ -1678,14 +1725,12 @@ window.renderBookmarkPanel = function() {
     const book = library.find(b => b.id === activeBookId);
     if (!book) return;
 
-    // Reset search input tiap kali panel di-render ulang
     const searchInput = document.getElementById('bookmark-search-input');
     if (searchInput) searchInput.value = '';
 
     _renderBookmarkList(book.annotations || []);
 };
 
-// Fungsi internal render list, bisa dipanggil dengan filter
 function _renderBookmarkList(annotations) {
     if(!DOM.bookmarkList) return;
     DOM.bookmarkList.innerHTML = '';
@@ -1814,11 +1859,8 @@ function setupSwipeToDismiss() {
         });
     });
 
-    // ai-sheet: swipe dismiss HANYA dari drag handle / area header, bukan dari dalam konten scroll
     const aiSheet = document.getElementById('ai-sheet');
     if (aiSheet) {
-        // Drag handle = div abu-abu di atas (w-12 h-1.5), dan area header (flex items-center justify-between)
-        // Deteksi: touch mulai di 80px teratas sheet = area aman buat dismiss
         let aiTouchStartY = 0; let aiIsPulling = false;
         aiSheet.addEventListener('touchstart', (e) => {
             aiTouchStartY = e.touches[0].clientY;
@@ -1826,11 +1868,9 @@ function setupSwipeToDismiss() {
             aiSheet.style.transition = 'none';
         }, { passive: true });
         aiSheet.addEventListener('touchmove', (e) => {
-            // Cek apakah scroll internal (div.flex-1.overflow-y-auto) sudah scroll ke atas
             const scrollableInner = aiSheet.querySelector('.overflow-y-auto');
             const innerScrollTop = scrollableInner ? scrollableInner.scrollTop : 0;
             const deltaY = e.touches[0].clientY - aiTouchStartY;
-            // Hanya aktifkan dismiss kalau: scroll inner udah di atas (0) DAN geser ke bawah
             if (innerScrollTop <= 0 && deltaY > 0) {
                 aiIsPulling = true;
                 if(e.cancelable) e.preventDefault();
@@ -1907,3 +1947,4 @@ document.addEventListener("DOMContentLoaded", () => {
         }
     }, 500);
 });
+
