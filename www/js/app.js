@@ -280,8 +280,9 @@ function applyLanguage() {
     if(document.getElementById('gemini-api-key')) document.getElementById('gemini-api-key').placeholder = d.geminiPlaceholder;
     setElementText('gemini-desc', d.geminiDesc);
     
-    // Teks Cek Update
+    // Teks Cek Update & Hapus Sampul
     setElementText('str-btn-update', d.btnUpdate);
+    setElementText('str-btn-clear-covers', d.btnClearCovers);
 
     setElementText('str-nav-back', d.navBack); setElementText('str-nav-toc', d.navToc);
     setElementText('str-nav-text', d.navText); setElementText('str-nav-full', d.navFull);
@@ -440,7 +441,7 @@ window.closeWelcome = function(isFromHistory = false) {
     localStorage.setItem('first_time_seen_v5', 'true');
 };
 
-// 6. LOGIKA CEK PEMBARUAN (GITHUB CHECKER)
+// 6. LOGIKA CEK PEMBARUAN (GITHUB CHECKER) & HAPUS SAMPUL
 function compareVersions(v1, v2) {
     const p1 = v1.split('.').map(Number);
     const p2 = v2.split('.').map(Number);
@@ -509,6 +510,46 @@ window.checkForUpdate = async function() {
     }
 };
 
+window.clearAllCoversConfirm = function() {
+    const d = typeof i18n !== 'undefined' ? (i18n[wikiLang] || i18n['id']) : {};
+    if (!library || library.length === 0) {
+        showDialog("Info", d.libEmpty || "Perpustakaan kosong.", "info", [{ text: "Oke", primary: true }]);
+        return;
+    }
+
+    showDialog(
+        d.clearCoversTitle || "Hapus Semua Sampul?",
+        d.clearCoversDesc || "Semua gambar sampul akan dihapus permanen untuk menghemat memori. Buku dan progres bacaan tetap aman 100%. Lanjutkan?",
+        "image-off",
+        [
+            { text: d.cancel || "Batal", primary: false },
+            { text: d.delete || "Hapus", primary: true, action: async () => {
+                window.closeDialog();
+                
+                // Proses hapus semua cover Base64
+                library.forEach(book => {
+                    book.coverBase64 = null;
+                });
+                
+                // Simpan ke db
+                await localforage.setItem('pdf_epub_master', library);
+                
+                // Render ulang UI
+                renderLibrary(DOM.globalSearch ? DOM.globalSearch.value : "");
+                
+                setTimeout(() => {
+                    showDialog(
+                        "Sukses",
+                        d.clearCoversSuccess || "Semua sampul berhasil dihapus! Aplikasi sekarang jauh lebih ringan.",
+                        "check-circle",
+                        [{ text: "Mantap", primary: true }]
+                    );
+                }, 400);
+            }}
+        ]
+    );
+};
+
 // 7. BACKUP & RESTORE DATA
 window.exportData = async function() {
     const d = typeof i18n !== 'undefined' ? (i18n[wikiLang] || i18n['id']) : {};
@@ -529,6 +570,14 @@ window.exportData = async function() {
         const iconContainer = document.getElementById('dialog-icon-container');
         if(iconContainer) iconContainer.classList.add('animate-spin');
 
+        // PERBAIKAN MUTLAK: Mapping TextOnlyData DILAKUKAN SEBELUM PROSES CAPACITOR
+        // Biar yg di-save via Native File juga bebas dari beban Base64! Anti Force Close!
+        const textOnlyData = data.map(book => {
+            let strippedBook = { ...book };
+            delete strippedBook.coverBase64; 
+            return strippedBook;
+        });
+
         setTimeout(async () => {
             try {
                 if (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.Filesystem) {
@@ -540,7 +589,8 @@ window.exportData = async function() {
                         displayFileName = fileName.substring(0, 16) + "..." + fileName.slice(-10);
                     }
                     
-                    const fullDataStr = JSON.stringify(data);
+                    // Gunakan textOnlyData yg udah disunat Base64-nya biar ringan pass ke API sistem
+                    const fullDataStr = JSON.stringify(textOnlyData);
                     
                     try {
                         await window.Capacitor.Plugins.Filesystem.writeFile({
@@ -562,12 +612,7 @@ window.exportData = async function() {
                     }
                 }
                 
-                const textOnlyData = data.map(book => {
-                    let strippedBook = { ...book };
-                    delete strippedBook.coverBase64; 
-                    return strippedBook;
-                });
-                
+                // Fallback Raw Text jg pake textOnlyData (udah ringan)
                 const rawStr = JSON.stringify(textOnlyData);
                 document.getElementById('raw-backup-textarea').value = rawStr;
                 
