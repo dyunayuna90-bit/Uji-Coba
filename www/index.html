@@ -280,7 +280,7 @@
                     <div class="bg-m3-surfaceVariant p-5 rounded-3xl pb-6 border-l-4 border-m3-primary">
                         <i data-lucide="database-backup" class="text-m3-primary mb-3 w-6 h-6"></i>
                         <h3 id="str-wel-backup" class="font-bold mb-1 text-sm">Pencadangan Data</h3>
-                        <p id="str-wel-backup-desc" class="text-xs opacity-80 leading-relaxed font-medium">Gunakan fitur Backup di menu Pengaturan. Cukup salin teks mentah (JSON) dan simpan dengan aman.</p>
+                        <p id="str-wel-backup-desc" class="text-xs opacity-80 leading-relaxed font-medium">Ada dua jenis backup di Pengaturan: <b>Backup JSON</b> (ringan, hanya menyimpan progress & catatan — saat restore kamu perlu upload ulang file bukunya) dan <b>Backup ZIP</b> (komplit, menyimpan isi buku + progress + catatan — restore langsung bisa baca tanpa upload ulang apapun).</p>
                     </div>
                     <div class="bg-m3-surfaceVariant p-5 rounded-3xl pb-6">
                         <i data-lucide="file-warning" class="text-m3-primary mb-3 w-6 h-6"></i>
@@ -364,17 +364,33 @@
             </div>
 
             <h4 id="str-set-data" class="text-xs font-bold opacity-70 mb-3 px-1 mt-6 uppercase tracking-wider">Data Aplikasi</h4>
+            
+            <!-- Baris 1: Backup JSON & Backup ZIP -->
             <div class="flex gap-2 mb-2">
                 <button onclick="exportData()" class="flex-1 flex flex-col items-center justify-center gap-2 p-3 bg-m3-surfaceVariant text-m3-onSurfaceVariant rounded-2xl font-bold btn-morph text-xs relative overflow-hidden group">
-                    <i data-lucide="copy" class="w-5 h-5 transition-transform group-active:scale-90"></i> 
-                    <span id="str-btn-backup">Backup Data</span>
+                    <i data-lucide="file-json" class="w-5 h-5 transition-transform group-active:scale-90"></i> 
+                    <span id="str-btn-backup">Backup JSON</span>
+                    <span class="text-[9px] opacity-60 font-medium leading-tight text-center" id="str-btn-backup-sub">Progress saja</span>
                 </button>
+                <button onclick="exportDataZip()" class="flex-1 flex flex-col items-center justify-center gap-2 p-3 bg-m3-primaryContainer text-m3-onPrimaryContainer rounded-2xl font-bold btn-morph text-xs relative overflow-hidden group">
+                    <i data-lucide="archive" class="w-5 h-5 transition-transform group-active:scale-90"></i>
+                    <span id="str-btn-backup-zip">Backup ZIP</span>
+                    <span class="text-[9px] opacity-60 font-medium leading-tight text-center" id="str-btn-backup-zip-sub">Isi buku + progress</span>
+                </button>
+            </div>
+
+            <!-- Baris 2: Restore -->
+            <div class="flex gap-2 mb-2">
                 <button onclick="openRestoreOptions()" class="flex-1 flex flex-col items-center justify-center gap-2 p-3 bg-m3-surfaceVariant text-m3-onSurfaceVariant rounded-2xl font-bold btn-morph text-xs relative overflow-hidden group">
                     <i data-lucide="download-cloud" class="w-5 h-5 transition-transform group-active:scale-90"></i> 
-                    <span id="str-btn-restore">Pulihkan</span>
+                    <span id="str-btn-restore">Pulihkan Data</span>
+                    <span class="text-[9px] opacity-60 font-medium leading-tight text-center" id="str-btn-restore-sub">JSON atau ZIP</span>
                 </button>
-                <input type="file" id="import-upload" accept=".json" class="hidden" onchange="importDataFile(event)">
             </div>
+
+            <!-- Hidden inputs untuk file picker -->
+            <input type="file" id="import-upload" accept=".json" class="hidden" onchange="importDataFile(event)">
+            <input type="file" id="import-upload-zip" accept=".zip" class="hidden" onchange="importDataZip(event)">
             
             <!-- TOMBOL BARU: HAPUS SEMUA SAMPUL -->
             <button onclick="clearAllCoversConfirm()" id="btn-clear-covers" class="flex items-center justify-center gap-2 w-full p-3 bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-400 rounded-2xl font-bold btn-morph mb-4 mt-2">
@@ -419,15 +435,17 @@
     <!-- Modal Raw Restore -->
     <div id="raw-restore-modal" onclick="if(event.target === this) history.back()" class="hidden modal-overlay fixed inset-0 bg-black/60 z-[200] flex items-center justify-center p-4 opacity-0 transition-opacity">
         <div class="modal-content bg-m3-surface w-full max-w-md rounded-[32px] p-6 transform scale-75 border-none shadow-2xl transition-transform flex flex-col max-h-[80vh]" id="raw-restore-sheet">
-            <h3 class="text-xl font-bold mb-2 text-m3-onSurface" id="str-raw-res-title">Pulihkan Data</h3>
-            <p class="text-xs text-m3-onSurfaceVariant mb-4" id="str-raw-res-desc">Paste teks mentah (JSON) backup lu di kotak ini, ATAU pilih file JSON dari perangkat.</p>
+            <h3 class="text-xl font-bold mb-1 text-m3-onSurface" id="str-raw-res-title">Pulihkan via JSON</h3>
+            <p class="text-xs text-m3-onSurfaceVariant mb-1" id="str-raw-res-desc">Paste teks mentah (JSON) backup lu di kotak ini, ATAU pilih file JSON dari perangkat.</p>
+            <p class="text-[10px] text-m3-primary font-bold mb-4" id="str-raw-res-note">⚠️ JSON hanya memulihkan progress & catatan — bukan isi buku.</p>
             <textarea id="raw-restore-textarea" class="w-full flex-1 bg-m3-surfaceVariant text-m3-onSurfaceVariant p-3 rounded-xl font-mono text-[10px] outline-none resize-none mb-4 min-h-[150px]" placeholder="Paste di sini..."></textarea>
             <div class="flex flex-col gap-2">
                 <div class="flex gap-2">
-                    <button onclick="document.getElementById('import-upload').click()" class="flex-1 py-3 bg-m3-secondaryContainer text-m3-onSecondaryContainer font-bold rounded-full btn-morph text-sm flex items-center justify-center gap-2"><i data-lucide="file-json" class="w-4 h-4"></i> <span id="str-raw-res-btn-file">Pilih File</span></button>
+                    <button onclick="document.getElementById('import-upload').click()" class="flex-1 py-3 bg-m3-secondaryContainer text-m3-onSecondaryContainer font-bold rounded-full btn-morph text-sm flex items-center justify-center gap-2"><i data-lucide="file-json" class="w-4 h-4"></i> <span id="str-raw-res-btn-file">Pilih File JSON</span></button>
                     <button onclick="processRawRestore()" class="flex-1 py-3 bg-m3-primary text-m3-onPrimary font-bold rounded-full btn-morph text-sm flex items-center justify-center gap-2"><i data-lucide="check-circle" class="w-4 h-4"></i> <span id="str-raw-res-btn-process">Proses Teks</span></button>
                 </div>
-                <button onclick="history.back()" class="w-full py-2 bg-transparent text-m3-onSurface font-bold rounded-full btn-morph text-sm mt-2" id="str-raw-res-btn-close">Batal</button>
+                <button onclick="document.getElementById('import-upload-zip').click()" class="w-full py-3 bg-m3-primaryContainer text-m3-onPrimaryContainer font-bold rounded-full btn-morph text-sm flex items-center justify-center gap-2"><i data-lucide="archive" class="w-4 h-4"></i> <span id="str-raw-res-btn-zip">Atau Pilih File ZIP (Komplit)</span></button>
+                <button onclick="history.back()" class="w-full py-2 bg-transparent text-m3-onSurface font-bold rounded-full btn-morph text-sm mt-1" id="str-raw-res-btn-close">Batal</button>
             </div>
         </div>
     </div>
