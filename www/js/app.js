@@ -21,7 +21,7 @@ let wikiLang = localStorage.getItem('wiki_lang') || 'en';
 const DOM = {};
 
 document.addEventListener("DOMContentLoaded", () => {
-    // Inisialisasi DOM Elements secara komplit
+    // Inisialisasi DOM Elements
     Object.assign(DOM, {
         libView: document.getElementById('library-view'), 
         readView: document.getElementById('reader-view'),
@@ -32,1331 +32,530 @@ document.addEventListener("DOMContentLoaded", () => {
         topSlider: document.getElementById('top-books-slider'),
         load: document.getElementById('loading-state'), 
         loadTxt: document.getElementById('loading-text'), 
-        loadBar: document.getElementById('loading-bar'),
-        rTitle: document.getElementById('reader-title'), 
-        rInner: document.getElementById('reader-inner'),
-        rProgress: document.getElementById('reading-progress-bar'), 
-        rProgressTxt: document.getElementById('reader-progress-text'),
-        rFloatHead: document.getElementById('reader-floating-header'),
-        rBotBar: document.getElementById('reader-bottom-bar'),
+        loadBar: document.getElementById('loading-bar'), 
+        loadPct: document.getElementById('loading-percent'),
+        file: document.getElementById('doc-upload'), 
+        backBtn: document.getElementById('btn-back'),
+        tocBtn: document.getElementById('btn-toc'), 
+        setBtn: document.getElementById('settings-btn'),
+        inner: document.getElementById('reader-inner'), 
+        title: document.getElementById('reader-title'), 
+        count: document.getElementById('library-count'),
         tocPanel: document.getElementById('toc-panel'), 
         tocList: document.getElementById('toc-list'),
-        setPanel: document.getElementById('settings-panel'), 
+        setPanel: document.getElementById('settings-panel'),
         bookmarkPanel: document.getElementById('bookmark-panel'),
-        sideOverlay: document.getElementById('side-panel-overlay'),
-        pinSec: document.getElementById('pinned-books-section'),
-        pinGrid: document.getElementById('pinned-book-grid'),
-        colHead: document.getElementById('collection-heading')
+        bookmarkList: document.getElementById('bookmark-list'),
+        readContent: document.getElementById('reader-content'), 
+        progBar: document.getElementById('reading-progress-bar'), 
+        progTxt: document.getElementById('reader-progress-text'),
+        searchInput: document.getElementById('inbook-search-input'), 
+        searchRes: document.getElementById('search-results-panel'),
+        globalSearch: document.getElementById('global-search')
     });
 
-    initTheme();
-    applyTranslations();
-    lucide.createIcons();
-    initApp();
+    setupScrollListeners();
+    setupSearchListeners();
+    syncWikiLangUI();
+    applyLanguage();
+    applyTypo();
+    applyThemeToDOM();
+    loadLibrary();
+    setupSwipeToDismiss(); // Nyalain Gestur Aman
 
-    // Event Listener Navigasi Native / Android Back Button via History API
-    window.addEventListener('popstate', (e) => {
-        if (activePanel) { togglePanel(activePanel); return; }
-        
-        // Cek semua modal yang mungkin terbuka, lalu tutup jika tombol back ditekan
-        const modals = ['b-opt-modal', 'edit-modal', 'global-settings-modal', 'bookmark-modal', 'ai-modal', 'welcome-modal', 'custom-dialog', 'raw-backup-modal', 'raw-restore-modal', 'backup-type-modal'];
-        for (let id of modals) {
-            const m = document.getElementById(id);
-            if (m && !m.classList.contains('hidden')) {
-                let sheetId = id.replace('-modal', '-sheet');
-                if (id === 'custom-dialog') sheetId = 'custom-dialog-sheet';
-                _closeModalAction(id, sheetId);
-                return;
-            }
-        }
-        
-        if (!DOM.readView.classList.contains('translate-y-full')) { 
-            closeReader(); 
-            return; 
-        }
-        
-        if (isBatchDeleteMode) {
-            toggleBatchDelete();
-            return;
-        }
-    });
+    if (!localStorage.getItem('first_time_seen_v5')) {
+        setTimeout(() => { openModal('welcome-modal', 'welcome-sheet', true); }, 500);
+    }
+    
+    const savedKey = localStorage.getItem('gemini_api_key');
+    if (savedKey && document.getElementById('gemini-api-key')) document.getElementById('gemini-api-key').value = savedKey;
+    const savedModel = localStorage.getItem('gemini_model');
+    if(savedModel && document.getElementById('gemini-model-select')) document.getElementById('gemini-model-select').value = savedModel;
 
-    // Observer untuk progres baca waktu scrolling di reader
-    DOM.rInner.addEventListener('scroll', () => {
-        if (!activeBookId) return;
-        const total = DOM.rInner.scrollHeight - DOM.rInner.clientHeight;
-        const pct = total > 0 ? (DOM.rInner.scrollTop / total) * 100 : 100;
-        DOM.rProgress.style.width = `${pct}%`;
-        DOM.rProgressTxt.innerText = `${Math.round(pct)}%`;
-        
-        // Simpan progres ke objek library lokal dan memori
-        const b = library.find(x => x.id === activeBookId);
-        if (b) { b.progress = pct; b.lastRead = new Date().toISOString(); }
-        saveLibrary();
-
-        // Sembunyikan floating menu kalau lagi aktif scroll
-        const sm = document.getElementById('selection-menu');
-        if(sm && !sm.classList.contains('hidden')) {
-            hideSelectionMenu();
-        }
-    }, { passive: true });
-
-    // Inisialisasi Gesture Swipe Down untuk nutup modal
-    initGestureDismiss();
-
-    // Inisialisasi Pencarian Global
-    document.getElementById('global-search').addEventListener('input', (e) => {
-        renderLibrary(e.target.value.toLowerCase());
-    });
-
-    // Reset URL hash biar bersih saat baru mulai
-    if (window.location.hash) { history.replaceState(null, '', window.location.pathname); }
+    // Update versi app di layar pengaturan
+    const verDisplay = document.getElementById('app-version-display');
+    if (verDisplay && window.APP_VERSION) verDisplay.textContent = `v${window.APP_VERSION}`;
 });
 
-async function initApp() {
-    try {
-        const stored = await localforage.getItem('baca_library');
-        library = stored || [];
+// Update UI Statistik
+window.updateStatistics = function() {
+    let totalBooks = library.length;
+    let readingBooks = 0;
+    let completedBooks = 0;
+    let totalNotes = 0;
+
+    library.forEach(book => {
+        let pct = parseInt(book.progressPct) || 0;
         
-        // Memastikan field yang mungkin undefined jadi punya nilai default
-        library.forEach(b => {
-            if (b.pinned === undefined) b.pinned = false;
-            if (b.shape === undefined) b.shape = 'default';
+        if (pct > 0 && pct < 100) readingBooks++;
+        else if (pct === 100) completedBooks++;
+        
+        if (book.annotations && Array.isArray(book.annotations)) {
+            totalNotes += book.annotations.length;
+        }
+    });
+
+    const valTotal = document.getElementById('stat-val-total');
+    const valReading = document.getElementById('stat-val-reading');
+    const valCompleted = document.getElementById('stat-val-completed');
+    const valNotes = document.getElementById('stat-val-notes');
+    
+    if(valTotal) valTotal.textContent = totalBooks;
+    if(valReading) valReading.textContent = readingBooks;
+    if(valCompleted) valCompleted.textContent = completedBooks;
+    if(valNotes) valNotes.textContent = totalNotes;
+};
+
+// 2. SCROLL & NAVIGATION LISTENERS
+function setupScrollListeners() {
+    const libScroll = document.getElementById('library-content-scroll');
+    if(libScroll && DOM.mainHeader) {
+        libScroll.addEventListener('scroll', () => {
+            if (libScroll.scrollTop > 5) { DOM.mainHeader.classList.add('shadow-[0_2px_10px_rgba(0,0,0,0.05)]'); } 
+            else { DOM.mainHeader.classList.remove('shadow-[0_2px_10px_rgba(0,0,0,0.05)]'); }
         });
+    }
+
+    let lastScrollTop = 0;
+    if(DOM.readContent) {
+        DOM.readContent.addEventListener('scroll', () => {
+            const bottomBar = document.getElementById('reader-bottom-bar');
+            if (bottomBar && bottomBar.classList.contains('hidden')) return;
+
+            const currentScroll = DOM.readContent.scrollTop;
+            const header = document.getElementById('reader-floating-header');
+            
+            if (currentScroll > lastScrollTop && currentScroll > 50) {
+                header.classList.add('-translate-y-[150%]', 'opacity-0');
+                header.classList.remove('translate-y-0', 'opacity-100');
+            } else {
+                header.classList.remove('-translate-y-[150%]', 'opacity-0');
+                header.classList.add('translate-y-0', 'opacity-100');
+            }
+            lastScrollTop = currentScroll <= 0 ? 0 : currentScroll;
+        }, { passive: true });
+    }
+}
+
+function updateBottomNavUI(activeId) {
+    const btns = ['btn-toc', 'btn-bookmarks', 'btn-settings'];
+    btns.forEach(id => {
+        const b = document.getElementById(id);
+        if(b) {
+            b.classList.remove('bg-m3-primary', 'text-m3-onPrimary', 'nav-active');
+            b.classList.add('text-m3-onSurfaceVariant');
+        }
+    });
+    if(activeId) {
+        const act = document.getElementById(activeId);
+        if(act) {
+            act.classList.add('bg-m3-primary', 'text-m3-onPrimary', 'nav-active');
+            act.classList.remove('text-m3-onSurfaceVariant');
+        }
+    }
+}
+
+// 3. HARDWARE BACK BUTTON & HISTORY ROUTING
+window.addEventListener('popstate', (e) => {
+    if (!document.getElementById('raw-backup-modal').classList.contains('opacity-0')) { _closeModalAction('raw-backup-modal', 'raw-backup-sheet', true, true); }
+    else if (!document.getElementById('raw-restore-modal').classList.contains('opacity-0')) { _closeModalAction('raw-restore-modal', 'raw-restore-sheet', true, true); }
+    else if (!document.getElementById('custom-dialog').classList.contains('opacity-0')) { window.closeDialog(true); }
+    else if (!document.getElementById('ai-modal').classList.contains('opacity-0')) { closeAiModal(true); }
+    else if (!document.getElementById('bookmark-modal').classList.contains('opacity-0')) { _closeModalAction('bookmark-modal', 'bookmark-sheet', true, true); }
+    else if (!document.getElementById('b-opt-modal').classList.contains('opacity-0')) { _closeModalAction('b-opt-modal', 'b-opt-sheet', false, true); }
+    else if (!document.getElementById('edit-modal').classList.contains('opacity-0')) { _closeModalAction('edit-modal', 'edit-sheet', true, true); }
+    else if (!document.getElementById('global-settings-modal').classList.contains('opacity-0')) { _closeModalAction('global-settings-modal', 'global-settings-sheet', false, true); }
+    else if (!document.getElementById('welcome-modal').classList.contains('opacity-0')) { closeWelcome(true); }
+    else if (!document.getElementById('backup-type-modal').classList.contains('opacity-0')) { _closeModalAction('backup-type-modal', 'backup-type-sheet', true, true); }
+    else if (isBatchDeleteMode) { window.toggleBatchDelete(true); }
+    else if (activePanel) { _closeSidePanelsAction(true); } 
+    else if (document.getElementById('search-area').classList.contains('search-active')) { closeSearch(true); }
+    else if (document.getElementById('reader-bottom-bar') && document.getElementById('reader-bottom-bar').classList.contains('hidden')) { window.toggleFullscreenReading(true); }
+    else if (DOM.readView && !DOM.readView.classList.contains('translate-y-full')) { _closeReaderAction(true); }
+});
+
+function pushAppHistory(stateName) { history.pushState({ state: stateName }, '', `#${stateName}`); }
+
+// 4. SEARCH & I18N
+function setupSearchListeners() {
+    const searchArea = document.getElementById('search-area');
+    const searchCapsule = document.querySelector('.search-capsule');
+    
+    document.addEventListener('click', (e) => {
+        if (searchArea && searchArea.classList.contains('search-active') && !searchArea.contains(e.target)) {
+            window.closeSearch(false);
+        }
+    });
+
+    if(DOM.globalSearch) {
+        DOM.globalSearch.addEventListener('focus', () => {
+            if (!searchArea.classList.contains('search-active')) {
+                searchArea.classList.add('search-active');
+                if (window.location.hash !== '#search') pushAppHistory('search');
+            }
+        });
+        DOM.globalSearch.addEventListener('input', (e) => {
+            // Auto-hide statistik saat search
+            const statSection = document.getElementById('statistics-section');
+            if(statSection) {
+                if(e.target.value.trim().length > 0) {
+                    statSection.style.height = '0px';
+                    statSection.style.opacity = '0';
+                    statSection.style.marginBottom = '0px';
+                } else {
+                    statSection.style.height = '';
+                    statSection.style.opacity = '1';
+                    statSection.style.marginBottom = '';
+                }
+            }
+            renderLibrary(e.target.value);
+        });
+    }
+
+    if(searchCapsule) {
+        searchCapsule.addEventListener('click', (e) => {
+            if (searchArea.classList.contains('search-active')) {
+                if (e.target !== DOM.globalSearch) { window.closeSearch(false); }
+            } else { DOM.globalSearch.focus(); }
+        });
+    }
+}
+
+window.closeSearch = function(fromHistory = false) {
+    const searchArea = document.getElementById('search-area');
+    const statSection = document.getElementById('statistics-section');
+
+    if (searchArea && searchArea.classList.contains('search-active')) {
+        searchArea.classList.remove('search-active');
+        DOM.globalSearch.blur(); DOM.globalSearch.value = ''; 
+        
+        if(statSection) {
+             statSection.style.height = '';
+             statSection.style.opacity = '1';
+             statSection.style.marginBottom = '';
+        }
 
         renderLibrary();
-        updateStats();
-        
-        if (!localStorage.getItem('baca_welcomed')) {
-            openModal('welcome-modal', 'welcome-sheet', true);
-            localStorage.setItem('baca_welcomed', 'true');
-        }
-
-        const vDisplay = document.getElementById('app-version-display');
-        if (vDisplay) vDisplay.innerText = `v${window.APP_VERSION}`;
-
-    } catch (e) { 
-        console.error("Gagal init app:", e); 
-        library = []; 
-        renderLibrary(); 
+        if (!fromHistory && window.location.hash === '#search') history.back();
     }
-}
+};
 
-// 2. SISTEM TRANSLASI (i18n)
-window.setWikiLang = function(lang) {
-    wikiLang = lang;
-    localStorage.setItem('wiki_lang', lang);
-    applyTranslations();
-    // Re-render UI untuk merefleksikan perubahan bahasa
-    renderLibrary(document.getElementById('global-search').value.toLowerCase());
-    updateStats();
+const setElementText = (id, text) => { const el = document.getElementById(id); if (el) el.innerText = text; };
+
+function applyLanguage() {
+    const d = typeof i18n !== 'undefined' ? (i18n[wikiLang] || i18n['id']) : {};
+    if (!Object.keys(d).length) return;
+
+    setElementText('str-lib-empty', d.libEmpty); setElementText('str-continue-reading', d.continueReading);
+    setElementText('str-book-collection', d.bookCollection); setElementText('loading-text', d.loadingDocs);
+    setElementText('btn-batch-cancel', d.cancel); setElementText('btn-batch-exec', d.delete);
+    setElementText('str-opt-select', d.optSelect); setElementText('str-opt-edit', d.optEdit);
+    setElementText('str-opt-delete', d.optDelete); setElementText('str-opt-cancel', d.optCancel);
     
-    // Update visual tombol bahasa yang aktif
-    document.querySelectorAll('[id^="wiki-lang-"]').forEach(el => {
-        el.classList.remove('bg-m3-primary', 'text-m3-onPrimary');
-        el.classList.add('text-m3-onSurfaceVariant');
-    });
-    const activeBtn = document.getElementById(`wiki-lang-${lang}`);
-    if (activeBtn) {
-        activeBtn.classList.remove('text-m3-onSurfaceVariant');
-        activeBtn.classList.add('bg-m3-primary', 'text-m3-onPrimary');
-    }
-}
-
-function applyTranslations() {
-    const txt = i18n[wikiLang] || i18n['id'];
+    setElementText('str-pinned-books', d.pinnedBooks);
+    setElementText('str-nav-bookmark', d.navBookmark);
+    if (document.getElementById('str-bookmark-title')) { document.getElementById('str-bookmark-title').innerHTML = `<i data-lucide="bookmark"></i> ${d.bookmarkTitle}`; }
+    setElementText('str-bookmark-empty', d.bookmarkEmpty);
     
-    // Header & Umum
-    document.getElementById('str-lib-empty').innerText = txt.libEmpty;
-    document.getElementById('global-search').placeholder = txt.searchBooks;
+    setElementText('str-bookmark-cancel', d.bookmarkCancel); setElementText('str-bookmark-save', d.bookmarkSave);
+    if (document.getElementById('str-bookmark-modal-title')) { document.getElementById('str-bookmark-modal-title').innerHTML = `<i data-lucide="bookmark" class="w-5 h-5"></i> ${d.bookmarkModalTitle}`; }
+    if (document.getElementById('bookmark-input-title')) document.getElementById('bookmark-input-title').placeholder = d.bookmarkTitlePlaceholder;
+    if (document.getElementById('bookmark-input-text')) document.getElementById('bookmark-input-text').placeholder = d.bookmarkNotePlaceholder;
     
-    // Section Library
-    document.getElementById('str-continue-reading').innerText = txt.continueReading;
-    document.getElementById('str-pinned-books').innerText = txt.pinnedBooks;
-    document.getElementById('str-book-collection').innerText = txt.bookCollection;
+    setElementText('str-wel-title', d.welcomeTitle); setElementText('str-wel-desc', d.welcomeDesc);
+    setElementText('str-wel-backup', d.welBackup); 
+    if(document.getElementById('str-wel-backup-desc')) document.getElementById('str-wel-backup-desc').innerHTML = d.welBackupDesc;
+    setElementText('str-wel-format', d.welFormat); 
+    if(document.getElementById('str-wel-format-desc')) document.getElementById('str-wel-format-desc').innerHTML = d.welFormatDesc;
+    setElementText('str-wel-privacy', d.welPrivacy); setElementText('str-wel-privacy-desc', d.welPrivacyDesc);
+    setElementText('str-wel-btn', d.welBtn);
     
-    // Statistik
-    document.getElementById('str-stat-title').innerText = txt.statTitle;
-    document.getElementById('str-stat-total').innerText = txt.statTotal;
-    document.getElementById('str-stat-reading').innerText = txt.statReading;
-    document.getElementById('str-stat-completed').innerText = txt.statCompleted;
-    document.getElementById('str-stat-notes').innerText = txt.statNotes;
-
-    // Welcome Modal
-    document.getElementById('str-wel-title').innerText = txt.welcomeTitle;
-    document.getElementById('str-wel-desc').innerText = txt.welcomeDesc;
-    document.getElementById('str-wel-backup').innerText = txt.welBackup;
-    document.getElementById('str-wel-backup-desc').innerHTML = txt.welBackupDesc;
-    document.getElementById('str-wel-format').innerText = txt.welFormat;
-    document.getElementById('str-wel-format-desc').innerHTML = txt.welFormatDesc;
-    document.getElementById('str-wel-privacy').innerText = txt.welPrivacy;
-    document.getElementById('str-wel-privacy-desc').innerText = txt.welPrivacyDesc;
-    document.getElementById('str-wel-btn').innerText = txt.welBtn;
+    setElementText('str-set-main-title', d.setMainTitle); setElementText('str-set-palette', d.setPalette);
+    setElementText('str-set-lang', d.setLang); setElementText('str-set-info', d.setInfo);
+    setElementText('str-set-data', d.setData); setElementText('str-btn-backup', d.btnBackup); setElementText('str-btn-restore', d.btnRestore);
+    setElementText('str-btn-info', d.btnInfo); setElementText('str-btn-donate', d.btnDonate);
+    setElementText('str-btn-close', d.btnClose);
     
-    // Settings Modal
-    document.getElementById('str-set-main-title').innerText = txt.setMainTitle;
-    document.getElementById('str-set-palette').innerText = txt.setPalette;
-    document.getElementById('str-set-lang').innerText = txt.setLang;
-    document.getElementById('str-set-info').innerText = txt.setInfo;
-    document.getElementById('str-btn-info').innerText = txt.btnInfo;
-    document.getElementById('str-btn-donate').innerText = txt.btnDonate;
-    document.getElementById('str-btn-close').innerText = txt.btnClose;
-    document.getElementById('str-set-data').innerText = txt.setData;
-    document.getElementById('str-btn-backup').innerText = txt.btnBackup;
-    document.getElementById('str-btn-restore').innerText = txt.btnRestore;
-    document.getElementById('str-set-ai-config').innerText = txt.setAiConfig;
-    document.getElementById('gemini-desc').innerText = txt.geminiDesc;
-    document.getElementById('gemini-api-key').placeholder = txt.geminiPlaceholder;
-    document.getElementById('str-btn-update').innerText = txt.btnUpdate;
-    document.getElementById('str-btn-clear-covers').innerText = txt.btnClearCovers;
-
-    // Reader UI & Sidebar
-    document.getElementById('str-nav-back').innerText = txt.navBack;
-    document.getElementById('str-nav-toc').innerText = txt.navToc;
-    document.getElementById('str-nav-bookmark').innerText = txt.navBookmark;
-    document.getElementById('str-nav-text').innerText = txt.navText;
-    document.getElementById('str-nav-full').innerText = txt.navFull;
-    document.getElementById('str-toc-title').innerHTML = `<i data-lucide="list-tree"></i> ${txt.tocTitle}`;
-    document.getElementById('str-bookmark-title').innerHTML = `<i data-lucide="bookmark"></i> ${txt.bookmarkTitle}`;
-    document.getElementById('str-set-title').innerHTML = `<i data-lucide="sliders-horizontal"></i> ${txt.setTitle}`;
+    setElementText('str-set-ai-config', d.setAiConfig);
+    if(document.getElementById('gemini-api-key')) document.getElementById('gemini-api-key').placeholder = d.geminiPlaceholder;
+    setElementText('gemini-desc', d.geminiDesc);
     
-    // Search In Book
-    document.getElementById('str-set-theme').innerText = txt.setTheme;
-    document.getElementById('str-set-size').innerText = txt.setSize;
-    document.getElementById('str-set-align').innerText = txt.setAlign;
-    document.getElementById('str-set-font').innerText = txt.setFont;
-    document.getElementById('inbook-search-input').placeholder = txt.searchPlaceholder;
-    document.getElementById('str-reader-loading').innerText = txt.readerLoading;
+    setElementText('str-btn-update', d.btnUpdate);
+    setElementText('str-btn-clear-covers', d.btnClearCovers);
 
-    // Menu Buku (Options & Edit)
-    document.getElementById('str-opt-pin').innerText = txt.optPin;
-    document.getElementById('str-opt-select').innerText = txt.optSelect;
-    document.getElementById('str-opt-edit').innerText = txt.optEdit;
-    document.getElementById('str-opt-delete').innerText = txt.optDelete;
-    document.getElementById('str-opt-cancel').innerText = txt.optCancel;
+    setElementText('str-nav-back', d.navBack); setElementText('str-nav-toc', d.navToc);
+    setElementText('str-nav-text', d.navText); setElementText('str-nav-full', d.navFull);
+    setElementText('str-set-search', d.navSearch);
+    
+    setElementText('str-reader-loading', d.readerLoading); setElementText('str-toc-title', d.tocTitle);
+    setElementText('str-set-title', d.setTitle); setElementText('str-set-theme', d.setTheme);
+    setElementText('str-set-size', d.setSize); setElementText('str-set-align', d.setAlign);
+    setElementText('str-set-font', d.setFont);
+    
+    setElementText('str-ai-title', d.aiTitle); setElementText('str-ai-loading', d.aiLoading);
+    
+    setElementText('str-edit-title', d.editTitle); setElementText('str-edit-book-title', d.editBookTitle);
+    setElementText('str-edit-book-cover', d.editBookCover); setElementText('str-edit-book-shape', d.editBookShape);
+    setElementText('str-edit-cancel', d.editCancel); setElementText('str-edit-save', d.editSave);
+    setElementText('str-amoled-label', d.amoledLabel);
+    
+    setElementText('shape-default', d.shapeDyn);
+    setElementText('shape-rounded', d.shapeRound);
+    setElementText('shape-square', d.shapeSquare);
+   
+    setElementText('str-raw-bak-title', d.rawBakTitle); setElementText('str-raw-bak-desc', d.rawBakDesc);
+    setElementText('str-raw-bak-btn-close', d.rawBakClose); setElementText('str-raw-bak-btn-copy', d.rawBakCopy);
+    setElementText('str-raw-res-title', d.rawResTitle); setElementText('str-raw-res-desc', d.rawResDesc);
+    setElementText('str-raw-res-btn-file', d.rawResFile); setElementText('str-raw-res-btn-process', d.rawResProcess);
+    setElementText('str-raw-res-btn-close', d.rawResClose);
 
-    document.getElementById('str-edit-title').innerText = txt.editTitle;
-    document.getElementById('str-edit-book-title').innerText = txt.editBookTitle;
-    document.getElementById('str-edit-book-cover').innerText = txt.editBookCover;
-    document.getElementById('str-edit-book-shape').innerText = txt.editBookShape;
-    document.getElementById('str-edit-cancel').innerText = txt.editCancel;
-    document.getElementById('str-edit-save').innerText = txt.editSave;
-
-    document.getElementById('shape-default').innerText = txt.shapeDyn;
-    document.getElementById('shape-rounded').innerText = txt.shapeRound;
-    document.getElementById('shape-square').innerText = txt.shapeSquare;
-
-    // AI & Bookmark Modal
-    document.getElementById('str-ai-title').innerHTML = `<i data-lucide="search" class="w-5 h-5 text-m3-primary"></i> ${txt.aiTitle}`;
-    document.getElementById('str-bookmark-modal-title').innerHTML = `<i data-lucide="bookmark" class="w-5 h-5"></i> ${txt.bookmarkModalTitle}`;
-    document.getElementById('bookmark-input-title').placeholder = txt.bookmarkTitlePlaceholder;
-    document.getElementById('bookmark-input-text').placeholder = txt.bookmarkNotePlaceholder;
-    document.getElementById('str-bookmark-cancel').innerText = txt.bookmarkCancel;
-    document.getElementById('str-bookmark-save').innerText = txt.bookmarkSave;
-    document.getElementById('str-bookmark-empty').innerText = txt.bookmarkEmpty;
-    document.getElementById('bookmark-search-input').placeholder = txt.searchPlaceholder;
-
-    // Batch Delete Bar
-    document.getElementById('btn-batch-cancel').innerText = txt.cancel;
-    document.getElementById('btn-batch-exec').innerText = txt.delete;
-
-    // Raw Backup / Restore
-    document.getElementById('str-raw-bak-title').innerText = txt.rawBakTitle;
-    document.getElementById('str-raw-bak-desc').innerText = txt.rawBakDesc;
-    document.getElementById('str-raw-bak-btn-close').innerText = txt.rawBakClose;
-    document.getElementById('str-raw-bak-btn-copy').innerText = txt.rawBakCopy;
-
-    document.getElementById('str-raw-res-title').innerText = txt.rawResTitle;
-    document.getElementById('str-raw-res-desc').innerText = txt.rawResDesc;
-    document.getElementById('str-raw-res-btn-file').innerText = txt.rawResFile;
-    document.getElementById('str-raw-res-btn-process').innerText = txt.rawResProcess;
-    document.getElementById('str-raw-res-btn-close').innerText = txt.rawResClose;
-
-    // Type Backup Modal (Fix Bug 3 Bahasa)
     if(document.getElementById('str-bak-modal-title')) {
-        document.getElementById('str-bak-modal-title').innerText = txt.bakModalTitle;
-        document.getElementById('str-bak-modal-desc').innerText = txt.bakModalDesc;
-        document.getElementById('str-bak-json-title').innerText = txt.bakJsonTitle;
-        document.getElementById('str-bak-json-desc').innerText = txt.bakJsonDesc;
-        document.getElementById('str-bak-zip-title').innerText = txt.bakZipTitle;
-        document.getElementById('str-bak-zip-desc').innerText = txt.bakZipDesc;
-        document.getElementById('str-bak-zip-warn').innerText = txt.bakZipWarn;
-        document.getElementById('str-bak-cancel').innerText = txt.bakCancel;
+        setElementText('str-bak-modal-title', d.bakModalTitle);
+        setElementText('str-bak-modal-desc', d.bakModalDesc);
+        setElementText('str-bak-json-title', d.bakJsonTitle);
+        setElementText('str-bak-json-desc', d.bakJsonDesc);
+        setElementText('str-bak-zip-title', d.bakZipTitle);
+        setElementText('str-bak-zip-desc', d.bakZipDesc);
+        setElementText('str-bak-zip-warn', d.bakZipWarn);
+        setElementText('str-bak-cancel', d.bakCancel);
     }
 
-    // Refresh UI Status
-    updateThemeUI();
-    setWikiLang(wikiLang); // Ini sekadar rekursi visual btn aktif
+    if(DOM.globalSearch) DOM.globalSearch.placeholder = d.searchBooks;
+    if(DOM.searchInput) DOM.searchInput.placeholder = d.searchPlaceholder;
+    if(DOM.count) DOM.count.textContent = `${(library.length)} ${d.booksCount}`;
+    
+    const themeLabel = document.getElementById('theme-label-text');
+    if (themeLabel) themeLabel.textContent = isDark ? d.themeDark : d.themeLight;
+
+    updateBatchSelectionUI();
+
+    setElementText('str-stat-title', d.statTitle || "Statistik");
+    setElementText('str-stat-total', d.statTotal || "Koleksi");
+    setElementText('str-stat-reading', d.statReading || "Dibaca");
+    setElementText('str-stat-completed', d.statCompleted || "Selesai");
+    setElementText('str-stat-notes', d.statNotes || "Catatan");
 }
 
-// 3. PENGATURAN TEMA MATERIAL 3
-function initTheme() {
-    const savedKey = localStorage.getItem('m3-key');
-    if (savedKey && M3_PALETTES[savedKey]) { currentThemeKey = savedKey; }
-    
-    // Pastikan kalau terang, amoled otomatis false
-    if (!isDark) isAmoled = false;
-    
-    applyTheme();
-}
+window.setWikiLang = function(lang) {
+    wikiLang = lang; localStorage.setItem('wiki_lang', lang); syncWikiLangUI(); applyLanguage();
+    if(activeBookId) renderBookmarkPanel(); 
+};
 
-window.setTheme = function(key) {
-    if (!M3_PALETTES[key]) return;
-    currentThemeKey = key;
-    localStorage.setItem('m3-key', key);
-    applyTheme();
-}
+window.saveGeminiModel = function() {
+    const model = document.getElementById('gemini-model-select').value;
+    localStorage.setItem('gemini_model', model);
+};
 
-window.toggleThemeState = function() {
-    isDark = !isDark;
-    localStorage.setItem('theme', isDark ? 'dark' : 'light');
-    if (!isDark) {
-        isAmoled = false;
-        localStorage.setItem('amoled', 'false');
-    }
-    applyTheme();
-}
+window.saveGeminiKey = function() {
+    const key = document.getElementById('gemini-api-key').value.trim();
+    localStorage.setItem('gemini_api_key', key);
+    const d = i18n[wikiLang] || i18n['id'];
+    showDialog('Info', d.keySaved || "API Key berhasil disimpan.", 'check-circle', [{text: 'Oke', primary: true}]);
+};
 
-window.toggleAmoled = function() {
-    if (!isDark) return;
-    isAmoled = !isAmoled;
-    localStorage.setItem('amoled', isAmoled.toString());
-    applyTheme();
-}
-
-function applyTheme() {
-    const root = document.documentElement;
-    const dynamicStyle = document.getElementById('dynamic-theme');
-    const palette = M3_PALETTES[currentThemeKey];
-    const txt = i18n[wikiLang] || i18n['id'];
-    
-    if (isDark) {
-        root.classList.add('dark');
-        
-        // Cek mode AMOLED
-        if (isAmoled) {
-            let amoledCss = palette.dark;
-            amoledCss = amoledCss.replace(/--md-sys-color-background:[^;]+;/, '--md-sys-color-background:#000000;');
-            amoledCss = amoledCss.replace(/--md-sys-color-surface:[^;]+;/, '--md-sys-color-surface:#000000;');
-            dynamicStyle.innerHTML = `:root { ${amoledCss} }`;
-            document.querySelector('meta[name="theme-color"]').setAttribute('content', '#000000');
-        } else {
-            dynamicStyle.innerHTML = `:root { ${palette.dark} }`;
-            const bgMatch = palette.dark.match(/--md-sys-color-background:([^;]+);/);
-            if (bgMatch) document.querySelector('meta[name="theme-color"]').setAttribute('content', bgMatch[1]);
-        }
-        
-        document.getElementById('theme-label-text').innerText = txt.themeDark;
-        document.getElementById('theme-switch-bg').classList.replace('bg-m3-onSurfaceVariant/20', 'bg-m3-primary');
-        document.getElementById('theme-switch-knob').style.transform = 'translateX(32px)';
-        document.getElementById('theme-switch-icon').setAttribute('data-lucide', 'moon');
-        document.getElementById('theme-switch-icon').classList.replace('text-m3-onSurface', 'text-m3-primary');
-        
-        document.getElementById('amoled-toggle-container').classList.remove('hidden');
-        
-    } else {
-        root.classList.remove('dark');
-        dynamicStyle.innerHTML = `:root { ${palette.light} }`;
-        const bgMatch = palette.light.match(/--md-sys-color-background:([^;]+);/);
-        if (bgMatch) document.querySelector('meta[name="theme-color"]').setAttribute('content', bgMatch[1]);
-        
-        document.getElementById('theme-label-text').innerText = txt.themeLight;
-        document.getElementById('theme-switch-bg').classList.replace('bg-m3-primary', 'bg-m3-onSurfaceVariant/20');
-        document.getElementById('theme-switch-knob').style.transform = 'translateX(0)';
-        document.getElementById('theme-switch-icon').setAttribute('data-lucide', 'sun');
-        document.getElementById('theme-switch-icon').classList.replace('text-m3-primary', 'text-m3-onSurface');
-        
-        document.getElementById('amoled-toggle-container').classList.add('hidden');
-    }
-    
-    // Update visual tombol AMOLED
-    const amBg = document.getElementById('amoled-switch-bg');
-    const amKnob = document.getElementById('amoled-switch-knob');
-    if (isAmoled) {
-        amBg.classList.add('bg-m3-primary');
-        amBg.classList.remove('bg-m3-onSurfaceVariant/20');
-        amKnob.style.transform = 'translateX(32px)';
-        amKnob.classList.add('bg-m3-onPrimary');
-        amKnob.classList.remove('bg-m3-onSurface');
-    } else {
-        amBg.classList.remove('bg-m3-primary');
-        amBg.classList.add('bg-m3-onSurfaceVariant/20');
-        amKnob.style.transform = 'translateX(0)';
-        amKnob.classList.remove('bg-m3-onPrimary');
-        amKnob.classList.add('bg-m3-onSurface');
-    }
-    
-    lucide.createIcons();
-}
-
-function updateThemeUI() {
-    const txt = i18n[wikiLang] || i18n['id'];
-    document.getElementById('str-amoled-label').innerText = txt.amoledLabel;
-    if (isDark) {
-        document.getElementById('theme-label-text').innerText = txt.themeDark;
-    } else {
-        document.getElementById('theme-label-text').innerText = txt.themeLight;
-    }
-}
-
-// 4. RENDER UI PERPUSTAKAAN UTAMA
-function renderLibrary(query = "") {
-    DOM.grid.innerHTML = '';
-    DOM.topSlider.innerHTML = '';
-    
-    const txt = i18n[wikiLang] || i18n['id'];
-    
-    if (library.length === 0) {
-        DOM.empty.classList.remove('hidden');
-        DOM.colHead.classList.add('hidden');
-        DOM.topSection.classList.add('hidden');
-        renderPinnedBooks();
-        return;
-    }
-    
-    DOM.empty.classList.add('hidden');
-    DOM.colHead.classList.remove('hidden');
-
-    let sorted = [...library].sort((a, b) => new Date(b.lastRead) - new Date(a.lastRead));
-    let filtered = query ? sorted.filter(b => b.title.toLowerCase().includes(query)) : sorted;
-    
-    // Pisahin buku yang disematkan
-    renderPinnedBooks(filtered);
-    
-    let regularBooks = filtered.filter(b => !b.pinned);
-
-    // Kalo lagi gak cari buku, munculin slider "Lanjutkan Membaca"
-    if (!query && sorted.length > 0) {
-        DOM.topSection.classList.remove('hidden');
-        const recent = sorted.slice(0, 5);
-        recent.forEach(b => {
-            const pct = Math.round(b.progress || 0);
-            let shapeClass = 'rounded-3xl aspect-[3/4]'; // Default dinamis/rounded-3xl
-            if (b.shape === 'square') shapeClass = 'rounded-none aspect-[3/4]';
-            if (b.shape === 'rounded') shapeClass = 'rounded-[2rem] aspect-[3/4]';
-
-            const card = document.createElement('div');
-            card.className = `snap-start shrink-0 w-32 flex flex-col gap-2 relative group`;
-            card.innerHTML = `
-                <div onclick="openReader('${b.id}')" class="${shapeClass} bg-m3-surfaceVariant overflow-hidden shadow-sm relative cursor-pointer active:scale-95 transition-transform flex items-center justify-center">
-                    ${b.cover_image ? `<img src="${b.cover_image}" class="w-full h-full object-cover" loading="lazy">` : `<div class="p-3 text-center opacity-40"><i data-lucide="book" class="w-8 h-8 mx-auto mb-2"></i><span class="text-[10px] font-bold leading-tight line-clamp-3">${b.title}</span></div>`}
-                    <div class="absolute bottom-0 left-0 right-0 h-1 bg-black/20">
-                        <div class="h-full bg-m3-primary" style="width: ${pct}%"></div>
-                    </div>
-                </div>
-                <div class="flex items-start justify-between gap-1 px-1">
-                    <p class="text-xs font-bold truncate flex-1 text-m3-onBg">${b.title}</p>
-                    <span class="text-[9px] font-black opacity-60 shrink-0 mt-0.5">${pct}%</span>
-                </div>
-            `;
-            DOM.topSlider.appendChild(card);
+function syncWikiLangUI() {
+    const wid = document.getElementById('wiki-lang-id');
+    const wen = document.getElementById('wiki-lang-en');
+    const wes = document.getElementById('wiki-lang-es');
+    if(wid && wen) {
+        [wid, wen, wes].forEach(el => { 
+            if(el) {
+                el.classList.remove('bg-m3-primary', 'text-m3-onPrimary'); 
+                el.classList.add('text-m3-onSurfaceVariant'); 
+            }
         });
-    } else {
-        DOM.topSection.classList.add('hidden');
+        if (wikiLang === 'id') { wid.classList.add('bg-m3-primary', 'text-m3-onPrimary'); wid.classList.remove('text-m3-onSurfaceVariant'); }
+        else if (wikiLang === 'es') { if (wes) { wes.classList.add('bg-m3-primary', 'text-m3-onPrimary'); wes.classList.remove('text-m3-onSurfaceVariant'); } }
+        else { wen.classList.add('bg-m3-primary', 'text-m3-onPrimary'); wen.classList.remove('text-m3-onSurfaceVariant'); }
     }
-
-    // Render Grid Buku Biasa
-    regularBooks.forEach(b => {
-        const pct = Math.round(b.progress || 0);
-        const isSel = selectedForDelete.includes(b.id);
-        
-        let shapeClass = 'rounded-3xl aspect-[3/4]';
-        if (b.shape === 'square') shapeClass = 'rounded-none aspect-[3/4]';
-        if (b.shape === 'rounded') shapeClass = 'rounded-[2rem] aspect-[3/4]';
-
-        const card = document.createElement('div');
-        card.className = `flex flex-col gap-2 relative group transition-transform ${isSel ? 'scale-90 opacity-70' : ''}`;
-        card.innerHTML = `
-            <div class="relative ${shapeClass} shadow-sm overflow-hidden bg-m3-surfaceVariant active:scale-95 transition-transform flex items-center justify-center cursor-pointer"
-                 onclick="handleBookClick('${b.id}')">
-                
-                ${b.cover_image ? `<img src="${b.cover_image}" class="w-full h-full object-cover" loading="lazy">` : `<div class="p-3 text-center opacity-40"><i data-lucide="book" class="w-8 h-8 mx-auto mb-2"></i><span class="text-[10px] font-bold leading-tight line-clamp-3">${b.title}</span></div>`}
-                
-                <div class="absolute bottom-0 left-0 right-0 h-1 bg-black/20 z-10">
-                    <div class="h-full bg-m3-primary" style="width: ${pct}%"></div>
-                </div>
-
-                ${isSel ? `
-                <div class="absolute inset-0 bg-red-500/20 flex items-center justify-center z-20 backdrop-blur-sm">
-                    <i data-lucide="check-circle" class="text-red-600 w-10 h-10 bg-white/80 rounded-full"></i>
-                </div>
-                ` : ''}
-
-            </div>
-            <div class="flex justify-between items-start px-1 gap-1">
-                <div class="flex-1 min-w-0">
-                    <p class="text-xs font-bold truncate text-m3-onBg">${b.title}</p>
-                    <p class="text-[10px] opacity-60 font-medium truncate mt-0.5">${b.type.toUpperCase()}</p>
-                </div>
-                <button onclick="openBookOptions('${b.id}')" class="w-6 h-6 flex items-center justify-center shrink-0 opacity-40 active:opacity-100 rounded-full btn-morph ${isBatchDeleteMode ? 'hidden' : ''}">
-                    <i data-lucide="more-vertical" class="w-4 h-4"></i>
-                </button>
-            </div>
-        `;
-        DOM.grid.appendChild(card);
-    });
-
-    lucide.createIcons();
 }
 
-function renderPinnedBooks(filteredList = null) {
-    const list = filteredList || library;
-    const pinnedBooks = list.filter(b => b.pinned);
+// 5. CUSTOM DIALOG & MODALS
+window.showDialog = function(title, message, iconStr, buttons) {
+    pushAppHistory('custom-dialog');
+    const m = document.getElementById('custom-dialog');
+    const s = document.getElementById('custom-dialog-sheet');
     
-    if (pinnedBooks.length === 0) {
-        DOM.pinSec.classList.add('hidden');
-        return;
-    }
-
-    DOM.pinSec.classList.remove('hidden');
-    DOM.pinGrid.innerHTML = '';
-
-    pinnedBooks.forEach(b => {
-        const pct = Math.round(b.progress || 0);
-        const isSel = selectedForDelete.includes(b.id);
-        
-        let shapeClass = 'rounded-3xl aspect-[3/4]';
-        if (b.shape === 'square') shapeClass = 'rounded-none aspect-[3/4]';
-        if (b.shape === 'rounded') shapeClass = 'rounded-[2rem] aspect-[3/4]';
-
-        const card = document.createElement('div');
-        card.className = `flex flex-col gap-2 relative group transition-transform ${isSel ? 'scale-90 opacity-70' : ''}`;
-        card.innerHTML = `
-            <div class="relative ${shapeClass} shadow-sm overflow-hidden bg-m3-surfaceVariant active:scale-95 transition-transform flex items-center justify-center cursor-pointer"
-                 onclick="handleBookClick('${b.id}')">
-                
-                ${b.cover_image ? `<img src="${b.cover_image}" class="w-full h-full object-cover" loading="lazy">` : `<div class="p-3 text-center opacity-40"><i data-lucide="book" class="w-8 h-8 mx-auto mb-2"></i><span class="text-[10px] font-bold leading-tight line-clamp-3">${b.title}</span></div>`}
-                
-                <div class="absolute bottom-0 left-0 right-0 h-1 bg-black/20 z-10">
-                    <div class="h-full bg-m3-primary" style="width: ${pct}%"></div>
-                </div>
-
-                ${isSel ? `
-                <div class="absolute inset-0 bg-red-500/20 flex items-center justify-center z-20 backdrop-blur-sm">
-                    <i data-lucide="check-circle" class="text-red-600 w-10 h-10 bg-white/80 rounded-full"></i>
-                </div>
-                ` : ''}
-
-            </div>
-            <div class="flex justify-between items-start px-1 gap-1">
-                <div class="flex-1 min-w-0">
-                    <p class="text-xs font-bold truncate text-m3-onBg">${b.title}</p>
-                    <p class="text-[10px] opacity-60 font-medium truncate mt-0.5">${b.type.toUpperCase()}</p>
-                </div>
-                <button onclick="openBookOptions('${b.id}')" class="w-6 h-6 flex items-center justify-center shrink-0 opacity-40 active:opacity-100 rounded-full btn-morph ${isBatchDeleteMode ? 'hidden' : ''}">
-                    <i data-lucide="more-vertical" class="w-4 h-4"></i>
-                </button>
-            </div>
-        `;
-        DOM.pinGrid.appendChild(card);
-    });
+    document.getElementById('dialog-title').innerText = title;
+    document.getElementById('dialog-message').innerHTML = message;
     
-    lucide.createIcons();
-}
+    const iconContainer = document.getElementById('dialog-icon-container');
+    if(iconContainer) iconContainer.classList.remove('animate-spin');
 
-function updateStats() {
-    const total = library.length;
-    const reading = library.filter(b => b.progress > 0 && b.progress < 99).length;
-    const completed = library.filter(b => b.progress >= 99).length;
+    const iconEl = document.getElementById('dialog-icon');
+    if(iconEl) iconEl.setAttribute('data-lucide', iconStr);
     
-    document.getElementById('stat-val-total').innerText = total;
-    document.getElementById('stat-val-reading').innerText = reading;
-    document.getElementById('stat-val-completed').innerText = completed;
-
-    // Hitung total catatan dari localforage
-    localforage.getItem('baca_annotations').then(notes => {
-        let count = 0;
-        if(notes) {
-            Object.values(notes).forEach(arr => { count += arr.length; });
-        }
-        document.getElementById('stat-val-notes').innerText = count;
-    });
-
-    const statSec = document.getElementById('statistics-section');
-    if (total === 0) {
-        statSec.style.height = '0px';
-        statSec.style.opacity = '0';
-        statSec.style.marginBottom = '0px';
-    } else {
-        statSec.style.height = statSec.scrollHeight + 'px';
-        statSec.style.opacity = '1';
-        statSec.style.marginBottom = '2rem';
-        setTimeout(() => { statSec.style.height = 'auto'; }, 300);
-    }
-}
-
-// 5. FITUR: OPSI BUKU, EDIT, & HAPUS
-window.openBookOptions = function(id) {
-    activeOptsId = id;
-    const b = library.find(x => x.id === id);
-    if (!b) return;
-
-    document.getElementById('opt-title').innerText = b.title;
-    const txt = i18n[wikiLang] || i18n['id'];
+    const actionsContainer = document.getElementById('dialog-actions');
+    actionsContainer.innerHTML = '';
     
-    if (b.pinned) {
-        document.getElementById('str-opt-pin').innerText = txt.optUnpin;
-        document.getElementById('icon-opt-pin').setAttribute('data-lucide', 'pin-off');
-        document.getElementById('icon-opt-pin').classList.add('text-red-500');
-    } else {
-        document.getElementById('str-opt-pin').innerText = txt.optPin;
-        document.getElementById('icon-opt-pin').setAttribute('data-lucide', 'pin');
-        document.getElementById('icon-opt-pin').classList.remove('text-red-500');
-    }
-    
-    lucide.createIcons();
-    openModal('b-opt-modal', 'b-opt-sheet', true);
-}
-
-window.togglePinBook = function() {
-    if (!activeOptsId) return;
-    const b = library.find(x => x.id === activeOptsId);
-    if (b) {
-        b.pinned = !b.pinned;
-        saveLibrary();
-        renderLibrary(document.getElementById('global-search').value.toLowerCase());
-    }
-    history.back();
-}
-
-window.triggerSelectMode = function() {
-    history.back();
-    setTimeout(() => { toggleBatchDelete(activeOptsId); }, 200);
-}
-
-window.triggerEditView = function() {
-    history.back();
-    setTimeout(() => {
-        const b = library.find(x => x.id === activeOptsId);
-        if (!b) return;
-        document.getElementById('edit-book-id').value = b.id;
-        document.getElementById('edit-book-title').value = b.title;
-        selectShape(b.shape || 'default');
-        openModal('edit-modal', 'edit-sheet', true);
-    }, 300);
-}
-
-window.triggerDeleteView = function() {
-    history.back();
-    setTimeout(() => {
-        const txt = i18n[wikiLang] || i18n['id'];
-        showDialog("Hapus Buku", txt.deleteConfirm, "alert-triangle", [
-            { text: txt.cancel, primary: false },
-            { text: txt.delete, primary: true, danger: true, action: `deleteSingleBook('${activeOptsId}')` }
-        ]);
-    }, 300);
-}
-
-window.deleteSingleBook = function(id) {
-    library = library.filter(b => b.id !== id);
-    saveLibrary();
-    renderLibrary(document.getElementById('global-search').value.toLowerCase());
-    updateStats();
-    _closeModalAction('custom-dialog', 'custom-dialog-sheet');
-}
-
-window.selectShape = function(shape) {
-    document.getElementById('edit-book-shape').value = shape;
-    document.querySelectorAll('[id^="shape-"]').forEach(el => {
-        el.classList.remove('border-m3-primary', 'bg-m3-primaryContainer', 'text-m3-onPrimaryContainer');
-        el.classList.add('border-transparent', 'bg-m3-surfaceVariant', 'text-m3-onSurfaceVariant');
-    });
-    const sel = document.getElementById(`shape-${shape}`);
-    if(sel) {
-        sel.classList.remove('border-transparent', 'bg-m3-surfaceVariant', 'text-m3-onSurfaceVariant');
-        sel.classList.add('border-m3-primary', 'bg-m3-primaryContainer', 'text-m3-onPrimaryContainer');
-    }
-}
-
-window.closeEditModal = function() {
-    history.back();
-}
-
-window.saveBookEdit = async function() {
-    const id = document.getElementById('edit-book-id').value;
-    const title = document.getElementById('edit-book-title').value.trim();
-    const coverFile = document.getElementById('edit-book-cover').files[0];
-    const shape = document.getElementById('edit-book-shape').value;
-    
-    if (!title) return;
-
-    let b = library.find(x => x.id === id);
-    if (!b) return;
-
-    b.title = title;
-    b.shape = shape;
-
-    if (coverFile) {
-        b.cover_image = await readFileAsBase64(coverFile);
-    }
-
-    saveLibrary();
-    renderLibrary(document.getElementById('global-search').value.toLowerCase());
-    closeEditModal();
-}
-
-window.handleBookClick = function(id) {
-    if (isBatchDeleteMode) {
-        const idx = selectedForDelete.indexOf(id);
-        if (idx > -1) {
-            selectedForDelete.splice(idx, 1);
+    buttons.forEach(btn => {
+        const b = document.createElement('button');
+        b.innerText = btn.text;
+        if (btn.primary) {
+            b.className = "px-6 py-2 bg-m3-primary text-m3-onPrimary font-bold rounded-full btn-morph tracking-wide";
         } else {
-            selectedForDelete.push(id);
+            b.className = "px-4 py-2 bg-transparent text-m3-onSurfaceVariant font-bold rounded-full btn-morph tracking-wide";
         }
-        updateBatchDeleteBar();
-        renderLibrary(document.getElementById('global-search').value.toLowerCase());
-    } else {
-        openReader(id);
-    }
-}
-
-window.toggleBatchDelete = function(initialId = null) {
-    isBatchDeleteMode = !isBatchDeleteMode;
-    selectedForDelete = initialId ? [initialId] : [];
+        b.onclick = () => {
+            if(btn.action) btn.action();
+            else window.closeDialog();
+        };
+        actionsContainer.appendChild(b);
+    });
     
-    const bar = document.getElementById('batch-delete-bar');
-    if (isBatchDeleteMode) {
-        bar.classList.remove('translate-y-32');
-        bar.classList.add('translate-y-0');
-        document.getElementById('fab-container').classList.add('translate-y-32');
-    } else {
-        bar.classList.add('translate-y-32');
-        bar.classList.remove('translate-y-0');
-        document.getElementById('fab-container').classList.remove('translate-y-32');
+    if(window.lucide) window.lucide.createIcons();
+
+    m.classList.remove('hidden');
+    requestAnimationFrame(() => {
+        m.classList.remove('opacity-0');
+        s.classList.remove('scale-75');
+    });
+};
+
+window.closeDialog = function(isFromHistory = false) {
+    if (!isFromHistory) { history.back(); return; }
+    const m = document.getElementById('custom-dialog');
+    const s = document.getElementById('custom-dialog-sheet');
+    
+    s.classList.add('scale-75');
+    m.classList.add('opacity-0');
+    setTimeout(() => m.classList.add('hidden'), 300);
+};
+
+window.openModal = function(modalId, sheetId, isScale = false) {
+    pushAppHistory(`modal-${modalId}`);
+    const m = document.getElementById(modalId); const s = document.getElementById(sheetId);
+    if(m && s) {
+        m.classList.remove('hidden'); 
+        requestAnimationFrame(() => { 
+            m.classList.remove('opacity-0'); 
+            if(isScale) { s.classList.remove('scale-75', 'translate-y-12'); } 
+            else { s.classList.remove('translate-y-full'); } 
+        });
     }
-    updateBatchDeleteBar();
-    renderLibrary(document.getElementById('global-search').value.toLowerCase());
 }
 
-function updateBatchDeleteBar() {
-    const txt = i18n[wikiLang] || i18n['id'];
-    document.getElementById('batch-delete-count').innerText = `${selectedForDelete.length} ${txt.selected}`;
-}
-
-window.executeBatchDelete = function() {
-    if (selectedForDelete.length === 0) {
-        toggleBatchDelete();
-        return;
+window._closeModalAction = function(modalId, sheetId, isScale = false, isFromHistory = false) {
+    if (!isFromHistory) { history.back(); return; }
+    const m = document.getElementById(modalId); const s = document.getElementById(sheetId);
+    if(m && s) {
+        if(isScale) { s.classList.add('scale-75', 'translate-y-12'); } 
+        else { s.classList.add('translate-y-full'); }
+        m.classList.add('opacity-0'); setTimeout(() => m.classList.add('hidden'), 300);
     }
-    const txt = i18n[wikiLang] || i18n['id'];
-    showDialog("Hapus Masal", txt.deleteConfirm, "alert-triangle", [
-        { text: txt.cancel, primary: false },
-        { text: txt.delete, primary: true, danger: true, action: `processBatchDelete()` }
-    ]);
 }
 
-window.processBatchDelete = function() {
-    library = library.filter(b => !selectedForDelete.includes(b.id));
-    saveLibrary();
-    toggleBatchDelete();
-    updateStats();
-    _closeModalAction('custom-dialog', 'custom-dialog-sheet');
+window.closeWelcome = function(isFromHistory = false) {
+    _closeModalAction('welcome-modal', 'welcome-sheet', true, isFromHistory || (window.location.hash !== '#modal-welcome'));
+    localStorage.setItem('first_time_seen_v5', 'true');
+};
+
+// 6. LOGIKA CEK PEMBARUAN & HAPUS SAMPUL
+function compareVersions(v1, v2) {
+    const p1 = v1.split('.').map(Number);
+    const p2 = v2.split('.').map(Number);
+    for (let i = 0; i < Math.max(p1.length, p2.length); i++) {
+        const num1 = p1[i] || 0;
+        const num2 = p2[i] || 0;
+        if (num1 > num2) return 1; 
+        if (num1 < num2) return -1; 
+    }
+    return 0; 
 }
+
+window.checkForUpdate = async function() {
+    const icon = document.getElementById('icon-update-app');
+    const d = typeof i18n !== 'undefined' ? (i18n[wikiLang] || i18n['id']) : {};
+    
+    if(!window.UPDATE_URL) return;
+    if(icon) icon.classList.add('animate-spin');
+    
+    try {
+        const res = await fetch(window.UPDATE_URL + '?t=' + new Date().getTime());
+        if (!res.ok) throw new Error("Gagal terhubung ke GitHub");
+        
+        const data = await res.json();
+        const latestVersion = data.version;
+        const currentVersion = window.APP_VERSION;
+
+        if(icon) icon.classList.remove('animate-spin');
+
+        if (compareVersions(latestVersion, currentVersion) > 0) {
+            showDialog(
+                d.updateAvailableTitle || "Update Tersedia!",
+                (d.updateAvailableDesc || "Versi {v} udah rilis nih. Mau buka halaman download sekarang?").replace('{v}', latestVersion),
+                "arrow-up-circle",
+                [
+                    { text: d.cancel || "Batal", primary: false },
+                    { text: d.btnDownload || "Download", primary: true, action: () => {
+                        window.closeDialog();
+                        if(window.RELEASES_URL) window.open(window.RELEASES_URL, '_blank');
+                    }}
+                ]
+            );
+        } else {
+            showDialog(
+                d.updateLatestTitle || "Sudah Versi Terbaru",
+                d.updateLatestDesc || `Aplikasi lu udah pakai versi paling baru (v${currentVersion}).`,
+                "check-circle",
+                [{ text: "Oke", primary: true }]
+            );
+        }
+    } catch (err) {
+        console.error("Cek update gagal:", err);
+        if(icon) icon.classList.remove('animate-spin');
+        showDialog("Error", d.updateError || "Gagal ngecek update. Pastiin internet lu nyala.", "wifi-off", [{ text: "Tutup", primary: true }]);
+    }
+};
 
 window.clearAllCoversConfirm = function() {
-    const txt = i18n[wikiLang] || i18n['id'];
+    const d = typeof i18n !== 'undefined' ? (i18n[wikiLang] || i18n['id']) : {};
+    if (!library || library.length === 0) {
+        showDialog("Info", d.libEmpty || "Perpustakaan kosong.", "info", [{ text: "Oke", primary: true }]);
+        return;
+    }
+
     showDialog(
-        txt.clearCoversTitle || "Hapus Semua Sampul?", 
-        txt.clearCoversDesc || "Semua gambar sampul akan dihapus permanen untuk menghemat memori. Buku dan progres bacaan tetap aman 100%. Lanjutkan?", 
-        "image-off", 
+        d.clearCoversTitle || "Hapus Semua Sampul?",
+        d.clearCoversDesc || "Semua gambar sampul akan dihapus permanen untuk menghemat memori. Buku dan progres bacaan tetap aman 100%. Lanjutkan?",
+        "image-off",
         [
-            { text: txt.cancel || "Batal", primary: false },
-            { text: "Hapus", primary: true, danger: true, action: "executeClearCovers()" }
+            { text: d.cancel || "Batal", primary: false },
+            { text: d.delete || "Hapus", primary: true, action: async () => {
+                window.closeDialog();
+                
+                for (let book of library) {
+                    await localforage.removeItem('cover_' + book.id);
+                }
+                
+                renderLibrary(DOM.globalSearch ? DOM.globalSearch.value : "");
+                
+                setTimeout(() => {
+                    showDialog("Sukses", d.clearCoversSuccess || "Semua sampul berhasil dihapus! Aplikasi sekarang jauh lebih ringan.", "check-circle", [{ text: "Mantap", primary: true }]);
+                }, 400);
+            }}
         ]
     );
-}
+};
 
-window.executeClearCovers = function() {
-    library.forEach(b => {
-        b.cover_image = null; // Kosongin gambar base64-nya
-    });
-    saveLibrary();
-    renderLibrary(document.getElementById('global-search').value.toLowerCase());
-    
-    _closeModalAction('custom-dialog', 'custom-dialog-sheet');
-    const txt = i18n[wikiLang] || i18n['id'];
-    setTimeout(() => {
-        showDialog("Sukses", txt.clearCoversSuccess || "Semua sampul berhasil dihapus!", "check-circle", [
-            { text: "OK", primary: true }
-        ]);
-    }, 400);
-}
-
-// 6. READER UI LOGIC (Navigasi, Tampilan, dll)
-window.openReader = function(id) {
-    activeBookId = id;
-    const b = library.find(x => x.id === id);
-    if (!b) return;
-
-    DOM.rTitle.innerText = b.title;
-    DOM.rProgress.style.width = `${b.progress || 0}%`;
-    DOM.rProgressTxt.innerText = `${Math.round(b.progress || 0)}%`;
-    
-    document.getElementById('inbook-search-input').value = '';
-    document.getElementById('search-results-panel').classList.add('hidden');
-    
-    // Hide Status Bar (Capacitor)
-    if (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.StatusBar) {
-        window.Capacitor.Plugins.StatusBar.hide().catch(e => console.log(e));
-    }
-
-    DOM.readView.classList.remove('translate-y-full');
-    DOM.readView.classList.add('translate-y-0');
-    
-    document.body.style.overflow = 'hidden';
-    
-    // History State biar tombol native back Android bisa tutup reader
-    history.pushState({reader: true}, '', '#reader');
-    
-    loadBookContent(b);
-    applyTypoSettings();
-}
-
-window.closeReader = function() {
-    DOM.readView.classList.remove('translate-y-0');
-    DOM.readView.classList.add('translate-y-full');
-    document.body.style.overflow = '';
-    
-    // Show Status Bar again
-    if (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.StatusBar) {
-        window.Capacitor.Plugins.StatusBar.show().catch(e => console.log(e));
-    }
-    
-    if (activePanel) togglePanel(activePanel);
-    hideSelectionMenu();
-    updateStats();
-    activeBookId = null;
-    
-    // Render ulang biar slider update
-    renderLibrary(document.getElementById('global-search').value.toLowerCase());
-}
-
-document.getElementById('btn-back').addEventListener('click', () => { history.back(); });
-document.getElementById('btn-toc').addEventListener('click', () => togglePanel(DOM.tocPanel, 'toc', 'btn-toc'));
-document.getElementById('btn-settings').addEventListener('click', () => togglePanel(DOM.setPanel, 'settings', 'btn-settings'));
-
-window.togglePanel = function(panel, name, btnId) {
-    if (activePanel === panel) {
-        panel.classList.remove('translate-x-0');
-        panel.classList.add('translate-x-full');
-        panel.classList.remove('opacity-100');
-        panel.classList.add('opacity-0');
-        DOM.sideOverlay.classList.add('hidden');
-        activePanel = null;
-        
-        if(btnId) {
-            document.getElementById(btnId).classList.remove('text-m3-primary');
-            document.getElementById(btnId).classList.add('text-m3-onSurfaceVariant');
-        }
-        
-        // Hapus hash panel jika pakai pushState
-        if(window.location.hash.includes(name)) history.back();
-
-    } else {
-        if (activePanel) {
-            activePanel.classList.remove('translate-x-0');
-            activePanel.classList.add('translate-x-full');
-            activePanel.classList.remove('opacity-100');
-            activePanel.classList.add('opacity-0');
-            // reset all btns
-            ['btn-toc', 'btn-settings', 'btn-bookmarks'].forEach(id => {
-                document.getElementById(id).classList.remove('text-m3-primary');
-                document.getElementById(id).classList.add('text-m3-onSurfaceVariant');
-            });
-        }
-        
-        panel.classList.remove('translate-x-full');
-        panel.classList.add('translate-x-0');
-        panel.classList.remove('opacity-0');
-        panel.classList.add('opacity-100');
-        DOM.sideOverlay.classList.remove('hidden');
-        activePanel = panel;
-        
-        if(btnId) {
-            document.getElementById(btnId).classList.add('text-m3-primary');
-            document.getElementById(btnId).classList.remove('text-m3-onSurfaceVariant');
-        }
-
-        if(name === 'bookmark') renderBookmarkPanel();
-        
-        history.pushState({panel: name}, '', '#' + name);
-    }
-}
-
-DOM.sideOverlay.addEventListener('click', () => {
-    history.back(); // Trigger popstate
-});
-
-window.toggleFullscreenReading = function() {
-    const isFull = DOM.rBotBar.classList.contains('translate-y-full');
-    if (isFull) {
-        DOM.rBotBar.classList.remove('translate-y-full', 'opacity-0');
-        DOM.rFloatHead.classList.remove('-translate-y-full', 'opacity-0');
-        document.getElementById('btn-fullscreen').classList.remove('text-m3-primary');
-    } else {
-        DOM.rBotBar.classList.add('translate-y-full', 'opacity-0');
-        DOM.rFloatHead.classList.add('-translate-y-full', 'opacity-0');
-        document.getElementById('btn-fullscreen').classList.add('text-m3-primary');
-    }
-}
-
-// Interaksi Reader (Ketuk layat tengah buat fullscreen)
-DOM.rInner.addEventListener('click', (e) => {
-    if (e.target.tagName.toLowerCase() === 'a' || e.target.closest('.annot-hl')) return;
-    
-    const rect = DOM.rInner.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
-    
-    // Area klik tengah (20% margin kiri-kanan, 25% margin atas-bawah)
-    if (x > rect.width * 0.2 && x < rect.width * 0.8 && y > rect.height * 0.25 && y < rect.height * 0.75) {
-        if(document.getSelection().toString().trim().length === 0) {
-            toggleFullscreenReading();
-        }
-    }
-});
-
-window.setReaderTheme = function(mode) {
-    const r = document.documentElement;
-    document.querySelectorAll('[id^="theme-btn-"]').forEach(el => {
-        el.classList.remove('bg-m3-primary', 'text-m3-onPrimary');
-    });
-    
-    if (mode === 'light') {
-        isDark = false; isAmoled = false;
-        document.getElementById('theme-btn-light').classList.add('bg-m3-primary', 'text-m3-onPrimary');
-    } else if (mode === 'dark') {
-        isDark = true; isAmoled = false;
-        document.getElementById('theme-btn-dark').classList.add('bg-m3-primary', 'text-m3-onPrimary');
-    } else if (mode === 'amoled') {
-        isDark = true; isAmoled = true;
-        document.getElementById('theme-btn-amoled').classList.add('bg-m3-primary', 'text-m3-onPrimary');
-    }
-    
-    localStorage.setItem('theme', isDark ? 'dark' : 'light');
-    localStorage.setItem('amoled', isAmoled.toString());
-    applyTheme();
-}
-
-window.changeTypo = function(prop, val) {
-    const root = document.documentElement;
-    if(prop === 'size') {
-        root.style.setProperty('--reader-size', val);
-        localStorage.setItem('typo_size', val);
-        highlightBtnGroup('typo-sz-', val, {'1rem':'sm', '1.2rem':'md', '1.5rem':'lg'});
-    }
-    if(prop === 'align') {
-        root.style.setProperty('--reader-align', val);
-        localStorage.setItem('typo_align', val);
-        highlightBtnGroup('typo-al-', val, {'left':'left', 'center':'center', 'justify':'justify'});
-    }
-    if(prop === 'font') {
-        const fonts = {
-            'Lora': "'Lora', serif",
-            'Merriweather': "'Merriweather', serif",
-            'Playfair Display': "'Playfair Display', serif",
-            'Inter': "'Inter', sans-serif",
-            'Space Mono': "'Space Mono', monospace",
-            'Google Sans Flex': "'Google Sans Flex', sans-serif"
-        };
-        root.style.setProperty('--reader-font', fonts[val] || fonts['Lora']);
-        localStorage.setItem('typo_font', val);
-        
-        document.querySelectorAll('[id^="typo-fn-"]').forEach(el => {
-            el.classList.remove('bg-m3-primaryContainer', 'text-m3-onPrimaryContainer', 'border-m3-primary');
-            el.classList.add('bg-m3-surface', 'border-transparent');
-        });
-        
-        const map = {'Lora':'lora', 'Merriweather':'merri', 'Playfair Display':'playfair', 'Inter':'inter', 'Space Mono':'mono', 'Google Sans Flex':'google'};
-        const btn = document.getElementById(`typo-fn-${map[val]}`);
-        if(btn) {
-            btn.classList.remove('bg-m3-surface', 'border-transparent');
-            btn.classList.add('bg-m3-primaryContainer', 'text-m3-onPrimaryContainer', 'border', 'border-m3-primary');
-        }
-    }
-}
-
-function highlightBtnGroup(prefix, val, map) {
-    Object.values(map).forEach(suffix => {
-        const el = document.getElementById(prefix + suffix);
-        if(el) el.classList.remove('bg-m3-primary', 'text-m3-onPrimary');
-    });
-    const active = document.getElementById(prefix + map[val]);
-    if(active) active.classList.add('bg-m3-primary', 'text-m3-onPrimary');
-}
-
-function applyTypoSettings() {
-    const sz = localStorage.getItem('typo_size') || '1.2rem';
-    const al = localStorage.getItem('typo_align') || 'left';
-    const fn = localStorage.getItem('typo_font') || 'Lora';
-    changeTypo('size', sz);
-    changeTypo('align', al);
-    changeTypo('font', fn);
-    
-    // Set theme btn state in panel
-    document.querySelectorAll('[id^="theme-btn-"]').forEach(el => el.classList.remove('bg-m3-primary', 'text-m3-onPrimary'));
-    if(!isDark) document.getElementById('theme-btn-light').classList.add('bg-m3-primary', 'text-m3-onPrimary');
-    else if(isDark && !isAmoled) document.getElementById('theme-btn-dark').classList.add('bg-m3-primary', 'text-m3-onPrimary');
-    else document.getElementById('theme-btn-amoled').classList.add('bg-m3-primary', 'text-m3-onPrimary');
-}
-
-// 7. IN-BOOK SEARCH LOGIC
-document.getElementById('inbook-search-input').addEventListener('input', (e) => {
-    clearTimeout(inbookSearchTimeout);
-    const q = e.target.value.trim().toLowerCase();
-    const panel = document.getElementById('search-results-panel');
-    
-    if (q.length < 3) {
-        panel.classList.add('hidden');
-        panel.innerHTML = '';
-        return;
-    }
-    
-    inbookSearchTimeout = setTimeout(() => {
-        const textNodes = getTextNodes(DOM.rInner);
-        let results = [];
-        let limit = 20;
-        
-        for (let i = 0; i < textNodes.length; i++) {
-            const node = textNodes[i];
-            const txt = node.nodeValue.toLowerCase();
-            let idx = txt.indexOf(q);
-            
-            while (idx !== -1 && results.length < limit) {
-                const start = Math.max(0, idx - 20);
-                const end = Math.min(txt.length, idx + q.length + 20);
-                let snippet = node.nodeValue.substring(start, end);
-                snippet = snippet.replace(new RegExp(q, 'ig'), match => `<strong class="text-m3-primary">${match}</strong>`);
-                
-                results.push({ node: node, snippet: `...${snippet}...` });
-                idx = txt.indexOf(q, idx + 1);
-            }
-            if (results.length >= limit) break;
-        }
-        
-        panel.innerHTML = '';
-        if (results.length > 0) {
-            results.forEach(res => {
-                const btn = document.createElement('button');
-                btn.className = 'w-full text-left p-3 hover:bg-m3-surfaceVariant rounded-xl transition-colors border-b border-m3-surfaceVariant last:border-0 btn-morph';
-                btn.innerHTML = `<p class="opacity-80">${res.snippet}</p>`;
-                btn.onclick = () => {
-                    res.node.parentElement.scrollIntoView({behavior: 'smooth', block: 'center'});
-                    togglePanel(DOM.setPanel);
-                };
-                panel.appendChild(btn);
-            });
-            panel.classList.remove('hidden');
-            panel.classList.add('flex');
-        } else {
-            const txtL = i18n[wikiLang] || i18n['id'];
-            panel.innerHTML = `<div class="p-3 text-center opacity-50 font-bold">${txtL.searchNotFound}</div>`;
-            panel.classList.remove('hidden');
-            panel.classList.add('flex');
-        }
-    }, 500);
-});
-
-// 8. HIGHLIGHT / BOOKMARK ENGINE (Sistem Catatan dalam Buku)
-document.addEventListener('selectionchange', () => {
-    if (!activeBookId || activePanel) return;
-    
-    const sel = window.getSelection();
-    const menu = document.getElementById('selection-menu');
-    
-    if (!sel || sel.isCollapsed || sel.toString().trim() === "") {
-        hideSelectionMenu();
-        return;
-    }
-
-    const range = sel.getRangeAt(0);
-    
-    // Pastikan seleksi ada di dalam reader
-    if (!DOM.rInner.contains(range.commonAncestorContainer)) {
-        hideSelectionMenu();
-        return;
-    }
-
-    const rect = range.getBoundingClientRect();
-    if (rect.width === 0) return;
-
-    // Simpan posisi seleksi pakai xpath / node index biar kuat pas dirender ulang
-    const textNodes = getTextNodes(DOM.rInner);
-    let startNodeIdx = textNodes.indexOf(range.startContainer);
-    
-    // Jika start container bukan text node langsung, cari anak pertamanya
-    if (startNodeIdx === -1) {
-        const tw = document.createTreeWalker(range.startContainer, NodeFilter.SHOW_TEXT, null, false);
-        const firstText = tw.nextNode();
-        if (firstText) startNodeIdx = textNodes.indexOf(firstText);
-    }
-
-    if (startNodeIdx !== -1) {
-        currentSelection = {
-            text: sel.toString(),
-            nodeIdx: startNodeIdx,
-            startOff: range.startOffset,
-            endOff: range.endOffset, // Cuma akurat kalo select di dalem 1 node
-            textToMatch: range.startContainer.nodeValue // fallback buat cocokin textnya
-        };
-        
-        // Tampilkan floating menu
-        menu.classList.remove('hidden');
-        
-        // Posisi menu relatif terhadap layar
-        let top = rect.top - 60; 
-        if (top < 80) top = rect.bottom + 10; 
-        
-        menu.style.top = `${top}px`;
-        menu.style.left = `50%`;
-        menu.style.transform = `translateX(-50%) scale(1)`;
-        menu.classList.remove('opacity-0', 'scale-75');
-        menu.classList.add('opacity-100');
-    }
-});
-
-function hideSelectionMenu() {
-    const menu = document.getElementById('selection-menu');
-    menu.classList.remove('opacity-100');
-    menu.classList.add('opacity-0', 'scale-75');
-    setTimeout(() => { menu.classList.add('hidden'); }, 200);
-}
-
-window.copySelection = function() {
-    if(currentSelection.text) {
-        document.execCommand('copy'); 
-        hideSelectionMenu();
-        window.getSelection().removeAllRanges();
-        showDialog("Sukses", "Teks disalin ke clipboard.", "check-circle", [{text: "OK", primary: true}]);
-    }
-}
-
-window.openBookmarkModal = function(color, isEdit = false, annotData = null) {
-    activeNoteColor = color;
-    hideSelectionMenu();
-    
-    if (isEdit && annotData) {
-        editingAnnotId = annotData.id;
-        document.getElementById('bookmark-input-title').value = annotData.title || '';
-        document.getElementById('bookmark-input-text').value = annotData.note || '';
-        document.getElementById('btn-delete-bookmark').classList.remove('hidden');
-    } else {
-        editingAnnotId = null;
-        document.getElementById('bookmark-input-title').value = '';
-        document.getElementById('bookmark-input-text').value = currentSelection.text; // auto fill note dgn teks yg diselect
-        document.getElementById('btn-delete-bookmark').classList.add('hidden');
-    }
-    
-    openModal('bookmark-modal', 'bookmark-sheet', true);
-}
-
-window.saveBookmarkAnnotation = async function() {
-    if (!activeBookId) return;
-    
-    const title = document.getElementById('bookmark-input-title').value.trim() || 'Highlight';
-    const note = document.getElementById('bookmark-input-text').value.trim();
-    
-    let annots = await localforage.getItem('baca_annotations') || {};
-    if (!annots[activeBookId]) annots[activeBookId] = [];
-
-    if (editingAnnotId) {
-        // Mode Update
-        let target = annots[activeBookId].find(a => a.id === editingAnnotId);
-        if (target) {
-            target.title = title;
-            target.note = note;
-            target.color = activeNoteColor;
-        }
-    } else {
-        // Mode Create Baru
-        const newAnnot = {
-            id: 'annot_' + Date.now(),
-            title: title,
-            note: note,
-            color: activeNoteColor,
-            textRef: currentSelection.text, // Simpan teks aslinya
-            date: new Date().toISOString(),
-            // Lokasi kasar untuk fallback
-            progress: DOM.rInner.scrollTop / DOM.rInner.scrollHeight
-        };
-        annots[activeBookId].push(newAnnot);
-    }
-
-    await localforage.setItem('baca_annotations', annots);
-    _closeModalAction('bookmark-modal', 'bookmark-sheet');
-    window.getSelection().removeAllRanges();
-    updateStats();
-    
-    // Kasih tau sukses
-    setTimeout(() => {
-        showDialog("Tersimpan", "Bookmark/Catatan berhasil disimpan.", "check-circle", [{text: "OK", primary: true}]);
-    }, 400);
-}
-
-window.deleteBookmarkInsideModal = async function() {
-    if (!editingAnnotId || !activeBookId) return;
-    const txt = i18n[wikiLang] || i18n['id'];
-    
-    // Konfirmasi dulu
-    _closeModalAction('bookmark-modal', 'bookmark-sheet');
-    
-    setTimeout(() => {
-        showDialog("Hapus Catatan", txt.deleteNoteConfirm, "trash-2", [
-            { text: txt.cancel, primary: false },
-            { text: txt.delete, primary: true, danger: true, action: `executeDeleteAnnot()` }
-        ]);
-    }, 300);
-}
-
-window.executeDeleteAnnot = async function() {
-    let annots = await localforage.getItem('baca_annotations') || {};
-    if (annots[activeBookId]) {
-        annots[activeBookId] = annots[activeBookId].filter(a => a.id !== editingAnnotId);
-        await localforage.setItem('baca_annotations', annots);
-    }
-    _closeModalAction('custom-dialog', 'custom-dialog-sheet');
-    updateStats();
-    if(activePanel === DOM.bookmarkPanel) renderBookmarkPanel();
-}
-
-window.renderBookmarkPanel = async function() {
-    if (!activeBookId) return;
-    const list = document.getElementById('bookmark-list');
-    const empty = document.getElementById('bookmark-empty');
-    list.innerHTML = '';
-    
-    let annots = await localforage.getItem('baca_annotations') || {};
-    let myAnnots = annots[activeBookId] || [];
-    
-    if (myAnnots.length === 0) {
-        empty.classList.remove('hidden');
-        return;
-    }
-    
-    empty.classList.add('hidden');
-    
-    // Sort dari yang paling baru
-    myAnnots.sort((a,b) => new Date(b.date) - new Date(a.date));
-
-    // Ambil keyword search jika ada
-    const kw = document.getElementById('bookmark-search-input').value.toLowerCase();
-
-    myAnnots.forEach(an => {
-        if(kw && !an.title.toLowerCase().includes(kw) && !an.note.toLowerCase().includes(kw)) return;
-
-        let colorHex = '#EAB308'; // yellow
-        if (an.color === 'green') colorHex = '#22C55E';
-        if (an.color === 'pink') colorHex = '#EC4899';
-
-        const btn = document.createElement('div');
-        btn.className = 'w-full text-left p-4 bg-m3-surface rounded-2xl mb-2 flex flex-col gap-2 relative group';
-        
-        btn.innerHTML = `
-            <div class="flex items-center gap-2 mb-1">
-                <div class="w-2.5 h-2.5 rounded-full shrink-0" style="background-color: ${colorHex}"></div>
-                <h4 class="font-bold text-sm text-m3-onSurface truncate flex-1">${an.title}</h4>
-            </div>
-            <p class="text-xs text-m3-onSurfaceVariant opacity-80 line-clamp-3 italic font-medium leading-relaxed">"${an.textRef || an.note}"</p>
-            ${an.textRef && an.note !== an.textRef ? `<p class="text-xs text-m3-onSurface font-bold mt-1 line-clamp-2">Catatan: ${an.note}</p>` : ''}
-            
-            <button onclick='openBookmarkModal("${an.color}", true, ${JSON.stringify(an).replace(/'/g, "&apos;")})' class="absolute top-2 right-2 w-8 h-8 rounded-full bg-m3-surfaceVariant flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity btn-morph">
-                <i data-lucide="edit-2" class="w-3.5 h-3.5"></i>
-            </button>
-        `;
-        list.appendChild(btn);
-    });
-    lucide.createIcons();
-}
-
-window.filterBookmarkPanel = function(val) {
-    renderBookmarkPanel();
-}
-
-// Helper DOM 
-function getTextNodes(node) {
-    let textNodes = [];
-    if (node.nodeType == 3) {
-        if(node.nodeValue.trim() !== "") textNodes.push(node);
-    } else {
-        for (let i = 0, len = node.childNodes.length; i < len; ++i) {
-            textNodes.push.apply(textNodes, getTextNodes(node.childNodes[i]));
-        }
-    }
-    return textNodes;
-}
-
-// 9. SISTEM BACKUP & RESTORE DATA (JSON & ZIP)
-window.generateJsonBackup = async function() {
-    let data = await localforage.getItem('baca_library') || [];
-    let notes = await localforage.getItem('baca_annotations') || {};
-    let config = { theme: currentThemeKey, isDark, isAmoled, wikiLang };
-    
-    // Hapus konten besar biar JSON jadi ringan (progress & list doang)
-    let lightweightBooks = data.map(b => ({
-        ...b,
-        cover_image: null,
-        book_content: null
-    }));
-
-    return {
-        version: window.APP_VERSION,
-        date: new Date().toISOString(),
-        type: 'json',
-        books: lightweightBooks,
-        annotations: notes,
-        config: config
-    };
-}
-
-window.generateZipBackup = async function() {
-    let data = await localforage.getItem('baca_library') || [];
-    let notes = await localforage.getItem('baca_annotations') || {};
-    let config = { theme: currentThemeKey, isDark, isAmoled, wikiLang };
-    
-    const zip = new JSZip();
-    
-    // 1. Buat file core data (tanpa konten)
-    let coreBooks = data.map(b => ({
-        ...b,
-        cover_image: b.cover_image ? b.id + '.img' : null,
-        book_content: b.book_content ? b.id + '.txt' : null
-    }));
-
-    let exportData = {
-        version: window.APP_VERSION,
-        date: new Date().toISOString(),
-        type: 'zip',
-        books: coreBooks,
-        annotations: notes,
-        config: config
-    };
-    
-    zip.file("core_data.json", JSON.stringify(exportData));
-    
-    // 2. Folder file berat
-    const booksFolder = zip.folder("books");
-    const coversFolder = zip.folder("covers");
-    
-    for(let b of data) {
-        if(b.book_content) booksFolder.file(b.id+'.txt', b.book_content);
-        if(b.cover_image) coversFolder.file(b.id+'.img', b.cover_image); 
-    }
-    
-    // 3. Generate file (pake STORE atau compression level 1 biar kenceng di HP)
-    const zipBlob = await zip.generateAsync({type: "blob", compression: "DEFLATE", compressionOptions: {level: 1}});
-    return zipBlob;
-}
-
+// 7. BACKUP & RESTORE DATA (JSON PROGRESS & ZIP FULL)
 window.executeBackup = async function(type) {
-    // 1. Langsung tutup Modal Pilihan Backup seketika
-    _closeModalAction('backup-type-modal', 'backup-type-sheet');
+    // 1. Langsung tutup Modal Pilihan Backup seketika pakai fungsi standar yang support routing history
+    _closeModalAction('backup-type-modal', 'backup-type-sheet', true, true);
     
+    if (!library || library.length === 0) {
+        const txt = i18n[wikiLang] || i18n['id'];
+        const msg = txt.libEmpty || "Perpustakaan kosong.";
+        setTimeout(() => showDialog("Info", msg, "info", [{ text: txt.btnClose || "Oke", primary: true }]), 350);
+        return;
+    }
+
     // 2. Tunggu dikit biar animasi nutup mulus
     setTimeout(async () => {
         const txt = i18n[wikiLang] || i18n['id'];
-        const title = txt.bakLoadingTitle;
-        const desc = type === 'zip' ? txt.bakZipLoading : txt.bakJsonLoading;
-        
+        const title = txt.bakLoadingTitle || "Memproses Backup";
+        const desc = type === 'zip' ? (txt.bakZipLoading || "Menyiapkan file ZIP...") : (txt.bakJsonLoading || "Menyiapkan file backup JSON...");
+
         // 3. Tampilkan Loading Dialog (tombol kosong = ga bisa di-close sembarangan)
         showDialog(title, `
             <div class="flex flex-col items-center justify-center gap-4 py-4">
@@ -1366,327 +565,1416 @@ window.executeBackup = async function(type) {
         `, "info", []);
 
         try {
-            if (type === 'zip') {
-                const zipBlob = await generateZipBackup();
-                downloadFile(zipBlob, `Baca_Full_Backup_${new Date().toISOString().split('T')[0]}.zip`, 'application/zip');
-            } else {
-                const jsonObj = await generateJsonBackup();
-                downloadFile(JSON.stringify(jsonObj), `Baca_Progress_Backup_${new Date().toISOString().split('T')[0]}.json`, 'application/json');
+            if (type === 'json') {
+                const lightLib = library.map(b => ({ ...b })); 
+                const dataStr = JSON.stringify(lightLib);
+                await saveFileNativeOrWeb(dataStr, `Baca_ProgressOnly_${Date.now()}.json`, 'application/json');
+            } else if (type === 'zip') {
+                const zip = new JSZip();
+                zip.file("library.json", JSON.stringify(library));
+                
+                const contentsFolder = zip.folder("contents");
+                const coversFolder = zip.folder("covers");
+
+                for (const b of library) {
+                    const nodes = await localforage.getItem('content_' + b.id);
+                    if (nodes) contentsFolder.file(`${b.id}.json`, JSON.stringify(nodes));
+                    
+                    const cover = await localforage.getItem('cover_' + b.id);
+                    if (cover) coversFolder.file(`${b.id}.txt`, cover);
+                }
+
+                const content = await zip.generateAsync({ type: "blob", compression: "DEFLATE", compressionOptions: { level: 6 } });
+                await saveFileNativeOrWebBlob(content, `Baca_FullBackup_${Date.now()}.zip`);
             }
-
-            // 4. Tutup loading
-            _closeModalAction('custom-dialog', 'custom-dialog-sheet');
-            
-            // 5. Munculin konfirmasi sukses
-            setTimeout(() => {
-                const successTitle = txt.bakSuccessTitle || "Backup Sukses";
-                const successDesc = type === 'zip' ? txt.bakSuccessZip : txt.bakSuccessJson;
-                showDialog(successTitle, successDesc, "check-circle", [{text: txt.btnClose || "Tutup", primary: true}]);
-            }, 400);
-
-        } catch (e) {
-            console.error("Backup gagal", e);
-            _closeModalAction('custom-dialog', 'custom-dialog-sheet');
-            setTimeout(() => {
-                showDialog("Error", `Gagal memproses backup: ${e.message}`, "alert-triangle", [{text: "Tutup", primary: true}]);
-            }, 400);
+        } catch (err) {
+            console.error("Backup failed:", err);
+            window.closeDialog();
+            const btnClose = txt.btnClose || "Tutup";
+            setTimeout(() => showDialog("Error", "Backup gagal: " + err.message, "alert-triangle", [{ text: btnClose, primary: true }]), 400);
         }
-    }, 300);
+    }, 350);
+};
+
+async function saveFileNativeOrWeb(text, filename, mime) {
+    const txt = i18n[wikiLang] || i18n['id'];
+    const successTitle = txt.bakSuccessTitle || "Backup Sukses";
+    const successDesc = txt.bakSuccessJson || "File JSON berhasil dibuat dan siap di-save.";
+    const btnOk = txt.btnClose || "Tutup";
+
+    if (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.Filesystem) {
+        try {
+            await window.Capacitor.Plugins.Filesystem.writeFile({
+                path: filename, data: text, directory: 'DOCUMENTS', encoding: 'utf8'
+            });
+            window.closeDialog();
+            setTimeout(() => showDialog(successTitle, `${successDesc}\n\nDisimpan di Documents:\n${filename}`, "check-circle", [{text: btnOk, primary: true}]), 400);
+            return;
+        } catch (e) {
+            console.log("Capacitor write gagal, beralih ke teks raw.", e);
+            document.getElementById('raw-backup-textarea').value = text;
+            window.closeDialog(true);
+            setTimeout(() => openModal('raw-backup-modal', 'raw-backup-sheet', true), 350);
+            return;
+        }
+    }
+    // Fallback Web
+    const blob = new Blob([text], {type: mime});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a'); a.href = url; a.download = filename;
+    document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+    window.closeDialog();
+    setTimeout(() => showDialog(successTitle, `${successDesc}\n\nFile berhasil diunduh:\n${filename}`, "check-circle", [{text: btnOk, primary: true}]), 400);
 }
 
-function downloadFile(content, fileName, mimeType) {
-    // Fallback sistem download file di web/browser/webview
-    const a = document.createElement("a");
-    if (mimeType === 'application/zip') {
-        const url = URL.createObjectURL(content); // content is Blob
-        a.href = url;
-        a.download = fileName;
-        document.body.appendChild(a);
-        a.click();
-        setTimeout(() => { document.body.removeChild(a); window.URL.revokeObjectURL(url); }, 100);
-    } else {
-        const file = new Blob([content], {type: mimeType});
-        a.href = URL.createObjectURL(file);
-        a.download = fileName;
-        document.body.appendChild(a);
-        a.click();
-        setTimeout(() => { document.body.removeChild(a); window.URL.revokeObjectURL(a.href); }, 100);
+async function saveFileNativeOrWebBlob(blob, filename) {
+    const txt = i18n[wikiLang] || i18n['id'];
+    const successTitle = txt.bakSuccessTitle || "Backup Sukses";
+    const successDesc = txt.bakSuccessZip || "File ZIP berhasil disusun dan siap di-save.";
+    const btnOk = txt.btnClose || "Tutup";
+
+    if (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.Filesystem) {
+        try {
+            const reader = new FileReader();
+            reader.readAsDataURL(blob);
+            reader.onloadend = async function() {
+                const base64data = reader.result.split(',')[1];
+                await window.Capacitor.Plugins.Filesystem.writeFile({
+                    path: filename, data: base64data, directory: 'DOCUMENTS'
+                });
+                window.closeDialog();
+                setTimeout(() => showDialog(successTitle, `${successDesc}\n\nDisimpan di Documents:\n${filename}`, "check-circle", [{text: btnOk, primary: true}]), 400);
+            }
+            return;
+        } catch (e) { console.log("Capacitor write blob gagal", e); }
+    }
+    // Fallback Web
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a'); a.href = url; a.download = filename;
+    document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+    window.closeDialog();
+    setTimeout(() => showDialog(successTitle, `${successDesc}\n\nFile berhasil diunduh:\n${filename}`, "check-circle", [{text: btnOk, primary: true}]), 400);
+}
+
+window.copyRawBackup = function() {
+    const textarea = document.getElementById('raw-backup-textarea');
+    textarea.select();
+    textarea.setSelectionRange(0, 9999999); 
+    try {
+        document.execCommand('copy');
+        const btnSpan = document.getElementById('str-raw-bak-btn-copy');
+        const originalText = btnSpan.innerText;
+        btnSpan.innerText = wikiLang === 'id' ? "Berhasil Disalin!" : "Copied!";
+        setTimeout(() => { btnSpan.innerText = originalText; }, 2000);
+    } catch (err) {
+        showDialog("Error", "Gagal menyalin otomatis. Silakan blok semua teks secara manual dan salin.", "alert-circle", [{ text: "Tutup", primary: true }]);
+    }
+};
+
+window.openRestoreOptions = function() {
+    document.getElementById('raw-restore-textarea').value = '';
+    openModal('raw-restore-modal', 'raw-restore-sheet', true);
+};
+
+window.processRawRestore = function() {
+    const val = document.getElementById('raw-restore-textarea').value.trim();
+    if(!val) {
+        showDialog("Info", wikiLang === 'id' ? "Kotak teks masih kosong." : "Text box is empty.", "info", [{ text: "Oke", primary: true }]);
+        return;
+    }
+    executeRestoreLogic(val);
+};
+
+window.importDataFile = async function(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    try {
+        if (file.name.toLowerCase().endsWith('.zip')) {
+            DOM.load.classList.remove('hidden');
+            if(DOM.loadTxt) DOM.loadTxt.innerText = wikiLang === 'id' ? "Mengekstrak ZIP..." : "Extracting ZIP...";
+            DOM.loadBar.style.width = '10%';
+
+            const zip = await JSZip.loadAsync(file);
+            const metaFile = zip.file("library.json");
+            if (!metaFile) throw new Error("File ZIP tidak valid: library.json tidak ditemukan.");
+            
+            const metaContent = await metaFile.async("string");
+            const metadata = JSON.parse(metaContent);
+
+            DOM.load.classList.add('hidden');
+            const d = typeof i18n !== 'undefined' ? (i18n[wikiLang] || i18n['id']) : {};
+            const confirmMsg = (d.zipRestoreConfirm || "Ditemukan {n} buku paket lengkap di file ZIP ini. Lanjut?").replace('{n}', metadata.length);
+
+            showDialog(
+                wikiLang === 'id' ? "Konfirmasi Restore ZIP" : "Confirm ZIP Restore",
+                confirmMsg,
+                "alert-triangle",
+                [
+                    { text: d.cancel || "Batal", primary: false },
+                    { text: wikiLang === 'id' ? "Lanjut" : "Continue", primary: true, action: async () => {
+                        window.closeDialog();
+                        DOM.load.classList.remove('hidden');
+                        if(DOM.loadTxt) DOM.loadTxt.innerText = wikiLang === 'id' ? "Memulihkan data..." : "Restoring data...";
+
+                        let mergedLibrary = [...library];
+                        let count = 0;
+
+                        for (const b of metadata) {
+                            const nodeFile = zip.file(`contents/${b.id}.json`);
+                            if (nodeFile) {
+                                const nodesStr = await nodeFile.async("string");
+                                await localforage.setItem('content_' + b.id, JSON.parse(nodesStr));
+                            }
+                            
+                            const coverFile = zip.file(`covers/${b.id}.txt`);
+                            if (coverFile) {
+                                const coverStr = await coverFile.async("string");
+                                await localforage.setItem('cover_' + b.id, coverStr);
+                            }
+
+                            const existingIndex = mergedLibrary.findIndex(lib => lib.id === b.id);
+                            if (existingIndex > -1) {
+                                mergedLibrary[existingIndex] = { ...mergedLibrary[existingIndex], ...b };
+                            } else {
+                                mergedLibrary.push(b);
+                            }
+                            count++;
+                            DOM.loadBar.style.width = `${10 + (count / metadata.length * 90)}%`;
+                        }
+
+                        library = mergedLibrary;
+                        await localforage.setItem('pdf_epub_master', library);
+                        renderLibrary(DOM.globalSearch ? DOM.globalSearch.value : "");
+                        
+                        DOM.load.classList.add('hidden');
+                        if (!document.getElementById('raw-restore-modal').classList.contains('hidden')) history.back();
+                        setTimeout(() => {
+                            if (!document.getElementById('global-settings-modal').classList.contains('hidden')) history.back();
+                        }, 300);
+
+                        setTimeout(() => {
+                            showDialog(
+                                wikiLang === 'id' ? "Restore Berhasil!" : "Restore Success!",
+                                wikiLang === 'id' ? "Seluruh isi buku dan progres berhasil dipulihkan." : "All books and progress successfully restored.",
+                                "check-circle",
+                                [{ text: "Oke", primary: true }]
+                            );
+                        }, 700);
+                    }}
+                ]
+            );
+        } else if (file.name.toLowerCase().endsWith('.json')) {
+            const reader = new FileReader();
+            reader.onload = function(e) { executeRestoreLogic(e.target.result); };
+            reader.readAsText(file);
+        } else {
+            throw new Error("Format file tidak didukung. Harus .json atau .zip");
+        }
+    } catch (err) {
+        console.error("Import failed:", err);
+        DOM.load.classList.add('hidden');
+        showDialog("Error", "Gagal memproses file: " + err.message, "alert-circle", [{ text: "Tutup", primary: true }]);
+    }
+    event.target.value = ''; 
+};
+
+async function executeRestoreLogic(jsonString) {
+    try {
+        const parsedData = JSON.parse(jsonString);
+        if (!Array.isArray(parsedData)) throw new Error("Format file/teks tidak valid.");
+
+        const isValid = parsedData.every(b => b.id && b.title);
+        if (!isValid) throw new Error("Data backup rusak atau tidak kompatibel.");
+
+        const existingIds = new Set(library.map(b => b.id));
+        const matchCount = parsedData.filter(b => existingIds.has(b.id)).length;
+        const newCount = parsedData.length - matchCount;
+
+        const confirmMsg = wikiLang === 'id'
+            ? `Ditemukan ${matchCount} buku yang cocok (progress & catatan akan dipulihkan) dan ${newCount} buku baru (perlu import ulang file aslinya). Lanjut?`
+            : `Found ${matchCount} matching books (progress & notes restored) and ${newCount} new books (re-import original files). Continue?`;
+
+        showDialog(
+            wikiLang === 'id' ? "Konfirmasi Restore JSON" : "Confirm JSON Restore",
+            confirmMsg,
+            "alert-triangle",
+            [
+                { text: wikiLang === 'id' ? "Batal" : "Cancel", primary: false },
+                { text: wikiLang === 'id' ? "Lanjut" : "Continue", primary: true, action: async () => {
+                    window.closeDialog();
+
+                    let mergedLibrary = [...library];
+
+                    for (let b of parsedData) {
+                        if (b.nodes && b.nodes.length > 0) {
+                            await localforage.setItem('content_' + b.id, b.nodes);
+                        }
+
+                        let meta = {...b};
+                        delete meta.nodes;
+                        delete meta.coverBase64;
+
+                        const existingIndex = mergedLibrary.findIndex(lib => lib.id === b.id);
+                        if (existingIndex > -1) {
+                            mergedLibrary[existingIndex] = {
+                                ...mergedLibrary[existingIndex],
+                                progressPct: meta.progressPct,
+                                lastReadId: meta.lastReadId,
+                                annotations: meta.annotations || [],
+                                isPinned: meta.isPinned,
+                                title: meta.title,
+                            };
+                        } else {
+                            mergedLibrary.push(meta);
+                        }
+                    }
+
+                    await localforage.setItem('pdf_epub_master', mergedLibrary);
+                    library = mergedLibrary;
+                    renderLibrary(DOM.globalSearch.value);
+
+                    if (!document.getElementById('raw-restore-modal').classList.contains('hidden')) history.back();
+                    setTimeout(() => {
+                        if (!document.getElementById('global-settings-modal').classList.contains('hidden')) history.back();
+                    }, 300);
+
+                    setTimeout(() => {
+                        const successMsg = wikiLang === 'id'
+                            ? `Restore selesai! ${matchCount} buku langsung bisa dibaca, ${newCount} buku perlu import ulang file aslinya.`
+                            : `Restore done! ${matchCount} books ready to read, ${newCount} books need original files re-imported.`;
+                        showDialog(
+                            wikiLang === 'id' ? "Restore Berhasil!" : "Restore Success!",
+                            successMsg,
+                            "check-circle",
+                            [{ text: "Oke", primary: true }]
+                        );
+                    }, 700);
+                }}
+            ]
+        );
+    } catch (err) {
+        console.error("Restore failed:", err);
+        showDialog("Error", (wikiLang === 'id' ? "Gagal memulihkan: " : "Failed to restore: ") + err.message, "alert-circle", [{ text: "Tutup", primary: true }]);
     }
 }
 
-// Restore & Import LOGIC (Multi-Format)
-window.openRestoreOptions = function() {
-    const txt = i18n[wikiLang] || i18n['id'];
-    showDialog(txt.rawResTitle, txt.rawResDesc, "download-cloud", [
-        { text: txt.rawResClose, primary: false },
-        { text: txt.rawResFile, primary: true, action: "document.getElementById('import-upload').click(); _closeModalAction('custom-dialog', 'custom-dialog-sheet');" }
+// 8. LIBRARY & BOOK MANAGEMENT (AUTO-MIGRASI MEMORY EKSTREM)
+async function loadLibrary() { 
+    try { 
+        library = await localforage.getItem('pdf_epub_master') || []; 
+        let needsMigration = false;
+
+        // [OPTIMASI DEWA]: Auto-Migrasi. Bersihin Nodes & Cover dari RAM UI
+        for (let i = 0; i < library.length; i++) {
+            let changed = false;
+            
+            // Pindahin teks buku
+            if (library[i].nodes && library[i].nodes.length > 0) {
+                await localforage.setItem('content_' + library[i].id, library[i].nodes);
+                delete library[i].nodes; 
+                changed = true;
+            }
+            
+            // Pindahin gambar sampul
+            if (library[i].coverBase64 && library[i].coverBase64.length > 50) {
+                await localforage.setItem('cover_' + library[i].id, library[i].coverBase64);
+                delete library[i].coverBase64; 
+                changed = true;
+            }
+            
+            if(changed) needsMigration = true;
+        }
+
+        if (needsMigration) {
+            await localforage.setItem('pdf_epub_master', library);
+            console.log("Database Node & Cover dipisah biar RAM ga jebol. Mantap!");
+        }
+
+        renderLibrary(); 
+    } catch (e) { console.error(e); } 
+}
+
+function renderLibrary(filterText = "") {
+    if(!DOM.grid || !DOM.topSlider) return;
+    
+    DOM.grid.innerHTML = ''; 
+    DOM.topSlider.innerHTML = '';
+    const pinnedGrid = document.getElementById('pinned-book-grid');
+    if(pinnedGrid) pinnedGrid.innerHTML = '';
+    
+    let filteredLib = library;
+    if(filterText) filteredLib = library.filter(b => b.title.toLowerCase().includes(filterText.toLowerCase()));
+    
+    const d = i18n[wikiLang] || i18n['id'];
+    if(DOM.count) DOM.count.textContent = `${filteredLib.length} ${d.booksCount}`;
+    
+    const pinnedBooks = filteredLib.filter(b => b.isPinned);
+    const regularBooks = filteredLib.filter(b => !b.isPinned);
+
+    let topBooks = [];
+    if (!filterText) { topBooks = library.filter(b => b.progressPct > 0).sort((a,b) => b.progressPct - a.progressPct).slice(0, 4); }
+    if (topBooks.length > 0) {
+        DOM.topSection.classList.remove('hidden');
+        topBooks.forEach((book, idx) => { DOM.topSlider.appendChild(createBookCard(book, true, idx)); });
+        const spacer = document.createElement('div'); spacer.className = "w-2 shrink-0 snap-align-none"; DOM.topSlider.appendChild(spacer);
+    } else { DOM.topSection.classList.add('hidden'); }
+    
+    const pinnedSection = document.getElementById('pinned-books-section');
+    if (pinnedBooks.length > 0) {
+        if(pinnedSection) pinnedSection.classList.remove('hidden');
+        pinnedBooks.forEach((book, idx) => { if(pinnedGrid) pinnedGrid.appendChild(createBookCard(book, false, idx)); });
+    } else {
+        if(pinnedSection) pinnedSection.classList.add('hidden');
+    }
+
+    if (regularBooks.length === 0) { 
+        DOM.empty.classList.remove('hidden'); DOM.grid.classList.add('hidden'); 
+        if(document.getElementById('collection-heading')) document.getElementById('collection-heading').classList.add('hidden');
+    } else {
+        DOM.empty.classList.add('hidden'); DOM.grid.classList.remove('hidden');
+        if(document.getElementById('collection-heading')) document.getElementById('collection-heading').classList.remove('hidden');
+        regularBooks.forEach((book, index) => { DOM.grid.appendChild(createBookCard(book, false, index)); });
+    }
+
+    updateStatistics(); 
+    if(window.lucide) window.lucide.createIcons();
+    window.updateBatchSelectionUI();
+}
+
+// [OPTIMASI UI]: Render Cover Secara Async
+function createBookCard(book, isSlider = false, index = 0) {
+    const progress = book.progressPct || 0; 
+    const card = document.createElement('div');
+    
+    let shapeClass = book.shape === 'rounded' ? 'rounded-[24px]' : (book.shape === 'square' ? 'rounded-xl' : (index % 2 === 0 ? 'rounded-tl-[32px] rounded-br-[32px] rounded-tr-lg rounded-bl-lg' : 'rounded-tr-[32px] rounded-bl-[32px] rounded-tl-lg rounded-br-lg'));
+
+    const colors = [
+        'bg-m3-primaryContainer text-m3-onPrimaryContainer', 
+        'bg-m3-secondaryContainer text-m3-onSecondaryContainer', 
+        'bg-m3-tertiaryContainer text-m3-onTertiaryContainer',
+        'bg-m3-surfaceVariant text-m3-onSurfaceVariant'
+    ];
+    let baseClass = colors[index % colors.length];
+    const dimensionClass = isSlider ? "w-64 h-40 shrink-0 snap-start" : "aspect-[3/4.5] w-full shadow-md hover:shadow-xl transition-shadow";
+
+    card.className = `${baseClass} ${shapeClass} ${dimensionClass} p-4 relative cursor-pointer card-morph flex flex-col justify-between overflow-hidden border-none outline-none ring-0`;
+
+    let batchOverlayHTML = !isSlider ? `
+        <div class="batch-overlay absolute inset-0 z-20 transition-all duration-300 pointer-events-none rounded-inherit" data-book-id="${book.id}" style="display: none; opacity: 0; background-color: transparent;">
+            <div class="batch-icon-box absolute top-3 left-3 w-7 h-7 rounded-full flex items-center justify-center transition-colors"></div>
+        </div>
+    ` : '';
+
+    // Render HTML Dasar (Tanpa Cover)
+    card.innerHTML = `
+        ${batchOverlayHTML}
+        <div class="absolute inset-x-0 bottom-0 h-[80%] bg-gradient-to-t from-black via-black/40 to-transparent pointer-events-none z-0 rounded-b-inherit border-none outline-none hidden" id="overlay-${book.id}"></div>
+        
+        <div class="relative z-10 flex flex-col h-full justify-between pointer-events-none border-none">
+            <div class="flex ${isSlider ? 'justify-between items-start' : 'justify-end gap-1'} w-full drop-shadow-md" id="top-icons-${book.id}">
+                ${isSlider ? `<span class="inline-block text-[0.65rem] font-bold px-2 py-0.5 bg-black/40 rounded-full text-white uppercase tracking-widest">${book.type}</span>` : (book.isPinned ? `<i data-lucide="pin" class="w-3.5 h-3.5 opacity-90 fill-current"></i>` : '')}
+            </div>
+            <div class="mt-auto flex flex-col border-none">
+                ${!isSlider ? `<i data-lucide="book" class="w-6 h-6 mb-2 opacity-80" id="book-icon-${book.id}"></i>` : ''}
+                <h3 class="font-bold ${isSlider ? 'text-sm line-clamp-2' : 'text-sm mt-1 line-clamp-3'} leading-tight drop-shadow-md" id="title-${book.id}">${book.title}</h3>
+                ${!isSlider ? `<span class="inline-block mt-2 mb-2 text-[0.6rem] font-bold px-2 py-0.5 bg-black/40 rounded-full text-white uppercase tracking-widest self-start">${book.type}</span>` : ''}
+                <div class="w-full ${isSlider ? 'mt-2' : ''} border-none">
+                    <div class="flex justify-between text-[${isSlider ? '0.65rem' : '0.6rem'}] font-bold opacity-90 mb-1" id="pct-${book.id}"><span>${progress}%</span></div>
+                    <div class="h-1.5 w-full bg-black/20 dark:bg-white/20 rounded-full overflow-hidden border-none">
+                        <div class="h-full bg-m3-primary dark:bg-m3-primaryContainer rounded-full border-none" style="width: ${progress}%" id="bar-${book.id}"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+
+    // Load Cover di Background
+    localforage.getItem('cover_' + book.id).then(coverData => {
+        if (coverData && coverData.length > 50) {
+            card.style.backgroundImage = `url('${coverData}')`;
+            card.style.backgroundSize = 'cover';
+            card.style.backgroundPosition = 'top center';
+            
+            // Terapin efek teks putih & shadow karena ada background gelap
+            card.classList.remove(...baseClass.split(' '));
+            card.classList.add('text-white', 'shadow-lg');
+            
+            const overlay = document.getElementById(`overlay-${book.id}`);
+            if(overlay) overlay.classList.remove('hidden');
+            
+            ['title-', 'top-icons-', 'pct-'].forEach(prefix => {
+                const el = document.getElementById(prefix + book.id);
+                if(el) el.classList.add('text-white');
+            });
+            
+            const bar = document.getElementById(`bar-${book.id}`);
+            if(bar) { bar.classList.remove('bg-m3-primary', 'dark:bg-m3-primaryContainer'); bar.classList.add('bg-white'); }
+            
+            const icon = document.getElementById(`book-icon-${book.id}`);
+            if(icon) icon.classList.add('hidden');
+        }
+    });
+
+    let pressTimer = null; let isPressing = false; let hasLongPressed = false;
+    const handleStart = (e) => {
+        if (isBatchDeleteMode) return;
+        isPressing = true; hasLongPressed = false;
+        pressTimer = setTimeout(() => { if (isPressing) { hasLongPressed = true; window.openBookOptions(book.id); } }, 400);
+    };
+    const handleEnd = () => { isPressing = false; clearTimeout(pressTimer); };
+    const handleMove = () => { isPressing = false; clearTimeout(pressTimer); };
+
+    card.addEventListener('mousedown', handleStart); card.addEventListener('touchstart', handleStart, {passive: true});
+    card.addEventListener('mouseup', handleEnd); card.addEventListener('touchend', handleEnd);
+    card.addEventListener('mouseleave', handleMove); card.addEventListener('touchmove', handleMove, {passive: true});
+    
+    card.addEventListener('click', (e) => { 
+        if (hasLongPressed) { e.preventDefault(); e.stopPropagation(); return; } 
+        if (isBatchDeleteMode && !isSlider) {
+            e.preventDefault(); e.stopPropagation();
+            const strId = String(book.id);
+            const idx = selectedForDelete.findIndex(id => String(id) === strId);
+            if (idx > -1) {
+                selectedForDelete.splice(idx, 1);
+            } else {
+                selectedForDelete.push(strId);
+            }
+            window.updateBatchSelectionUI();
+            return;
+        }
+        window.openBook(book); 
+    });
+
+    return card;
+}
+
+window.openBookOptions = function(id) {
+    activeOptsId = id; const book = library.find(b => b.id === id);
+    document.getElementById('opt-title').textContent = book.title;
+
+    const d = i18n[wikiLang] || i18n['id'];
+    const pinIcon = document.getElementById('icon-opt-pin');
+    const pinText = document.getElementById('str-opt-pin');
+
+    if(book.isPinned) {
+        pinText.textContent = d.optUnpin || 'Lepas Sematan';
+        pinIcon.setAttribute('data-lucide', 'pin-off');
+    } else {
+        pinText.textContent = d.optPin || 'Sematkan Buku';
+        pinIcon.setAttribute('data-lucide', 'pin');
+    }
+
+    if(window.lucide) window.lucide.createIcons();
+    openModal('b-opt-modal', 'b-opt-sheet', false); 
+}
+
+window.togglePinBook = async function() {
+    if(!activeOptsId) return;
+    const bookIndex = library.findIndex(b => b.id === activeOptsId);
+    if(bookIndex > -1) {
+        library[bookIndex].isPinned = !library[bookIndex].isPinned;
+        await localforage.setItem('pdf_epub_master', library);
+        history.back(); 
+        setTimeout(() => renderLibrary(DOM.globalSearch ? DOM.globalSearch.value : ""), 300);
+    }
+}
+
+window.triggerSelectMode = function() {
+    if(!activeOptsId) return;
+    const targetId = activeOptsId;
+    history.back(); 
+    setTimeout(() => { window.toggleBatchDelete(false, targetId); }, 350); 
+}
+
+window.toggleBatchDelete = function(isFromHistory = false, initialSelectId = null) {
+    if(library.length === 0 && !isBatchDeleteMode) return;
+    isBatchDeleteMode = !isBatchDeleteMode;
+    
+    if (!isBatchDeleteMode) { selectedForDelete = []; } 
+    else {
+        selectedForDelete = [];
+        if (initialSelectId) selectedForDelete.push(String(initialSelectId));
+    }
+    
+    const bar = document.getElementById('batch-delete-bar');
+    const fab = document.getElementById('fab-container');
+    
+    if (isBatchDeleteMode) {
+        if(!isFromHistory) pushAppHistory('batch-delete');
+        bar.classList.remove('translate-y-32');
+        fab.classList.add('translate-y-32', 'opacity-0');
+    } else {
+        if(!isFromHistory && window.location.hash === '#batch-delete') history.back();
+        bar.classList.add('translate-y-32');
+        fab.classList.remove('translate-y-32', 'opacity-0');
+    }
+    
+    window.updateBatchSelectionUI();
+};
+
+window.updateBatchSelectionUI = function() {
+    const countEl = document.getElementById('batch-delete-count');
+    const d = typeof i18n !== 'undefined' ? (i18n[wikiLang] || i18n['id']) : {};
+    if(countEl) countEl.textContent = `${selectedForDelete.length} ${d.selected || 'Selected'}`;
+
+    document.querySelectorAll('.batch-overlay').forEach(el => {
+        const id = String(el.dataset.bookId);
+        const idx = selectedForDelete.findIndex(selId => String(selId) === id);
+        const icBox = el.querySelector('.batch-icon-box');
+        
+        if (isBatchDeleteMode) {
+            el.style.display = 'block';
+            if (idx > -1) {
+                el.style.opacity = '1';
+                el.style.backgroundColor = 'rgba(0, 0, 0, 0.4)';
+                icBox.className = 'batch-icon-box absolute top-3 left-3 w-7 h-7 rounded-full flex items-center justify-center transition-colors bg-m3-primary text-m3-onPrimary font-bold text-xs shadow-md border-none';
+                icBox.innerHTML = (idx + 1);
+            } else {
+                el.style.opacity = '1';
+                el.style.backgroundColor = 'transparent';
+                icBox.className = 'batch-icon-box absolute top-3 left-3 w-7 h-7 rounded-full border-2 border-white/50 flex items-center justify-center transition-colors bg-black/20 shadow-sm font-bold text-xs text-transparent';
+                icBox.innerHTML = '';
+            }
+        } else {
+            el.style.opacity = '0';
+            setTimeout(() => el.style.display = 'none', 300);
+        }
+    });
+};
+
+window.executeBatchDelete = async function() {
+    if(selectedForDelete.length === 0) return;
+    const d = i18n[wikiLang] || i18n['id'];
+    
+    showDialog("Hapus Buku", d.deleteConfirm, "trash-2", [
+        { text: "Batal", primary: false },
+        { text: "Hapus", primary: true, action: async () => {
+            window.closeDialog();
+            const toDeleteSet = new Set(selectedForDelete.map(String));
+            
+            // Bersihin DB Pecahan
+            for(let id of selectedForDelete) {
+                await localforage.removeItem('content_' + id);
+                await localforage.removeItem('cover_' + id);
+            }
+
+            library = library.filter(b => !toDeleteSet.has(String(b.id)));
+            await localforage.setItem('pdf_epub_master', library);
+            window.toggleBatchDelete(); 
+            renderLibrary(DOM.globalSearch ? DOM.globalSearch.value : ""); 
+        }}
+    ]);
+};
+
+window.triggerDeleteView = async function() {
+    if(!activeOptsId) return;
+    const d = i18n[wikiLang] || i18n['id'];
+    showDialog("Hapus Permanen", d.deleteConfirm, "trash-2", [
+        { text: "Batal", primary: false },
+        { text: "Hapus", primary: true, action: async () => {
+            window.closeDialog();
+            
+            await localforage.removeItem('content_' + activeOptsId);
+            await localforage.removeItem('cover_' + activeOptsId);
+
+            library = library.filter(b => !selectedForDelete.includes(b.id) && b.id !== activeOptsId); 
+            await localforage.setItem('pdf_epub_master', library); 
+            history.back(); setTimeout(() => renderLibrary(DOM.globalSearch ? DOM.globalSearch.value : ""), 350);
+        }}
+    ]);
+};
+
+window.triggerEditView = function() {
+    if(!activeOptsId) return;
+    const book = library.find(b => b.id === activeOptsId);
+    document.getElementById('edit-book-id').value = activeOptsId; 
+    document.getElementById('edit-book-title').value = book.title; 
+    document.getElementById('edit-book-cover').value = '';
+    
+    window.selectShape(book.shape || 'square');
+    history.back(); setTimeout(() => { openModal('edit-modal', 'edit-sheet', true); }, 400); 
+}
+
+window.selectShape = function(shape) {
+    document.getElementById('edit-book-shape').value = shape;
+    const btns = document.querySelectorAll('#edit-sheet .btn-morph');
+    btns.forEach(b => {
+        if(b.id && b.id.startsWith('shape-')) {
+            b.classList.remove('bg-m3-primaryContainer', 'text-m3-onPrimaryContainer');
+            b.classList.add('bg-m3-surfaceVariant', 'text-m3-onSurfaceVariant');
+        }
+    });
+    const sel = document.getElementById('shape-' + shape);
+    if(sel) {
+        sel.classList.remove('bg-m3-surfaceVariant', 'text-m3-onSurfaceVariant');
+        sel.classList.add('bg-m3-primaryContainer', 'text-m3-onPrimaryContainer');
+    }
+}
+
+window.closeEditModal = function() { history.back(); }
+
+window.saveBookEdit = async function() {
+    const id = document.getElementById('edit-book-id').value; 
+    const newTitle = document.getElementById('edit-book-title').value; 
+    const coverFile = document.getElementById('edit-book-cover').files[0];
+    const newShape = document.getElementById('edit-book-shape').value;
+    const bookIndex = library.findIndex(b => b.id === id);
+    
+    if(bookIndex > -1) {
+        library[bookIndex].title = newTitle; library[bookIndex].shape = newShape;
+        if (coverFile) { 
+            const reader = new FileReader(); 
+            reader.onload = async function(e) { 
+                await localforage.setItem('cover_' + id, e.target.result); // Save langsung ke DB pecahan
+                await localforage.setItem('pdf_epub_master', library); 
+                history.back(); renderLibrary(); 
+            }; 
+            reader.readAsDataURL(coverFile); 
+        } else { await localforage.setItem('pdf_epub_master', library); history.back(); renderLibrary(); }
+    }
+}
+
+// 9. TEMA & TIPOGRAFI
+function applyThemeToDOM() {
+    document.documentElement.classList.toggle('dark', isDark);
+    
+    if(typeof M3_PALETTES !== 'undefined') {
+        let rootVars = M3_PALETTES[currentThemeKey][isDark ? 'dark' : 'light'];
+        if (isDark && isAmoled) {
+            rootVars += `--md-sys-color-background:#000000;--md-sys-color-surface:#000000;`;
+        }
+        const dynamicTheme = document.getElementById('dynamic-theme');
+        if(dynamicTheme) dynamicTheme.innerHTML = `:root { ${rootVars} }`;
+    }
+    
+    const metaTheme = document.querySelector('meta[name="theme-color"]');
+    if(metaTheme) {
+        if(isDark && isAmoled) metaTheme.setAttribute("content", "#000000");
+        else if (isDark) metaTheme.setAttribute("content", "#0B0314");
+        else metaTheme.setAttribute("content", "#FAF5FF");
+    }
+
+    const bg = document.getElementById('theme-switch-bg');
+    const knob = document.getElementById('theme-switch-knob');
+    const icon = document.getElementById('theme-switch-icon');
+    const dLabel = document.getElementById('theme-label-text');
+    const d = typeof i18n !== 'undefined' ? (i18n[wikiLang] || i18n['id']) : {};
+    
+    if (bg && knob && icon && dLabel) {
+        dLabel.textContent = isDark ? d.themeDark : d.themeLight;
+        if (isDark) {
+            bg.classList.replace('bg-m3-onSurfaceVariant/20', 'bg-m3-primary');
+            knob.classList.add('translate-x-[32px]');
+            icon.setAttribute('data-lucide', 'moon');
+            icon.classList.replace('text-m3-onSurface', 'text-m3-primary');
+        } else {
+            bg.classList.replace('bg-m3-primary', 'bg-m3-onSurfaceVariant/20');
+            knob.classList.remove('translate-x-[32px]');
+            icon.setAttribute('data-lucide', 'sun');
+            icon.classList.replace('text-m3-primary', 'text-m3-onSurface');
+        }
+    }
+
+    const amoContainer = document.getElementById('amoled-toggle-container');
+    const amoBg = document.getElementById('amoled-switch-bg');
+    const amoKnob = document.getElementById('amoled-switch-knob');
+    if (isDark) {
+        if (amoContainer) amoContainer.classList.remove('hidden');
+        if (isAmoled && amoBg && amoKnob) {
+            amoBg.classList.add('bg-m3-primary');
+            amoKnob.classList.add('translate-x-[32px]');
+            amoKnob.classList.replace('bg-m3-onSurface', 'bg-m3-onPrimary');
+        } else if (amoBg && amoKnob) {
+            amoBg.classList.remove('bg-m3-primary');
+            amoKnob.classList.remove('translate-x-[32px]');
+            amoKnob.classList.replace('bg-m3-onPrimary', 'bg-m3-onSurface');
+        }
+    } else {
+        if (amoContainer) amoContainer.classList.add('hidden');
+    }
+
+    const tl = document.getElementById('theme-btn-light');
+    const td = document.getElementById('theme-btn-dark');
+    const ta = document.getElementById('theme-btn-amoled');
+    if (tl && td && ta) {
+        [tl, td, ta].forEach(el => {
+            el.classList.remove('bg-m3-primary', 'text-m3-onPrimary');
+            el.classList.add('text-m3-onSurfaceVariant');
+        });
+        if (!isDark) { tl.classList.add('bg-m3-primary', 'text-m3-onPrimary'); tl.classList.remove('text-m3-onSurfaceVariant'); }
+        else if (isDark && !isAmoled) { td.classList.add('bg-m3-primary', 'text-m3-onPrimary'); td.classList.remove('text-m3-onSurfaceVariant'); }
+        else if (isDark && isAmoled) { ta.classList.add('bg-m3-primary', 'text-m3-onPrimary'); ta.classList.remove('text-m3-onSurfaceVariant'); }
+    }
+
+    if(window.lucide) window.lucide.createIcons();
+    localStorage.setItem('theme', isDark ? 'dark' : 'light'); 
+    localStorage.setItem('m3-key', currentThemeKey);
+    localStorage.setItem('amoled', isAmoled);
+}
+
+window.setTheme = function(key) { currentThemeKey = key; applyThemeToDOM(); };
+window.toggleThemeState = function() { isDark = !isDark; applyThemeToDOM(); };
+window.toggleAmoled = function() { isAmoled = !isAmoled; applyThemeToDOM(); };
+window.setReaderTheme = function(mode) {
+    if (mode === 'light') { isDark = false; isAmoled = false; }
+    else if (mode === 'dark') { isDark = true; isAmoled = false; }
+    else if (mode === 'amoled') { isDark = true; isAmoled = true; }
+    applyThemeToDOM();
+};
+
+let typoPrefs = JSON.parse(localStorage.getItem('typo_prefs')) || { size: '1.2rem', align: 'left', font: 'Lora' };
+function applyTypo() {
+    document.documentElement.style.setProperty('--reader-size', typoPrefs.size);
+    document.documentElement.style.setProperty('--reader-align', typoPrefs.align);
+    
+    let fontCss = 'serif';
+    if(typoPrefs.font === 'Merriweather') fontCss = "'Merriweather', serif";
+    else if(typoPrefs.font === 'Playfair Display') fontCss = "'Playfair Display', serif";
+    else if(typoPrefs.font === 'Space Mono') fontCss = "'Space Mono', monospace";
+    else if(typoPrefs.font === 'Inter') fontCss = "'Inter', sans-serif";
+    else if(typoPrefs.font === 'Google Sans Flex') fontCss = "'Google Sans Flex', sans-serif";
+    else fontCss = "'Lora', serif";
+
+    document.documentElement.style.setProperty('--reader-font', fontCss);
+    localStorage.setItem('typo_prefs', JSON.stringify(typoPrefs)); syncTypoUI();
+}
+function syncTypoUI() {
+    const maps = { size: { '1rem': 'typo-sz-sm', '1.2rem': 'typo-sz-md', '1.5rem': 'typo-sz-lg' }, align: { 'left': 'typo-al-left', 'center': 'typo-al-center', 'justify': 'typo-al-justify' }, font: { 'Lora': 'typo-fn-lora','Merriweather':'typo-fn-merri','Playfair Display':'typo-fn-playfair', 'Inter': 'typo-fn-inter', 'Space Mono': 'typo-fn-mono', 'Google Sans Flex': 'typo-fn-google' } };
+    
+    Object.values(maps.size).forEach(id => { const el = document.getElementById(id); if(el){ el.classList.remove('bg-m3-primary', 'text-m3-onPrimary'); el.classList.add('text-m3-onSurfaceVariant'); }});
+    Object.values(maps.align).forEach(id => { const el = document.getElementById(id); if(el){ el.classList.remove('bg-m3-primary', 'text-m3-onPrimary'); el.classList.add('text-m3-onSurfaceVariant'); }});
+    Object.values(maps.font).forEach(id => { const el = document.getElementById(id); if(el){ el.classList.remove('bg-m3-primaryContainer', 'text-m3-onPrimaryContainer'); }});
+    
+    if(document.getElementById(maps.size[typoPrefs.size])) {
+        document.getElementById(maps.size[typoPrefs.size]).classList.add('bg-m3-primary', 'text-m3-onPrimary');
+        document.getElementById(maps.size[typoPrefs.size]).classList.remove('text-m3-onSurfaceVariant');
+    }
+    if(document.getElementById(maps.align[typoPrefs.align])) {
+        document.getElementById(maps.align[typoPrefs.align]).classList.add('bg-m3-primary', 'text-m3-onPrimary');
+        document.getElementById(maps.align[typoPrefs.align]).classList.remove('text-m3-onSurfaceVariant');
+    }
+    if(document.getElementById(maps.font[typoPrefs.font])) {
+        document.getElementById(maps.font[typoPrefs.font]).classList.add('bg-m3-primaryContainer', 'text-m3-onPrimaryContainer');
+    }
+}
+window.changeTypo = function(type, value) { typoPrefs[type] = value; applyTypo(); }
+
+
+// 10. READER INTERACTIONS
+window.openBook = async function(book) {
+    activeBookId = book.id; pushAppHistory(`reader-${book.id}`);
+    DOM.libView.style.transform = 'scale(0.95)'; DOM.readView.classList.remove('translate-y-full');
+    DOM.title.textContent = book.title; 
+    
+    const loader = document.getElementById('reader-loading-overlay');
+    loader.classList.remove('hidden'); requestAnimationFrame(() => loader.classList.remove('opacity-0'));
+    
+    DOM.inner.innerHTML = ''; DOM.tocList.innerHTML = '';
+    if (observer) observer.disconnect();
+
+    DOM.progBar.style.width = `${book.progressPct || 0}%`; DOM.progTxt.textContent = `${book.progressPct || 0}%`;
+
+    // Fetch nodes dari storage independen
+    if (!book.nodes) {
+        const savedNodes = await localforage.getItem('content_' + book.id);
+        if(savedNodes) {
+            book.nodes = savedNodes;
+        } else {
+            book.nodes = [{tag: 'p', text: 'Error: Konten teks gagal dimuat atau korup.'}];
+        }
+    }
+
+    setTimeout(() => {
+        let hCounter = 0; const fragment = document.createDocumentFragment(); let currentHeadingId = null;
+
+        book.nodes.forEach((node, i) => {
+            let el; const annots = (book.annotations || []).filter(a => a.nodeIdx === i);
+
+            if (node.tag === 'img') {
+                el = document.createElement('img'); el.src = node.src; el.id = `node-${i}`;
+                el.className = "w-full max-w-lg mx-auto rounded-2xl my-8 object-contain shadow-sm"; el.loading = "lazy";
+            } else {
+                el = document.createElement(node.tag); 
+                el.innerHTML = window.renderNodeText ? window.renderNodeText(node.text, annots) : node.text; 
+                el.id = `node-${i}`;
+                if (node.tag === 'h1' || node.tag === 'h2') {
+                    hCounter++; currentHeadingId = el.id; 
+                    el.className = node.tag === 'h1' ? "text-3xl font-bold tracking-tight mt-12 mb-6 text-m3-primary leading-snug break-words" : "text-xl font-bold mt-10 mb-4 text-m3-onSurfaceVariant border-b border-m3-surfaceVariant pb-2 break-words";
+                    const tocItem = document.createElement('button'); tocItem.id = `toc-btn-${el.id}`;
+                    tocItem.className = `text-left text-sm p-3 rounded-2xl hover:bg-m3-surface transition-all duration-300 ${node.tag==='h1'?'font-bold text-m3-primary':'ml-4 opacity-80'}`;
+                    tocItem.textContent = node.text;
+                    tocItem.onclick = () => { el.scrollIntoView({ behavior: 'smooth', block: 'start' }); history.back(); };
+                    DOM.tocList.appendChild(tocItem);
+                } else { el.className = "text-m3-onSurface opacity-90 mb-5 tracking-wide"; }
+            }
+            el.dataset.headingId = currentHeadingId; fragment.appendChild(el);
+        });
+        DOM.inner.appendChild(fragment);
+        
+        if(hCounter === 0) DOM.tocList.innerHTML = "<p class='text-sm opacity-50 block p-3'>No Table of Contents.</p>";
+        DOM.searchRes.classList.add('hidden'); DOM.searchInput.value = '';
+
+        const header = document.getElementById('reader-floating-header');
+        header.classList.remove('-translate-y-[150%]', 'opacity-0');
+        header.classList.add('translate-y-0', 'opacity-100');
+
+        renderBookmarkPanel(); 
+
+        requestAnimationFrame(() => {
+            
+            if (book.lastReadId) { 
+                const target = document.getElementById(book.lastReadId); 
+                const container = DOM.readContent;
+                if (target && container) {
+                    const cRect = container.getBoundingClientRect();
+                    const tRect = target.getBoundingClientRect();
+                    const offset = tRect.top - cRect.top + container.scrollTop - (cRect.height / 2) + (tRect.height / 2);
+                    container.scrollTo({ top: offset, behavior: 'auto' });
+                } 
+            } else { 
+                DOM.readContent.scrollTo({ top: 0, behavior: 'auto' }); 
+            }
+            
+            setTimeout(() => {
+                loader.classList.add('opacity-0'); 
+                setTimeout(() => loader.classList.add('hidden'), 300);
+                window.setupIntersectionObserver(); 
+            }, 150);
+            
+        });
+
+    }, 300); 
+}
+
+window._closeReaderAction = function(isFromHistory = false) {
+    if (!isFromHistory) { history.back(); return; }
+    DOM.readView.classList.add('translate-y-full'); DOM.libView.style.transform = 'scale(1)';
+    if(observer) observer.disconnect(); 
+    
+    // Bebasin RAM pas buku ditutup
+    if (activeBookId) {
+        let bIdx = library.findIndex(b => b.id === activeBookId);
+        if (bIdx > -1 && library[bIdx].nodes) {
+            delete library[bIdx].nodes;
+        }
+    }
+
+    renderLibrary(DOM.globalSearch.value); activeBookId = null;
+    window.getSelection().removeAllRanges();
+    const menu = document.getElementById('selection-menu');
+    if(menu) { menu.classList.add('opacity-0', 'scale-75'); setTimeout(() => menu.classList.add('hidden'), 200); }
+    updateBottomNavUI(null);
+}
+
+if(document.getElementById('btn-back')) {
+    document.getElementById('btn-back').addEventListener('click', () => history.back());
+}
+
+window._closeSidePanelsAction = function(isFromHistory = false) { 
+    if (!isFromHistory) { history.back(); return; }
+    if(DOM.tocPanel) DOM.tocPanel.classList.add('translate-x-full', 'opacity-0'); 
+    if(DOM.setPanel) DOM.setPanel.classList.add('translate-x-full', 'opacity-0'); 
+    if(DOM.bookmarkPanel) DOM.bookmarkPanel.classList.add('translate-x-full', 'opacity-0');
+    const overlay = document.getElementById('side-panel-overlay'); if(overlay) overlay.classList.add('hidden');
+    activePanel = null;
+    updateBottomNavUI(null);
+}
+
+window.togglePanel = function(panelEl, name, btnId) { 
+    if(activePanel === name) { history.back(); return; } 
+    if(activePanel) { 
+        _closeSidePanelsAction(true); 
+        history.replaceState({ state: `panel-${name}` }, '', `#panel-${name}`); 
+    } else { 
+        pushAppHistory(`panel-${name}`); 
+    }
+    panelEl.classList.remove('translate-x-full', 'opacity-0'); 
+    const overlay = document.getElementById('side-panel-overlay'); if(overlay) overlay.classList.remove('hidden');
+    activePanel = name; 
+    updateBottomNavUI(btnId);
+
+    if (name === 'toc' && DOM.tocList) {
+        setTimeout(() => {
+            const activeTocItem = DOM.tocList.querySelector('.bg-m3-primaryContainer');
+            if (activeTocItem) {
+                const offset = activeTocItem.offsetTop - (DOM.tocList.clientHeight / 2) + (activeTocItem.clientHeight / 2);
+                DOM.tocList.scrollTo({ top: Math.max(0, offset), behavior: 'smooth' });
+            }
+        }, 250);
+    }
+}
+
+if(document.getElementById('btn-toc')) document.getElementById('btn-toc').onclick = () => togglePanel(DOM.tocPanel, 'toc', 'btn-toc'); 
+if(document.getElementById('btn-settings')) document.getElementById('btn-settings').onclick = () => togglePanel(DOM.setPanel, 'set', 'btn-settings');
+
+window.toggleFullscreenReading = function(isFromHistory = false) {
+    const bottomBar = document.getElementById('reader-bottom-bar');
+    const progContainer = document.getElementById('progress-container');
+    const floatHeader = document.getElementById('reader-floating-header');
+    
+    if (bottomBar.classList.contains('hidden')) {
+        if (!isFromHistory && window.location.hash === '#immersive') { history.back(); }
+        bottomBar.classList.remove('hidden'); 
+        progContainer.classList.remove('hidden');
+        floatHeader.classList.remove('-translate-y-[150%]', 'opacity-0');
+        floatHeader.classList.add('translate-y-0', 'opacity-100');
+    } else {
+        if (!isFromHistory) { pushAppHistory('immersive'); }
+        bottomBar.classList.add('hidden'); 
+        floatHeader.classList.add('-translate-y-[150%]', 'opacity-0');
+        floatHeader.classList.remove('translate-y-0', 'opacity-100');
+        progContainer.classList.add('hidden');
+        updateBottomNavUI(null);
+        if(activePanel) { _closeSidePanelsAction(); } 
+    }
+};
+
+window.setupIntersectionObserver = function() {
+    if (observer) observer.disconnect(); const totalNodes = DOM.inner.children.length;
+    observer = new IntersectionObserver((entries) => {
+        let visibleEntry = entries.find(e => e.isIntersecting);
+        if (visibleEntry) {
+            const el = visibleEntry.target; const id = el.id; const index = parseInt(id.split('-')[1]);
+            const pct = Math.round(((index + 1) / totalNodes) * 100);
+            DOM.progBar.style.width = `${pct}%`; DOM.progTxt.textContent = `${pct}%`;
+
+            const activeHeadingId = el.dataset.headingId;
+            Array.from(DOM.tocList.children).forEach(btn => { btn.classList.remove('bg-m3-primaryContainer', 'text-m3-onPrimaryContainer', 'font-bold', 'translate-x-2', '!opacity-100', '!text-m3-onPrimaryContainer'); });
+            if(activeHeadingId) { 
+                const tocActiveBtn = document.getElementById(`toc-btn-${activeHeadingId}`); 
+                if (tocActiveBtn) { tocActiveBtn.classList.add('bg-m3-primaryContainer', '!text-m3-onPrimaryContainer', 'font-bold', 'translate-x-2', '!opacity-100'); }
+            }
+            updateBookProgress(activeBookId, id, pct);
+        }
+    }, { root: DOM.readContent, rootMargin: '-45% 0px -45% 0px', threshold: 0 }); 
+    Array.from(DOM.inner.children).forEach(el => observer.observe(el));
+}
+
+let progressSaveTimeout = null;
+async function updateBookProgress(bookId, lastNodeId, pct) {
+    let bookIndex = library.findIndex(b => b.id === bookId);
+    if(bookIndex > -1) { 
+        library[bookIndex].lastReadId = lastNodeId; library[bookIndex].progressPct = pct; 
+        if (progressSaveTimeout) clearTimeout(progressSaveTimeout);
+        progressSaveTimeout = setTimeout(() => { localforage.setItem('pdf_epub_master', library); updateStatistics(); }, 1500);
+    }
+}
+
+// 11. ANNOTATIONS & IN-BOOK BOOKMARK LOGIC
+
+function getAbsoluteOffsets(element) {
+    const sel = window.getSelection();
+    if (sel.rangeCount === 0) return { start: 0, end: 0 };
+    const range = sel.getRangeAt(0);
+    
+    function getTextOffset(node, offset) {
+        let len = 0;
+        const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT, null, false);
+        let n;
+        while ((n = walker.nextNode())) {
+            if (n === node) { len += offset; break; }
+            len += n.nodeValue.length;
+        }
+        return len;
+    }
+
+    let start = getTextOffset(range.startContainer, range.startOffset);
+    let end = getTextOffset(range.endContainer, range.endOffset);
+    
+    if (start > end) { let t = start; start = end; end = t; }
+    return { start, end };
+}
+
+window.renderNodeText = function(text, annots) {
+    if (!text) return "";
+    let html = text;
+    
+    if (annots && annots.length > 0) {
+        let validAnnots = [...annots].filter(a => typeof a.startOff !== 'undefined').sort((a,b) => b.startOff - a.startOff);
+        
+        validAnnots.forEach(a => {
+            const s = Math.min(a.startOff, html.length);
+            const e = Math.min(a.endOff, html.length);
+            const before = html.substring(0, s);
+            const middle = html.substring(s, e);
+            const after = html.substring(e);
+            html = before + `|||ST_${a.id}|||` + middle + `|||EN_${a.id}|||` + after;
+        });
+
+        let legacyAnnots = [...annots].filter(a => typeof a.startOff === 'undefined').sort((a,b) => b.text.length - a.text.length);
+        legacyAnnots.forEach(a => {
+            const esc = a.text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            html = html.replace(new RegExp(esc, ''), `|||ST_${a.id}|||${a.text}|||EN_${a.id}|||`);
+        });
+    }
+
+    html = html.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    html = html.replace(/"([^"]+)"/g, '<i class="italic font-serif opacity-90">"$1"</i>');
+
+    if (annots && annots.length > 0) {
+        annots.forEach(a => {
+            let colorClass = "";
+            if(a.color === 'yellow') colorClass = "text-yellow-600 bg-yellow-400/20 dark:text-yellow-400 dark:bg-yellow-400/20";
+            else if(a.color === 'green') colorClass = "text-green-600 bg-green-500/20 dark:text-green-400 dark:bg-green-400/20";
+            else if(a.color === 'pink') colorClass = "text-pink-600 bg-pink-500/20 dark:text-pink-400 dark:bg-pink-400/20";
+            else colorClass = "text-m3-primary bg-m3-primary/10";
+
+            let markHtml = `<mark class="annot-hl ${colorClass} font-medium cursor-pointer transition-all hover:opacity-80 px-1 mx-0.5 rounded-md" data-id="${a.id}" onclick="window.showAnnotationDetails('${a.id}')">`;
+            html = html.replace(`|||ST_${a.id}|||`, markHtml).replace(`|||EN_${a.id}|||`, '</mark>');
+        });
+    }
+    return html;
+}
+
+let _selChangeDebounce = null;
+let _isTouchDragging = false;
+
+document.addEventListener('touchstart', () => { _isTouchDragging = true; }, { passive: true });
+document.addEventListener('touchend', () => {
+    _isTouchDragging = false;
+    if (activeBookId) {
+        clearTimeout(_selChangeDebounce);
+        _selChangeDebounce = setTimeout(_handleSelectionChange, 80);
+    }
+}, { passive: true });
+
+function _handleSelectionChange() {
+    if(!activeBookId) return;
+    const sel = window.getSelection(); const text = sel.toString().trim(); const menu = document.getElementById('selection-menu');
+
+    if (text.length > 0 && sel.rangeCount > 0 && DOM.inner) {
+        const range = sel.getRangeAt(0);
+        if (!DOM.inner.contains(range.commonAncestorContainer)) return;
+
+        let curr = range.commonAncestorContainer;
+        if (curr.nodeType === 3) curr = curr.parentNode;
+        const nodeEl = curr.closest('[id^="node-"]'); if (!nodeEl) return;
+
+        const nodeIdx = parseInt(nodeEl.id.split('-')[1]);
+        const offsets = getAbsoluteOffsets(nodeEl);
+        currentSelection = { text: text, nodeIdx: nodeIdx, startOff: offsets.start, endOff: offsets.end };
+
+        menu.classList.remove('hidden');
+        const rect = range.getBoundingClientRect(); const menuWidth = menu.offsetWidth || 220; const padding = 16;
+        let targetLeft = rect.left + (rect.width / 2) - (menuWidth / 2);
+        if (targetLeft < padding) targetLeft = padding;
+        if (targetLeft + menuWidth > window.innerWidth - padding) targetLeft = window.innerWidth - menuWidth - padding;
+        let targetTop = rect.top - 55;
+        if (targetTop < 80) targetTop = rect.bottom + 15;
+
+        menu.style.top = `${targetTop}px`; menu.style.left = `${targetLeft}px`;
+        requestAnimationFrame(() => { menu.classList.remove('opacity-0', 'scale-75'); });
+    } else {
+        if (!_isTouchDragging) window.hideSelectionMenu();
+    }
+}
+
+document.addEventListener('selectionchange', () => {
+    if(!activeBookId) return;
+    clearTimeout(_selChangeDebounce);
+    _selChangeDebounce = setTimeout(_handleSelectionChange, _isTouchDragging ? 300 : 50);
+});
+
+if(document.getElementById('reader-content')) {
+    document.getElementById('reader-content').addEventListener('mousedown', (e) => { 
+        const menu = document.getElementById('selection-menu');
+        if(menu && !menu.classList.contains('hidden') && menu.contains(e.target)) return;
+        if(!window.getSelection().toString().trim()) { window.hideSelectionMenu(); } 
+    });
+}
+
+window.hideSelectionMenu = function() {
+    const menu = document.getElementById('selection-menu');
+    if (menu) { menu.classList.add('opacity-0', 'scale-75'); setTimeout(() => menu.classList.add('hidden'), 200); }
+}
+
+function showToast(msg) {
+    let t = document.getElementById('copy-toast');
+    if (!t) {
+        t = document.createElement('div');
+        t.id = 'copy-toast';
+        t.className = 'fixed bottom-28 left-1/2 -translate-x-1/2 z-[999] px-5 py-2.5 rounded-full bg-m3-onSurface text-m3-surface text-xs font-bold shadow-lg transition-all duration-300 opacity-0';
+        document.body.appendChild(t);
+    }
+    t.textContent = msg;
+    t.classList.remove('opacity-0');
+    clearTimeout(t._hide);
+    t._hide = setTimeout(() => t.classList.add('opacity-0'), 1500);
+}
+
+window.copySelection = function() {
+    const text = currentSelection.text;
+    if (!text) return;
+    window.hideSelectionMenu();
+    window.getSelection().removeAllRanges();
+    showToast(wikiLang === 'id' ? 'Tersalin!' : 'Copied!');
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).catch(() => {
+            const ta = document.createElement('textarea');
+            ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+            document.body.appendChild(ta); ta.select(); document.execCommand('copy');
+            document.body.removeChild(ta);
+        });
+    } else {
+        const ta = document.createElement('textarea');
+        ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+        document.body.appendChild(ta); ta.select(); document.execCommand('copy');
+        document.body.removeChild(ta);
+    }
+}
+
+async function registerAnnotation(annotObj) {
+    window.hideSelectionMenu(); const bookIndex = library.findIndex(b => b.id === activeBookId); if(bookIndex === -1) return;
+    const book = library[bookIndex]; if(!book.annotations) book.annotations = [];
+    book.annotations.push(annotObj); await localforage.setItem('pdf_epub_master', library);
+    
+    const nodeEl = document.getElementById(`node-${annotObj.nodeIdx}`);
+    if(nodeEl && book.nodes && book.nodes[annotObj.nodeIdx]) {
+        const currentAnnots = book.annotations.filter(a => a.nodeIdx === annotObj.nodeIdx);
+        nodeEl.innerHTML = window.renderNodeText(book.nodes[annotObj.nodeIdx].text, currentAnnots);
+    }
+    window.getSelection().removeAllRanges();
+    window.renderBookmarkPanel();
+    updateStatistics(); 
+}
+
+window.openBookmarkModal = function(color) {
+    if(currentSelection.nodeIdx === -1) return;
+    
+    activeNoteColor = color; 
+    editingAnnotId = null; 
+    
+    document.getElementById('bookmark-input-title').value = '';
+    document.getElementById('bookmark-input-text').value = '';
+    document.getElementById('btn-delete-bookmark').classList.add('hidden');
+    
+    openModal('bookmark-modal', 'bookmark-sheet', true);
+};
+
+window.saveBookmarkAnnotation = function() {
+    const titleVal = document.getElementById('bookmark-input-title').value.trim();
+    const noteVal = document.getElementById('bookmark-input-text').value.trim();
+    history.back(); 
+    
+    if(editingAnnotId) {
+        const bookIndex = library.findIndex(b => b.id === activeBookId);
+        if(bookIndex > -1) {
+            const annotIndex = library[bookIndex].annotations.findIndex(a => a.id === editingAnnotId);
+            if(annotIndex > -1) {
+                library[bookIndex].annotations[annotIndex].title = titleVal;
+                library[bookIndex].annotations[annotIndex].note = noteVal;
+                localforage.setItem('pdf_epub_master', library).then(() => {
+                    window.renderBookmarkPanel();
+                });
+            }
+        }
+    } else {
+        const book = library.find(b => b.id === activeBookId);
+        if (!book || !book.nodes) return;
+
+        const totalNodes = book.nodes.length;
+        const pct = Math.round(((currentSelection.nodeIdx + 1) / totalNodes) * 100);
+
+        let closestChapterName = wikiLang === 'id' ? "Bagian Buku" : "Book Section";
+        for (let i = currentSelection.nodeIdx; i >= 0; i--) {
+            if (book.nodes[i].tag === 'h1' || book.nodes[i].tag === 'h2') {
+                closestChapterName = book.nodes[i].text;
+                break;
+            }
+        }
+        const chapterPreview = closestChapterName.length > 15 ? closestChapterName.substring(0, 15) + '...' : closestChapterName;
+
+        const newAnnot = { 
+            id: 'BM_' + Date.now().toString(), 
+            nodeIdx: currentSelection.nodeIdx, 
+            startOff: currentSelection.startOff, 
+            endOff: currentSelection.endOff,
+            text: currentSelection.text, 
+            color: activeNoteColor, 
+            title: titleVal || (wikiLang === 'id' ? "Bookmark Baru" : "New Bookmark"), 
+            note: noteVal,
+            meta: `${chapterPreview} — ${pct}%`
+        };
+        
+        setTimeout(() => { registerAnnotation(newAnnot); }, 300);
+    }
+};
+
+window.showAnnotationDetails = function(annotId) {
+    event.preventDefault(); event.stopPropagation();
+    const book = library.find(b => b.id === activeBookId); if(!book || !book.annotations) return;
+    const annot = book.annotations.find(a => a.id === annotId); if(!annot) return;
+    
+    editingAnnotId = annotId;
+    currentSelection = { nodeIdx: annot.nodeIdx, text: annot.text };
+    
+    document.getElementById('bookmark-input-title').value = annot.title || '';
+    document.getElementById('bookmark-input-text').value = annot.note || '';
+    document.getElementById('btn-delete-bookmark').classList.remove('hidden');
+    
+    openModal('bookmark-modal', 'bookmark-sheet', true);
+};
+
+window.deleteBookmarkInsideModal = function() {
+    const d = i18n[wikiLang] || i18n['id'];
+    showDialog("Hapus Bookmark", d.deleteNoteConfirm, "trash-2", [
+        { text: d.bookmarkCancel || "Batal", primary: false },
+        { text: d.delete || "Hapus", primary: true, action: () => {
+            window.closeDialog();
+            window.deleteAnnotationById(editingAnnotId);
+            history.back(); 
+        }}
     ]);
 }
 
-window.importDataFile = function(event) {
-    const file = event.target.files[0];
-    if (!file) return;
+window.deleteAnnotationById = async function(annotId) {
+    if(!annotId || !activeBookId) return; 
+    const bookIndex = library.findIndex(b => b.id === activeBookId); if(bookIndex === -1) return;
+    const book = library[bookIndex]; 
+    const annotIndex = book.annotations.findIndex(a => a.id === annotId); if(annotIndex === -1) return;
     
-    const txt = i18n[wikiLang] || i18n['id'];
-    const isZip = file.name.toLowerCase().endsWith('.zip');
+    const nodeIdx = book.annotations[annotIndex].nodeIdx; 
+    book.annotations.splice(annotIndex, 1);
+    await localforage.setItem('pdf_epub_master', library);
     
-    showDialog("Memproses Data", `<div class="flex items-center gap-3"><div class="w-5 h-5 border-2 border-m3-primary border-t-transparent rounded-full animate-spin"></div><p>${isZip ? txt.zipExtract : "Membaca JSON..."}</p></div>`, "info", []);
-
-    if (isZip) {
-        const reader = new FileReader();
-        reader.onload = async (e) => {
-            try {
-                const zip = await JSZip.loadAsync(e.target.result);
-                
-                // 1. Baca Core JSON
-                const coreFile = zip.file("core_data.json");
-                if(!coreFile) throw new Error("Format ZIP tidak valid. core_data.json tidak ditemukan.");
-                const coreText = await coreFile.async("string");
-                const data = JSON.parse(coreText);
-                
-                // 2. Tanya konfirmasi sebelum nge-timpa
-                _closeModalAction('custom-dialog', 'custom-dialog-sheet');
-                setTimeout(() => {
-                    const confirmMsg = txt.zipRestoreConfirm.replace('{n}', data.books.length);
-                    showDialog("Konfirmasi Restore", confirmMsg, "alert-circle", [
-                        { text: txt.cancel, primary: false },
-                        { text: "Restore Sekarang", primary: true, action: `processZipRestoreData(${JSON.stringify(data)}, zip)` }
-                    ]);
-                    // Kita simpan object ZIP ke memori global sementara biar bisa diakses eksekutor
-                    window.tempZipObject = zip;
-                }, 400);
-
-            } catch (err) {
-                _closeModalAction('custom-dialog', 'custom-dialog-sheet');
-                showDialog("Error ZIP", err.message, "alert-triangle", [{text: "Tutup", primary: true}]);
-            }
-        };
-        reader.readAsArrayBuffer(file);
-    } else {
-        const reader = new FileReader();
-        reader.onload = (e) => {
-            try {
-                const data = JSON.parse(e.target.result);
-                _closeModalAction('custom-dialog', 'custom-dialog-sheet');
-                processRestoreData(data);
-            } catch (err) {
-                _closeModalAction('custom-dialog', 'custom-dialog-sheet');
-                showDialog("Error JSON", "Format file tidak valid.", "alert-triangle", [{text: "Tutup", primary: true}]);
-            }
-        };
-        reader.readAsText(file);
+    const nodeEl = document.getElementById(`node-${nodeIdx}`);
+    if(nodeEl && book.nodes && book.nodes[nodeIdx]) {
+        const currentAnnots = book.annotations.filter(a => a.nodeIdx === nodeIdx);
+        nodeEl.innerHTML = window.renderNodeText(book.nodes[nodeIdx].text, currentAnnots);
     }
-    event.target.value = '';
-}
 
-window.processZipRestoreData = async function(coreData, zipInput) {
-    const zip = window.tempZipObject || zipInput;
-    _closeModalAction('custom-dialog', 'custom-dialog-sheet');
-    
-    setTimeout(async () => {
-        showDialog("Memulihkan...", `<div class="flex items-center gap-3"><div class="w-5 h-5 border-2 border-m3-primary border-t-transparent rounded-full animate-spin"></div><p>Merakit kembali buku-buku lu...</p></div>`, "info", []);
+    window.renderBookmarkPanel();
+    updateStatistics(); 
+};
+
+window.renderBookmarkPanel = function() {
+    if(!DOM.bookmarkList || !DOM.bookmarkPanel || !activeBookId) return;
+    const book = library.find(b => b.id === activeBookId);
+    if (!book) return;
+
+    const searchInput = document.getElementById('bookmark-search-input');
+    if (searchInput) searchInput.value = '';
+
+    _renderBookmarkList(book.annotations || []);
+};
+
+function _renderBookmarkList(annotations) {
+    if(!DOM.bookmarkList) return;
+    DOM.bookmarkList.innerHTML = '';
+    const emptyState = document.getElementById('bookmark-empty');
+
+    const bookmarks = [...annotations].sort((a,b) => a.nodeIdx - b.nodeIdx);
+
+    if(bookmarks.length === 0) {
+        if(emptyState) emptyState.classList.remove('hidden');
+    } else {
+        if(emptyState) emptyState.classList.add('hidden');
         
-        try {
-            // Gabungin file teks dan gambar dari folder ZIP balik ke objek books
-            for(let i=0; i<coreData.books.length; i++) {
-                let b = coreData.books[i];
-                if(b.book_content && typeof b.book_content === 'string') { // itu berarti string nama file, e.g. "id.txt"
-                    const txtFile = zip.file("books/" + b.book_content);
-                    if(txtFile) b.book_content = await txtFile.async("string");
-                }
-                if(b.cover_image && typeof b.cover_image === 'string') {
-                    const imgFile = zip.file("covers/" + b.cover_image);
-                    if(imgFile) b.cover_image = await imgFile.async("base64"); // convert balik ke base64 string
-                    // pastikan format base64 bener (data:image/jpeg;base64,.....)
-                    if(b.cover_image && !b.cover_image.startsWith("data:image")) {
-                        b.cover_image = "data:image/jpeg;base64," + b.cover_image; // asumsi jpeg untuk kemudahan
+        bookmarks.forEach(bm => {
+            const btn = document.createElement('div');
+            btn.className = "group relative flex flex-col p-4 mb-3 rounded-3xl bg-m3-surface shadow-sm overflow-hidden text-left transition-all hover:shadow-md cursor-pointer";
+            
+            btn.onclick = () => {
+                const markTarget = document.querySelector(`mark[data-id="${bm.id}"]`);
+                const paragraphTarget = document.getElementById(`node-${bm.nodeIdx}`);
+                const container = DOM.readContent;
+                
+                if (container) {
+                    let targetEl = markTarget || paragraphTarget;
+                    if (targetEl) {
+                        const cRect = container.getBoundingClientRect();
+                        const tRect = targetEl.getBoundingClientRect();
+                        const offset = tRect.top - cRect.top + container.scrollTop - (cRect.height / 2) + (tRect.height / 2);
+                        
+                        container.scrollTo({ top: offset, behavior: 'smooth' });
                     }
                 }
-            }
+                history.back(); 
+            };
             
-            // Lanjut ke proses restore standar
-            await finishRestore(coreData);
-            window.tempZipObject = null; // bersihkan memori
-        } catch(e) {
-            _closeModalAction('custom-dialog', 'custom-dialog-sheet');
-            showDialog("Error Ekstrak", e.message, "alert-triangle", [{text: "Tutup", primary: true}]);
-        }
-    }, 400);
-}
-
-window.processRestoreData = async function(data) {
-    if (!data.books || !data.version) {
-        showDialog("Error", "Format data tidak valid untuk Baca versi ini.", "alert-triangle", [{text: "Tutup", primary: true}]);
-        return;
-    }
-    await finishRestore(data);
-}
-
-async function finishRestore(data) {
-    // Gabung atau timpa data (saat ini timpa total library + config)
-    library = data.books;
-    await localforage.setItem('baca_library', library);
-    
-    if (data.annotations) {
-        await localforage.setItem('baca_annotations', data.annotations);
-    }
-
-    if (data.config) {
-        if(data.config.theme) setTheme(data.config.theme);
-        isDark = !!data.config.isDark;
-        isAmoled = !!data.config.isAmoled;
-        if(data.config.wikiLang) setWikiLang(data.config.wikiLang);
-        
-        localStorage.setItem('theme', isDark ? 'dark' : 'light');
-        localStorage.setItem('amoled', isAmoled.toString());
-        applyTheme();
-    }
-
-    renderLibrary(document.getElementById('global-search').value.toLowerCase());
-    updateStats();
-    
-    const txt = i18n[wikiLang] || i18n['id'];
-    _closeModalAction('custom-dialog', 'custom-dialog-sheet');
-    
-    setTimeout(() => {
-        showDialog("Berhasil", "Semua data sukses dipulihkan. Halaman akan dimuat ulang untuk sinkronisasi.", "check-circle", [{text: "OK", primary: true, action: "location.reload()"}]);
-    }, 400);
-}
-
-// (Raw Backup Logic untuk Android/PWA ketat - Jika Download blob di-blok)
-window.copyRawBackup = function() {
-    const text = document.getElementById('raw-backup-textarea');
-    text.select();
-    document.execCommand('copy');
-    showDialog("Sukses", "Teks backup berhasil disalin. Simpan di tempat aman!", "check-circle", [{text: "Tutup", primary: true}]);
-}
-window.processRawRestore = function() {
-    const text = document.getElementById('raw-restore-textarea').value.trim();
-    if(!text) return;
-    try {
-        const data = JSON.parse(text);
-        _closeModalAction('raw-restore-modal', 'raw-restore-sheet');
-        processRestoreData(data);
-    } catch(e) {
-        showDialog("Error", "Teks JSON tidak valid / rusak.", "alert-triangle", [{text: "Tutup", primary: true}]);
-    }
-}
-
-// 10. MODAL / DIALOG SYSTEM ENGINE
-window.openModal = function(modalId, sheetId, pushHistory = false) {
-    const m = document.getElementById(modalId);
-    const s = document.getElementById(sheetId);
-    m.classList.remove('hidden');
-    
-    // Matikan scroll background
-    document.body.style.overflow = 'hidden';
-    
-    setTimeout(() => {
-        m.classList.remove('opacity-0');
-        if (s.classList.contains('translate-y-full')) {
-            s.classList.remove('translate-y-full');
-        }
-        if (s.classList.contains('scale-75')) {
-            s.classList.remove('scale-75', 'translate-y-12');
-        }
-        if (pushHistory) {
-            history.pushState({modal: modalId}, '', '#' + modalId);
-        }
-    }, 10);
-}
-
-window._closeModalAction = function(modalId, sheetId, isFromBtn = false) {
-    const m = document.getElementById(modalId);
-    const s = document.getElementById(sheetId);
-    
-    if(!m || !s) return;
-
-    m.classList.add('opacity-0');
-    if (s.id === 'global-settings-sheet' || s.id === 'b-opt-sheet' || s.id === 'ai-sheet') {
-        s.classList.add('translate-y-full');
-    } else {
-        s.classList.add('scale-75', 'translate-y-12');
-    }
-    
-    setTimeout(() => { 
-        m.classList.add('hidden'); 
-        
-        // Cek kalau gada panel/reader yg kebuka, kembalikan scroll
-        if(DOM.readView.classList.contains('translate-y-full') && !activePanel) {
-            document.body.style.overflow = '';
-        }
-
-        if(isFromBtn && (window.history.state !== null || window.location.hash !== '')) {
-            history.back(); // bersih-bersih hash url
-        }
-    }, 300);
-}
-
-window.closeWelcome = function() {
-    _closeModalAction('welcome-modal', 'welcome-sheet', true);
-}
-
-window.showDialog = function(title, message, iconStr, buttons) {
-    const dTitle = document.getElementById('dialog-title');
-    const dMsg = document.getElementById('dialog-message');
-    const dIcon = document.getElementById('dialog-icon');
-    const dActions = document.getElementById('dialog-actions');
-
-    dTitle.innerText = title;
-    dMsg.innerHTML = message; // support HTML like bold/br/loading
-    dIcon.setAttribute('data-lucide', iconStr);
-    
-    dActions.innerHTML = '';
-    
-    buttons.forEach(b => {
-        const btn = document.createElement('button');
-        btn.innerText = b.text;
-        
-        if (b.primary) {
-            if (b.danger) {
-                btn.className = "px-6 py-2.5 bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-400 font-bold rounded-full btn-morph text-sm";
-            } else {
-                btn.className = "px-6 py-2.5 bg-m3-primary text-m3-onPrimary font-bold rounded-full btn-morph text-sm shadow-sm";
+            let iconColorCls = "text-yellow-600 bg-yellow-500/20 dark:text-yellow-400 dark:bg-yellow-400/20";
+            let quoteBgCls = "bg-yellow-500/10 text-yellow-800 dark:bg-yellow-400/10 dark:text-yellow-100";
+            
+            if (bm.color === 'green') { 
+                iconColorCls = "text-green-600 bg-green-500/20 dark:text-green-400 dark:bg-green-400/20"; 
+                quoteBgCls = "bg-green-500/10 text-green-800 dark:bg-green-400/10 dark:text-green-100";
             }
-        } else {
-            btn.className = "px-4 py-2.5 bg-transparent text-m3-onSurface font-bold rounded-full btn-morph text-sm opacity-80 hover:opacity-100";
-        }
-        
-        btn.onclick = () => {
-            if (b.action) {
-                // Eksekusi action string sebagai fungsi
-                new Function(b.action)();
-            } else {
-                _closeModalAction('custom-dialog', 'custom-dialog-sheet', true);
+            else if (bm.color === 'pink') { 
+                iconColorCls = "text-pink-600 bg-pink-500/20 dark:text-pink-400 dark:bg-pink-400/20"; 
+                quoteBgCls = "bg-pink-500/10 text-pink-800 dark:bg-pink-400/10 dark:text-pink-100";
             }
-        };
-        dActions.appendChild(btn);
-    });
 
-    lucide.createIcons();
-    openModal('custom-dialog', 'custom-dialog-sheet', true);
+            let noteHtml = bm.note ? `
+                <div class="mt-3 p-3 rounded-2xl bg-m3-surfaceVariant text-m3-onSurfaceVariant font-bold text-xs leading-relaxed">
+                    ${bm.note}
+                </div>` : '';
+            
+            let quoteHtml = `
+                <div class="mt-2 p-3 rounded-2xl ${quoteBgCls}">
+                    <span class="text-[11px] font-medium opacity-90 italic line-clamp-2 leading-relaxed">"${bm.text}"</span>
+                </div>
+            `;
+            
+            let metaText = bm.meta || 'Chapter';
+            if (metaText.length > 15) metaText = metaText.substring(0, 15) + '...';
+
+            btn.innerHTML = `
+                <div class="flex items-start justify-between gap-2 mb-2 w-full">
+                    <span class="text-sm font-bold text-m3-onSurface leading-tight line-clamp-2 pr-6">${bm.title}</span>
+                </div>
+                
+                <div class="flex items-center gap-1.5 w-max px-2.5 py-1 rounded-lg ${iconColorCls}">
+                    <i data-lucide="bookmark" class="w-3 h-3 fill-current"></i>
+                    <span class="text-[9px] font-bold uppercase tracking-wider">${metaText}</span>
+                </div>
+                
+                ${noteHtml}
+                ${quoteHtml}
+            `;
+
+            const delBtn = document.createElement('button');
+            delBtn.className = "absolute top-4 right-4 w-7 h-7 rounded-full text-red-500/40 hover:text-red-500 hover:bg-red-500/10 transition-all flex items-center justify-center";
+            delBtn.innerHTML = `<i data-lucide="trash-2" class="w-4 h-4"></i>`;
+            delBtn.onclick = (e) => {
+                e.stopPropagation(); 
+                window.deleteAnnotationById(bm.id);
+            };
+
+            btn.appendChild(delBtn);
+            DOM.bookmarkList.appendChild(btn);
+        });
+        if(window.lucide) window.lucide.createIcons();
+    }
 }
 
-// 11. GESTURE SWIPE-TO-DISMISS MODALS
-function initGestureDismiss() {
-    let startY = 0, currentY = 0;
-    const sheets = ['global-settings-sheet', 'b-opt-sheet', 'edit-sheet', 'bookmark-sheet', 'ai-sheet', 'welcome-sheet', 'custom-dialog-sheet', 'raw-backup-sheet', 'raw-restore-sheet', 'backup-type-sheet'];
+window.filterBookmarkPanel = function(query) {
+    const book = library.find(b => b.id === activeBookId);
+    if (!book) return;
+    const all = book.annotations || [];
+    const q = query.trim().toLowerCase();
+    const filtered = q ? all.filter(bm => (bm.title || '').toLowerCase().includes(q)) : all;
+    _renderBookmarkList(filtered);
+};
 
-    sheets.forEach(id => {
-        const sheet = document.getElementById(id);
+// 12. SWIPE TO DISMISS LOGIC & SCROLL LOCK
+function setupSwipeToDismiss() {
+    // FIX 1: backup-type-sheet udah dimasukin array
+    const sheets = ['global-settings-sheet', 'b-opt-sheet', 'edit-sheet', 'bookmark-sheet', 'raw-backup-sheet', 'raw-restore-sheet', 'welcome-sheet', 'backup-type-sheet'];
+    
+    sheets.forEach(sheetId => {
+        const sheet = document.getElementById(sheetId);
         if (!sheet) return;
+        let touchStartY = 0; let isPulling = false;
         
         sheet.addEventListener('touchstart', (e) => {
-            // DETEKSI SCROLLING: Cek kalau user lagi neken area yang bisa di-scroll
+            // FIX 2: Cek apakah user lagi scroll di dalam area scrollable (misal di Lihat Instruksi)
             let target = e.target;
             let isScrollableArea = false;
             
             while (target && target !== sheet && target !== document.body) {
                 const style = window.getComputedStyle(target);
-                const overflowY = style.overflowY;
-                
-                if (overflowY === 'auto' || overflowY === 'scroll') {
-                    // Kalau area bisa di-scroll dan posisi scroll gak di paling atas, MATIKAN swipe-to-dismiss!
+                if (style.overflowY === 'auto' || style.overflowY === 'scroll') {
                     if (target.scrollTop > 0) {
                         isScrollableArea = true;
                         break;
@@ -1694,69 +1982,104 @@ function initGestureDismiss() {
                 }
                 target = target.parentNode;
             }
-
-            if (isScrollableArea) {
-                sheet.dataset.preventSwipe = "true";
-            } else {
-                sheet.dataset.preventSwipe = "false";
-            }
-
-            startY = e.touches[0].clientY;
-            sheet.style.transition = 'none';
+            
+            sheet.dataset.preventSwipe = isScrollableArea ? "true" : "false";
+            touchStartY = e.touches[0].clientY; 
+            sheet.style.transition = 'none'; 
         }, { passive: true });
 
         sheet.addEventListener('touchmove', (e) => {
             if (sheet.dataset.preventSwipe === "true") return;
-
-            currentY = e.touches[0].clientY;
-            let diffY = currentY - startY;
             
-            // Cuma nge-drag kalau tarik ke BAWAH
-            if (diffY > 0) {
-                if (id === 'global-settings-sheet' || id === 'b-opt-sheet' || id === 'ai-sheet') {
-                    sheet.style.transform = `translateY(${diffY}px)`;
-                } else {
-                    sheet.style.transform = `scale(0.75) translateY(${12 + (diffY * 0.5)}px)`;
-                }
+            const deltaY = e.touches[0].clientY - touchStartY;
+            if (deltaY > 0) { 
+                isPulling = true; if(e.cancelable) e.preventDefault(); 
+                sheet.style.transform = `translateY(${deltaY * 0.5}px)`; 
             }
-        }, { passive: true });
+        }, { passive: false });
 
-        sheet.addEventListener('touchend', () => {
+        sheet.addEventListener('touchend', (e) => {
             if (sheet.dataset.preventSwipe === "true") return;
-
-            sheet.style.transition = 'transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1)';
-            let diffY = currentY - startY;
+            if (!isPulling) return; isPulling = false;
             
-            if (diffY > 120) {
-                // Swipe sukses, tutup modal via history.back biar rapi state urutannya
-                history.back();
-                setTimeout(() => { sheet.style.transform = ''; }, 100);
-            } else { 
-                // Snap back ke posisi awal kalau nanggung
-                if (id === 'global-settings-sheet' || id === 'b-opt-sheet' || id === 'ai-sheet') {
-                    sheet.style.transform = 'translateY(0)';
-                } else {
-                    sheet.style.transform = ''; 
-                }
-            }
+            const deltaY = e.changedTouches[0].clientY - touchStartY;
+            sheet.style.transition = 'transform 0.3s cubic-bezier(0.2, 0, 0, 1)';
+            
+            if (deltaY > 100) { 
+                sheet.style.transform = 'translateY(100%)'; 
+                setTimeout(() => { history.back(); setTimeout(() => { sheet.style.transform = ''; }, 100); }, 100);
+            } else { sheet.style.transform = ''; }
         });
     });
 
-    // Sidebar swipe dismiss
-    const sidePanels = [DOM.tocPanel, DOM.setPanel, DOM.bookmarkPanel];
-    sidePanels.forEach(panel => {
-        panel.addEventListener('touchstart', e => { startY = e.touches[0].clientX; panel.style.transition = 'none'; }, {passive:true});
-        panel.addEventListener('touchmove', e => {
-            currentY = e.touches[0].clientX;
-            let diffX = currentY - startY;
-            if(diffX > 0) panel.style.transform = `translateX(${diffX}px)`;
-        }, {passive:true});
-        panel.addEventListener('touchend', () => {
-            panel.style.transition = 'transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1)';
-            let diffX = currentY - startY;
-            if (diffX > 100) {
-                history.back(); 
-                setTimeout(() => { panel.style.transform = ''; }, 100);
+    const aiSheet = document.getElementById('ai-sheet');
+    if (aiSheet) {
+        let aiTouchStartY = 0; let aiIsPulling = false;
+        aiSheet.addEventListener('touchstart', (e) => {
+            let target = e.target;
+            let isScrollableArea = false;
+            while (target && target !== aiSheet && target !== document.body) {
+                const style = window.getComputedStyle(target);
+                if (style.overflowY === 'auto' || style.overflowY === 'scroll') {
+                    if (target.scrollTop > 0) {
+                        isScrollableArea = true;
+                        break;
+                    }
+                }
+                target = target.parentNode;
+            }
+            aiSheet.dataset.preventSwipe = isScrollableArea ? "true" : "false";
+            aiTouchStartY = e.touches[0].clientY;
+            aiIsPulling = false;
+            aiSheet.style.transition = 'none';
+        }, { passive: true });
+        
+        aiSheet.addEventListener('touchmove', (e) => {
+            if (aiSheet.dataset.preventSwipe === "true") return;
+            const deltaY = e.touches[0].clientY - aiTouchStartY;
+            if (deltaY > 0) {
+                aiIsPulling = true;
+                if(e.cancelable) e.preventDefault();
+                aiSheet.style.transform = `translateY(${deltaY * 0.5}px)`;
+            }
+        }, { passive: false });
+        
+        aiSheet.addEventListener('touchend', (e) => {
+            if (aiSheet.dataset.preventSwipe === "true") return;
+            if (!aiIsPulling) return; aiIsPulling = false;
+            const deltaY = e.changedTouches[0].clientY - aiTouchStartY;
+            aiSheet.style.transition = 'transform 0.3s cubic-bezier(0.2, 0, 0, 1)';
+            if (deltaY > 100) {
+                aiSheet.style.transform = 'translateY(100%)';
+                setTimeout(() => { history.back(); setTimeout(() => { aiSheet.style.transform = ''; }, 100); }, 100);
+            } else { aiSheet.style.transform = ''; }
+        });
+    }
+
+    const panels = ['toc-panel', 'settings-panel', 'bookmark-panel'];
+    panels.forEach(panelId => {
+        const panel = document.getElementById(panelId);
+        if(!panel) return;
+        let touchStartX = 0; let touchStartY = 0; let isSwipingPanel = false;
+        panel.addEventListener('touchstart', (e) => {
+            touchStartX = e.touches[0].clientX; touchStartY = e.touches[0].clientY; panel.style.transition = 'none';
+        }, { passive: true });
+        panel.addEventListener('touchmove', (e) => {
+            const deltaX = e.touches[0].clientX - touchStartX;
+            const deltaY = Math.abs(e.touches[0].clientY - touchStartY);
+            if (deltaX > 0 && deltaX > deltaY) { 
+                isSwipingPanel = true;
+                if(e.cancelable) e.preventDefault();
+                panel.style.transform = `translateX(${deltaX}px)`;
+            }
+        }, { passive: false }); 
+        panel.addEventListener('touchend', (e) => {
+            if (!isSwipingPanel) return; isSwipingPanel = false;
+            const deltaX = e.changedTouches[0].clientX - touchStartX;
+            panel.style.transition = 'transform 0.3s cubic-bezier(0.2, 0, 0, 1), opacity 0.3s ease';
+            if (deltaX > 80) { 
+                panel.style.transform = 'translateX(100%)';
+                setTimeout(() => { history.back(); setTimeout(() => { panel.style.transform = ''; }, 100); }, 100);
             } else { 
                 panel.style.transform = 'translateX(0)';
             }
@@ -1764,10 +2087,10 @@ function initGestureDismiss() {
     });
 }
 
-// 12. PWA & CAPACITOR SETUP (SW / Update Handler)
+// 13. PWA & CAPACITOR SETUP
 if ('serviceWorker' in navigator) {
     const swCode = `
-    const CACHE_NAME = 'baca-pwa-v6';
+    const CACHE_NAME = 'baca-pwa-v5';
     self.addEventListener('install', (e) => {
         self.skipWaiting();
         e.waitUntil(caches.open(CACHE_NAME).then(c => c.addAll([
@@ -1785,58 +2108,11 @@ document.addEventListener("DOMContentLoaded", () => {
     setTimeout(() => {
         if (window.Capacitor && window.Capacitor.Plugins) {
             const capApp = window.Capacitor.Plugins.App;
-            const statusBar = window.Capacitor.Plugins.StatusBar;
+            const capStatusBar = window.Capacitor.Plugins.StatusBar;
             
-            if (statusBar) {
-                statusBar.setOverlaysWebView({ overlay: true }).catch(()=>{});
-            }
-
-            // Integrasi Native Hardware Back Button (Kalo Android)
-            capApp.addListener('backButton', () => {
-                if(window.history.state !== null || window.location.hash !== '') {
-                    window.history.back();
-                } else if (!DOM.readView.classList.contains('translate-y-full')) {
-                    closeReader();
-                } else {
-                    capApp.exitApp();
-                }
-            });
+            if (capApp) capApp.addListener('backButton', () => { window.history.back(); });
+            if (capStatusBar) capStatusBar.hide().catch(()=>{});
         }
-    }, 1000);
+    }, 500);
 });
 
-// AUTO UPDATE CHECKER
-window.checkForUpdate = async function() {
-    const btnIcon = document.getElementById('icon-update-app');
-    const txt = i18n[wikiLang] || i18n['id'];
-
-    if(btnIcon) btnIcon.classList.add('animate-spin');
-    
-    try {
-        const response = await fetch(window.UPDATE_URL + "?t=" + new Date().getTime());
-        if(!response.ok) throw new Error("Gagal mengambil data dari Github Repo.");
-        
-        const data = await response.json();
-        const latestVer = data.version;
-        const currVer = window.APP_VERSION;
-        
-        if(btnIcon) btnIcon.classList.remove('animate-spin');
-
-        if(latestVer !== currVer) {
-            showDialog(txt.updateAvailableTitle, txt.updateAvailableDesc, "download-cloud", [
-                { text: txt.btnClose, primary: false },
-                { text: txt.btnDownload, primary: true, action: `window.open('${window.RELEASES_URL}', '_system'); _closeModalAction('custom-dialog', 'custom-dialog-sheet');` }
-            ]);
-        } else {
-            showDialog(txt.updateLatestTitle, txt.updateLatestDesc, "check-circle", [
-                { text: "OK", primary: true }
-            ]);
-        }
-    } catch(err) {
-        console.error(err);
-        if(btnIcon) btnIcon.classList.remove('animate-spin');
-        showDialog("Update Gagal", txt.updateError, "alert-triangle", [
-            { text: "Tutup", primary: true }
-        ]);
-    }
-}
