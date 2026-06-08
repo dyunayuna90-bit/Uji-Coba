@@ -1602,15 +1602,41 @@ async function renderCanvasPage(pageNum) {
     try {
         const page = await currentPdfDoc.getPage(pageNum);
         
-        // Optimasi resolusi agar tajam saat dizoom (pixelRatio)
-        const pixelRatio = window.devicePixelRatio || 1;
-        const viewport = page.getViewport({ scale: 1.5 });
+        const viewport_el = document.getElementById('canvas-zoom-viewport');
         const canvas = DOM.pdfCanvas || document.getElementById('pdf-canvas');
+        const wrapper = document.getElementById('canvas-wrapper');
+        
+        if (!canvas || !wrapper || !viewport_el) { isRenderingCanvas = false; return; }
+
+        // Fit halaman ke lebar viewport, pertahankan rasio asli PDF
+        const containerW = viewport_el.clientWidth;
+        const containerH = viewport_el.clientHeight;
+        const pixelRatio = window.devicePixelRatio || 1;
+
+        // Hitung scale agar lebar halaman = lebar container
+        const naturalViewport = page.getViewport({ scale: 1 });
+        const fitScale = containerW / naturalViewport.width;
+        const viewport = page.getViewport({ scale: fitScale });
+
+        // Set canvas pixel size (tajam di retina)
+        canvas.width = Math.floor(viewport.width * pixelRatio);
+        canvas.height = Math.floor(viewport.height * pixelRatio);
+
+        // Set display size pas dengan container
+        canvas.style.width = containerW + 'px';
+        canvas.style.height = Math.floor(viewport.height) + 'px';
+
+        // Set wrapper size sama dengan canvas display size
+        wrapper.style.width = containerW + 'px';
+        wrapper.style.height = Math.floor(viewport.height) + 'px';
+
+        // Simpan ukuran natural untuk clamping pan
+        wrapper._naturalW = containerW;
+        wrapper._naturalH = Math.floor(viewport.height);
+        wrapper._containerW = containerW;
+        wrapper._containerH = containerH;
+
         const ctx = canvas.getContext('2d');
-
-        canvas.width = viewport.width * pixelRatio;
-        canvas.height = viewport.height * pixelRatio;
-
         const renderContext = {
             canvasContext: ctx,
             viewport: viewport,
@@ -1628,7 +1654,6 @@ async function renderCanvasPage(pageNum) {
         DOM.progBar.style.width = `${pct}%`; 
         DOM.progTxt.textContent = `${pct}%`;
 
-        // Update progress murni ke DB
         updateBookProgress(activeBookId, pageNum, pct);
         renderBookmarkPanel();
 
@@ -1817,6 +1842,22 @@ function initCanvasGestures() {
 }
 
 function _applyCanvasTransform(wrapper) {
+    // Clamp translate agar canvas tidak bisa melewati batas tepi saat dipan
+    if (currentCanvasScale > 1.01 && wrapper._naturalW) {
+        const scaledW = wrapper._naturalW * currentCanvasScale;
+        const scaledH = wrapper._naturalH * currentCanvasScale;
+        const cW = wrapper._containerW || wrapper._naturalW;
+        const cH = wrapper._containerH || wrapper._naturalH;
+
+        // Batas: tidak boleh ada ruang kosong di sisi manapun
+        const maxX = 0;
+        const minX = Math.min(0, cW - scaledW);
+        const maxY = 0;
+        const minY = Math.min(0, cH - scaledH);
+
+        canvasTranslateX = Math.max(minX, Math.min(maxX, canvasTranslateX));
+        canvasTranslateY = Math.max(minY, Math.min(maxY, canvasTranslateY));
+    }
     wrapper.style.transform = `translate(${canvasTranslateX}px, ${canvasTranslateY}px) scale(${currentCanvasScale})`;
 }
 
