@@ -17,14 +17,25 @@ let isDark = localStorage.getItem('theme') !== 'light';
 let currentThemeKey = localStorage.getItem('m3-key') || 'orchid';
 let isAmoled = localStorage.getItem('amoled') === 'true';
 let wikiLang = localStorage.getItem('wiki_lang') || 'en';
+let isHideBookTitles = localStorage.getItem('hide_book_titles') === 'true';
 
-// --- CANVAS MODE STATE ---
+// --- CANVAS MODE STATE (PINCH & PANNING) ---
 let currentPdfDoc = null;
 let currentCanvasPage = 1;
 let currentCanvasScale = 1.0;
 let isRenderingCanvas = false;
 let canvasTouchStartScale = 1.0;
 let canvasTouchStartDist = 0;
+
+// Koordinat untuk tracking panning/geser canvas saat dizoom
+let canvasPanX = 0;
+let canvasPanY = 0;
+let canvasTouchStartX = 0;
+let canvasTouchStartY = 0;
+let canvasLastPanX = 0;
+let canvasLastPanY = 0;
+let isCanvasDragging = false;
+let canvasTouchHasMoved = false; // Membedakan antara tap murni atau geser
 
 const DOM = {};
 
@@ -75,13 +86,13 @@ document.addEventListener("DOMContentLoaded", () => {
 
     setupScrollListeners();
     setupSearchListeners();
-    setupCanvasPinchZoom();
+    setupCanvasPinchAndPan(); // Dioptimasi penuh untuk Pinch & Panning
     syncWikiLangUI();
     applyLanguage();
     applyTypo();
     applyThemeToDOM();
     loadLibrary();
-    setupSwipeToDismiss(); // Nyalain Gestur Aman
+    setupSwipeToDismiss(); // Gestur swipe bawah aman
 
     if (!localStorage.getItem('first_time_seen_v5')) {
         setTimeout(() => { openModal('welcome-modal', 'welcome-sheet', true); }, 500);
@@ -91,6 +102,12 @@ document.addEventListener("DOMContentLoaded", () => {
     if (savedKey && document.getElementById('gemini-api-key')) document.getElementById('gemini-api-key').value = savedKey;
     const savedModel = localStorage.getItem('gemini_model');
     if(savedModel && document.getElementById('gemini-model-select')) document.getElementById('gemini-model-select').value = savedModel;
+
+    // Sinkronisasi status awal toggle sembunyikan judul
+    const hideTitlesToggle = document.getElementById('toggle-hide-titles');
+    if (hideTitlesToggle) {
+        hideTitlesToggle.checked = isHideBookTitles;
+    }
 
     // Update versi app di layar pengaturan
     const verDisplay = document.getElementById('app-version-display');
@@ -331,7 +348,7 @@ function applyLanguage() {
 
     // Translasi Tambahan Phase 5
     setElementText('str-scroll-rak-title', d.scrollRakTitle || "Rak Mode Scroll");
-    setElementText('str-canvas-rak-title', d.canvasRakTitle || "Rak Mode Canvas (Layout Asli)");
+    setElementText('str-canvas-rak-title', d.canvasRakTitle || "Canvas Mode Books");
     setElementText('str-pdf-canvas-warning', d.pdfCanvasWarning || "Fitur tipografi dinonaktifkan pada Mode Canvas.");
     setElementText('str-pdf-mode-prompt-title', d.pdfModePromptTitle);
     setElementText('str-pdf-mode-prompt-desc', d.pdfModePromptDesc);
@@ -1025,12 +1042,11 @@ function createBookCard(book, isSlider = false, index = 0) {
         </div>
     ` : '';
 
-    // Menyiapkan Badge khusus PDF-Canvas vs PDF-Scroll
-    const d = i18n[wikiLang] || i18n['id'];
-    let badgeText = book.type;
-    if (book.type === 'pdf') {
-        badgeText = book.pdfMode === 'canvas' ? (d.pdfCanvasBadge || 'PDF-CANVAS') : (d.pdfScrollBadge || 'PDF-SCROLL');
-    }
+    // Menyiapkan Badge murni format (PDF / EPUB / TXT / MD)
+    let badgeText = book.type.toUpperCase();
+
+    // Sembunyikan judul jika parameter isHideBookTitles aktif
+    let titleStyle = isHideBookTitles ? "display: none;" : "";
 
     card.innerHTML = `
         ${batchOverlayHTML}
@@ -1043,7 +1059,7 @@ function createBookCard(book, isSlider = false, index = 0) {
             </div>
             <div class="mt-auto flex flex-col border-none">
                 ${!isSlider ? `<i data-lucide="book" class="w-6 h-6 mb-2 opacity-80" id="book-icon-${book.id}"></i>` : ''}
-                <h3 class="font-bold ${isSlider ? 'text-sm line-clamp-2' : 'text-sm mt-1 line-clamp-3'} leading-tight drop-shadow-md" id="title-${book.id}">${book.title}</h3>
+                <h3 class="font-bold ${isSlider ? 'text-sm line-clamp-2' : 'text-sm mt-1 line-clamp-3'} leading-tight drop-shadow-md" id="title-${book.id}" style="${titleStyle}">${book.title}</h3>
                 <div class="w-full ${isSlider ? 'mt-2' : 'mt-2'} border-none">
                     <div class="flex justify-between text-[${isSlider ? '0.65rem' : '0.6rem'}] font-bold opacity-90 mb-1" id="pct-${book.id}"><span>${progress}%</span></div>
                     <div class="h-1.5 w-full bg-black/20 dark:bg-white/20 rounded-full overflow-hidden border-none">
@@ -1299,7 +1315,7 @@ window.saveBookEdit = async function() {
     }
 }
 
-// 9. TEMA & TIPOGRAFI
+// 9. TEMA, TIPOGRAFI, DAN TOGGLE SETTING BARU
 function applyThemeToDOM() {
     document.documentElement.classList.toggle('dark', isDark);
     
@@ -1371,11 +1387,34 @@ function applyThemeToDOM() {
         else if (isDark && isAmoled) { ta.classList.add('bg-m3-primary', 'text-m3-onPrimary'); ta.classList.remove('text-m3-onSurfaceVariant'); }
     }
 
+    // Refresh visual PDF Canvas if are loaded to sync inverted mode perfectly
+    if (currentPdfDoc && activeBookId) {
+        const book = library.find(b => b.id === activeBookId);
+        if (book && book.pdfMode === 'canvas') {
+            const canvas = DOM.pdfCanvas;
+            if (canvas) {
+                if (isDark && isAmoled) {
+                    canvas.style.filter = 'invert(0.95) hue-rotate(180deg) brightness(0.8) contrast(1.2)';
+                } else if (isDark) {
+                    canvas.style.filter = 'invert(0.9) hue-rotate(180deg)';
+                } else {
+                    canvas.style.filter = 'none';
+                }
+            }
+        }
+    }
+
     if(window.lucide) window.lucide.createIcons();
     localStorage.setItem('theme', isDark ? 'dark' : 'light'); 
     localStorage.setItem('m3-key', currentThemeKey);
     localStorage.setItem('amoled', isAmoled);
 }
+
+window.toggleHideBookTitles = function() {
+    isHideBookTitles = !isHideBookTitles;
+    localStorage.setItem('hide_book_titles', isHideBookTitles);
+    renderLibrary(DOM.globalSearch ? DOM.globalSearch.value : "");
+};
 
 window.setTheme = function(key) { currentThemeKey = key; applyThemeToDOM(); };
 window.toggleThemeState = function() { isDark = !isDark; applyThemeToDOM(); };
@@ -1439,11 +1478,9 @@ window.openBook = async function(book) {
 
     DOM.progBar.style.width = `${book.progressPct || 0}%`; DOM.progTxt.textContent = `${book.progressPct || 0}%`;
 
-    // Ambil preferensi bahasa untuk menu disabled warning
     const currentBook = library.find(b => b.id === book.id);
     const isCanvas = currentBook && currentBook.pdfMode === 'canvas';
 
-    // Kelola visibilitas viewport pembaca secara dinamis (Scroll vs Canvas)
     if (isCanvas) {
         DOM.readContent.classList.add('hidden');
         if (DOM.canvasContainer) DOM.canvasContainer.classList.remove('hidden');
@@ -1455,6 +1492,15 @@ window.openBook = async function(book) {
             if (el) el.classList.add('ui-disabled-group');
         });
 
+        // Set pesan informatif di panel TOC Daftar Isi (Support 3 Bahasa)
+        if (DOM.tocList) {
+            let msg = "Daftar isi tidak tersedia di Mode Canvas.";
+            if (wikiLang === 'en') msg = "Table of contents is not available in Canvas Mode.";
+            else if (wikiLang === 'es') msg = "El índice no está disponible en el Modo Canvas.";
+            
+            DOM.tocList.innerHTML = `<div class="p-6 text-center text-xs opacity-60 font-bold leading-relaxed">${msg}</div>`;
+        }
+
         // Load PDF murni & render
         try {
             const rawPdfBlob = await localforage.getItem('rawpdf_' + book.id);
@@ -1465,6 +1511,14 @@ window.openBook = async function(book) {
             
             currentCanvasPage = parseInt(book.lastReadId) || 1;
             currentCanvasScale = 1.0;
+            
+            // Reset koordinat zoom/panning canvas agar berada pas di tengah
+            canvasPanX = 0;
+            canvasPanY = 0;
+            if (DOM.canvasWrapper) {
+                DOM.canvasWrapper.style.transform = 'translate3d(0, 0, 0) scale(1)';
+            }
+
             if (DOM.canvasPageTotal) DOM.canvasPageTotal.textContent = currentPdfDoc.numPages;
 
             await renderCanvasPage(currentCanvasPage);
@@ -1566,8 +1620,8 @@ async function renderCanvasPage(pageNum) {
     try {
         const page = await currentPdfDoc.getPage(pageNum);
         
-        // Sesuaikan ukuran render di HP agar selalu pas lebar & tajam
-        const viewport = page.getViewport({ scale: currentCanvasScale * 1.5 });
+        // Naikkan scale internal render PDF agar gambar tajam maksimal di layar retina HP Anda
+        const viewport = page.getViewport({ scale: 2.0 });
         const canvas = DOM.pdfCanvas;
         const ctx = canvas.getContext('2d');
 
@@ -1580,6 +1634,15 @@ async function renderCanvasPage(pageNum) {
         };
 
         await page.render(renderContext).promise;
+
+        // Terapkan filter invert custom jika mode gelap / amoled aktif
+        if (isDark && isAmoled) {
+            canvas.style.filter = 'invert(0.95) hue-rotate(180deg) brightness(0.8) contrast(1.2)';
+        } else if (isDark) {
+            canvas.style.filter = 'invert(0.9) hue-rotate(180deg)';
+        } else {
+            canvas.style.filter = 'none';
+        }
 
         // Sync visual data
         if (DOM.canvasPageNum) DOM.canvasPageNum.textContent = pageNum;
@@ -1637,14 +1700,31 @@ window.showJumpToPageDialog = function() {
     );
 };
 
-// --- LOGIKA MULTI-TOUCH ZOOM (PINCH GESTURE) MURNI HP ---
-function setupCanvasPinchZoom() {
+// --- LOGIKA MULTI-TOUCH ZOOM & PANNING (DENGAN TAP-TO-TURN SISI KANAN-KIRI) ---
+function setupCanvasPinchAndPan() {
     const viewport = document.getElementById('canvas-zoom-viewport');
     const wrapper = DOM.canvasWrapper;
     if (!viewport || !wrapper) return;
 
+    // Reset posisi transform wrapper secara visual
+    const updateWrapperTransform = () => {
+        wrapper.style.transform = `translate3d(${canvasPanX}px, ${canvasPanY}px, 0px) scale(${currentCanvasScale})`;
+    };
+
     viewport.addEventListener('touchstart', (e) => {
-        if (e.touches.length === 2) {
+        canvasTouchHasMoved = false;
+
+        if (e.touches.length === 1) {
+            // SINGLE TOUCH: Panning (Jika scale > 1.0) ATAU Tap Detection
+            isCanvasDragging = true;
+            canvasTouchStartX = e.touches[0].clientX;
+            canvasTouchStartY = e.touches[0].clientY;
+            canvasLastPanX = canvasPanX;
+            canvasLastPanY = canvasPanY;
+        } 
+        else if (e.touches.length === 2) {
+            // MULTI TOUCH: Pinch Zoom
+            isCanvasDragging = false;
             canvasTouchStartDist = Math.hypot(
                 e.touches[0].clientX - e.touches[1].clientX,
                 e.touches[0].clientY - e.touches[1].clientY
@@ -1654,29 +1734,79 @@ function setupCanvasPinchZoom() {
     }, { passive: true });
 
     viewport.addEventListener('touchmove', (e) => {
-        if (e.touches.length === 2 && canvasTouchStartDist > 0) {
+        // Tandai bahwa ada pergeseran jari murni agar tidak terhitung sebagai tap biasa
+        canvasTouchHasMoved = true;
+
+        if (e.touches.length === 1 && isCanvasDragging && currentCanvasScale > 1.0) {
+            const deltaX = e.touches[0].clientX - canvasTouchStartX;
+            const deltaY = e.touches[0].clientY - canvasTouchStartY;
+            
+            // Lakukan pergeseran koordinat panning
+            canvasPanX = canvasLastPanX + deltaX;
+            canvasPanY = canvasLastPanY + deltaY;
+
+            // Batasi jarak seretan panning berdasarkan nilai zoom saat ini agar tidak terlempar keluar layar
+            const maxPanX = (viewport.clientWidth * (currentCanvasScale - 1)) / 2;
+            const maxPanY = (viewport.clientHeight * (currentCanvasScale - 1)) / 2;
+
+            canvasPanX = Math.max(-maxPanX, Math.min(maxPanX, canvasPanX));
+            canvasPanY = Math.max(-maxPanY, Math.min(maxPanY, canvasPanY));
+
+            updateWrapperTransform();
+        } 
+        else if (e.touches.length === 2 && canvasTouchStartDist > 0) {
             const dist = Math.hypot(
                 e.touches[0].clientX - e.touches[1].clientX,
                 e.touches[0].clientY - e.touches[1].clientY
             );
             
-            // Hitung persentase zoom & batasi min 1.0x dan max 3.5x agar tidak rusak visualnya
             const factor = dist / canvasTouchStartDist;
             let targetScale = canvasTouchStartScale * factor;
+            
+            // Berikan batas scaling zoom minimal 1.0x dan maksimal 3.5x
             targetScale = Math.max(1.0, Math.min(3.5, targetScale));
-
             currentCanvasScale = targetScale;
-            wrapper.style.transform = `scale(${currentCanvasScale})`;
+
+            if (currentCanvasScale <= 1.05) {
+                // Reset koordinat jika zoom mengecil
+                canvasPanX = 0;
+                canvasPanY = 0;
+            }
+
+            updateWrapperTransform();
         }
     }, { passive: true });
 
     viewport.addEventListener('touchend', (e) => {
-        if (e.touches.length < 2) {
+        isCanvasDragging = false;
+
+        if (e.touches.length === 0) {
             canvasTouchStartDist = 0;
-            // Jika scale kembali mengecil ke 1.0, reset transform agar posisinya pas di tengah
+
+            // Jika zoom dilepas di bawah 1.05x, otomatis sejajarkan penuh kembali ke tengah
             if (currentCanvasScale <= 1.05) {
                 currentCanvasScale = 1.0;
-                wrapper.style.transform = '';
+                canvasPanX = 0;
+                canvasPanY = 0;
+                wrapper.style.transition = 'transform 0.2s cubic-bezier(0.2, 0, 0, 1)';
+                updateWrapperTransform();
+                setTimeout(() => { wrapper.style.transition = ''; }, 200);
+            }
+        }
+
+        // --- SISTEM DETEKSI TAP-TO-TURN SISI KANAN/KIRI PDF ---
+        // Syarat: Touch tunggal, tidak sedang digeser (hasMoved = false), dan tidak sedang dizoom
+        if (!canvasTouchHasMoved && currentCanvasScale <= 1.05) {
+            const tapX = e.changedTouches[0].clientX;
+            const screenWidth = window.innerWidth;
+            const boundary = screenWidth / 3; // Bagi area layar menjadi 3 zona imajiner
+
+            if (tapX < boundary) {
+                // Tap di 1/3 bagian kiri layar -> Mundur halaman
+                window.prevCanvasPage();
+            } else if (tapX > (screenWidth - boundary)) {
+                // Tap di 1/3 bagian kanan layar -> Maju halaman
+                window.nextCanvasPage();
             }
         }
     }, { passive: true });
@@ -1687,11 +1817,16 @@ window._closeReaderAction = function(isFromHistory = false) {
     DOM.readView.classList.add('translate-y-full'); DOM.libView.style.transform = 'scale(1)';
     if(observer) observer.disconnect(); 
     
-    // Reset Canvas State
+    // Reset Canvas State penuh
     currentPdfDoc = null;
     currentCanvasPage = 1;
     currentCanvasScale = 1.0;
-    if (DOM.canvasWrapper) DOM.canvasWrapper.style.transform = '';
+    canvasPanX = 0;
+    canvasPanY = 0;
+    if (DOM.canvasWrapper) {
+        DOM.canvasWrapper.style.transform = '';
+        DOM.canvasWrapper.style.transition = '';
+    }
 
     if (activeBookId) {
         let bIdx = library.findIndex(b => b.id === activeBookId);
@@ -1989,7 +2124,6 @@ async function registerAnnotation(annotObj) {
 }
 
 window.openBookmarkModal = function(color) {
-    // Tombol bookmark floating di index.html (tapi di Mode Canvas, bookmark dibuat via panel kanan)
     if(currentSelection.nodeIdx === -1) return;
     
     activeNoteColor = color; 
@@ -2164,7 +2298,6 @@ function _renderBookmarkList(annotations) {
     const book = library.find(b => b.id === activeBookId);
     const isCanvas = book && book.pdfMode === 'canvas';
 
-    // Jika mode Canvas, tambahkan tombol Pintasan "Tambah Bookmark Halaman Ini" di baris paling atas
     if (isCanvas) {
         const d = i18n[wikiLang] || i18n['id'];
         const quickAddBtn = document.createElement('button');
