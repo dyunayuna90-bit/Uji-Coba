@@ -105,6 +105,7 @@ const i18n = {
         btnInfo: "Lihat Instruksi", btnDonate: "Traktir Kopi (Donasi)", btnClose: "Tutup",
         setData: "Data Aplikasi", btnBackup: "Backup Data", btnRestore: "Pulihkan",
         
+        // Teks Sistem Cek Update
         btnUpdate: "Cek Pembaruan",
         updateChecking: "Mengecek versi...",
         updateLatestTitle: "Sudah Versi Terbaru",
@@ -128,11 +129,13 @@ const i18n = {
 
         statTitle: "Statistik Membaca", statTotal: "Koleksi", statReading: "Dibaca", statCompleted: "Selesai", statNotes: "Catatan",
 
+        // Fitur Hapus Sampul
         btnClearCovers: "Hapus Semua Sampul (Biar Ringan)",
         clearCoversTitle: "Hapus Semua Sampul?",
         clearCoversDesc: "Semua gambar sampul akan dihapus permanen untuk menghemat memori. Buku dan progres bacaan tetap aman 100%. Lanjutkan?",
         clearCoversSuccess: "Semua sampul berhasil dihapus! Aplikasi sekarang jauh lebih ringan.",
 
+        // Opsi Backup Baru & Status Fallback
         bakModalTitle: "Pilih Jenis Backup", bakModalDesc: "Pilih format backup yang sesuai dengan kebutuhan lu:",
         bakJsonTitle: "JSON (Progres Saja)", bakJsonDesc: "Sangat ringan & cepat. Hanya menyimpan daftar buku, progres, dan catatan. Lu harus upload ulang file bukunya nanti sebelum direstore.",
         bakZipTitle: "ZIP (Paket Lengkap)", bakZipDesc: "Menyimpan seluruh teks buku, sampul, progres, dan catatan jadi satu file ZIP. Lebih besar, tapi bisa langsung dibaca setelah direstore.",
@@ -151,24 +154,33 @@ const i18n = {
         zipExtract: "Mengekstrak ZIP...", zipExtractWait: "Sedang membaca dan memulihkan isi buku dari file ZIP...",
         zipRestoreConfirm: "Ada {n} buku paket lengkap di file ZIP ini. Semuanya bakal dipulihkan ke library lu. Lanjut?",
 
-        // --- TERJEMAHAN DUAL-MODE PDF ---
+        // --- NEW TRANSLATIONS FOR PHASE 1: DUAL-MODE PDF ---
         scrollRakTitle: "Rak Mode Scroll",
-        canvasRakTitle: "Canvas Mode Books", // Tanpa tanda kurung penjelas
+        canvasRakTitle: "Canvas Mode Books",
         pdfModePromptTitle: "Pilih Mode Membaca",
         pdfModePromptDesc: "PDF ini memiliki teks yang dapat diekstrak secara dinamis. Silakan pilih mode membaca yang sesuai dengan kebutuhan Anda:",
         pdfModeBtnScroll: "Mode Scroll (Rekomendasi)",
         pdfModeBtnScrollDesc: "Gaya membaca mengalir, ukuran & jenis font bisa diubah bebas, mendukung text selection, highlight, dan Gemini AI.",
-        pdfModeBtnCanvas: "Mode Canvas",
+        pdfModeBtnCanvas: "Mode Canvas (Layout Asli)",
         pdfModeBtnCanvasDesc: "Menampilkan halaman asli dokumen seperti cetakan fisik. Mendukung zoom cubit dengan jari, tapi tidak mendukung ubah font, AI, dan text selection.",
-        pdfCanvasWarning: "Fitur tipografi, penjelasan AI, dan text selection dinonaktifkan pada Mode Canvas.",
+        pdfCanvasWarning: "Fitur tipografi (ukuran font, perataan, dll), AI penjelasan, dan text selection dinonaktifkan pada Mode Canvas.",
         pdfPageLabel: "Hal",
         pdfTotalPages: "Total Halaman",
+        pdfCanvasBadge: "PDF-CANVAS",
+        pdfScrollBadge: "PDF-SCROLL",
         txtPageGo: "Lompat ke Halaman:",
         btnGoPage: "Lompat",
         canvasNoText: "PDF ini terdeteksi sebagai pindaian gambar (scanned/OCR). Otomatis di-import ke Mode Canvas agar format visual aslinya tetap terjaga sempurna.",
 
-        // --- TAMBAHAN TOGGLE UI (PHASE 2) ---
-        setHideTitles: "Sembunyikan Judul Buku UI"
+        // --- PHASE 3 UI UPDATES & NEW MODALS ---
+        tocCanvasWarning: "Untuk mode canvas, daftar isi tidak tersedia.",
+        setHideTitles: "Sembunyikan Judul Buku di Rak",
+        uploadDuplicateTitle: "Buku Sudah Ada",
+        uploadDuplicateDesc: "Buku berikut sudah ada di rakmu. Tambahkan lagi (sebagai file baru) atau lewati saja?",
+        btnSkip: "Lewati",
+        btnAddAnyway: "Tambahkan Saja",
+        batchPdfTitle: "Pilih Mode PDF",
+        batchPdfDesc: "Pilih mode membaca untuk PDF yang baru diunggah:"
     },
     en: {
         libEmpty: "Library is Empty.", searchBooks: "Search books...", loadingDocs: "Reading Document...", 
@@ -199,6 +211,7 @@ const i18n = {
         btnInfo: "View Instructions", btnDonate: "Buy Me a Coffee", btnClose: "Close",
         setData: "App Data", btnBackup: "Backup Data", btnRestore: "Restore Data",
         
+        // Teks Sistem Cek Update
         btnUpdate: "Check for Updates",
         updateChecking: "Checking version...",
         updateLatestTitle: "Up to Date",
@@ -222,11 +235,13 @@ const i18n = {
 
         statTitle: "Statistics", statTotal: "Collection", statReading: "Reading", statCompleted: "Completed", statNotes: "Notes",
 
+        // Fitur Hapus Sampul
         btnClearCovers: "Clear All Covers (Save Memory)",
         clearCoversTitle: "Clear All Covers?",
         clearCoversDesc: "All book covers will be permanently deleted to save memory. Book text and reading progress are 100% safe. Continue?",
         clearCoversSuccess: "All covers successfully cleared! The app is now lighter.",
 
+        // Opsi Backup Baru & Status Fallback
         bakModalTitle: "Select Backup Type", bakModalDesc: "Choose the backup format you need:",
         bakJsonTitle: "JSON (Progress Only)", bakJsonDesc: "Very lightweight. Saves only your book list, progress, and notes. You must re-upload the original books later.",
         bakZipTitle: "ZIP (Full Backup)", bakZipDesc: "Complete package. Saves all book texts, covers, progress, and notes. Ready to read immediately after restore.",
@@ -245,24 +260,33 @@ const i18n = {
         zipExtract: "Extracting ZIP...", zipExtractWait: "Reading and restoring books from the ZIP file...",
         zipRestoreConfirm: "Found {n} complete books in this ZIP. They will be restored to your library. Continue?",
 
-        // --- TRANSLATIONS FOR DUAL-MODE PDF ---
+        // --- NEW TRANSLATIONS FOR PHASE 1: DUAL-MODE PDF ---
         scrollRakTitle: "Scroll Mode Books",
-        canvasRakTitle: "Canvas Mode Books", // Cleaned
+        canvasRakTitle: "Canvas Mode Books",
         pdfModePromptTitle: "Choose Reading Mode",
         pdfModePromptDesc: "This PDF contains extractable dynamic text. Please choose your preferred reading style:",
         pdfModeBtnScroll: "Scroll Mode (Recommended)",
         pdfModeBtnScrollDesc: "Flowing text style, adjustable font size/type, supports text selection, highlights, and Gemini AI.",
-        pdfModeBtnCanvas: "Canvas Mode",
+        pdfModeBtnCanvas: "Canvas Mode (Original Layout)",
         pdfModeBtnCanvasDesc: "Displays the original visual layout of the pages. Supports pinch-to-zoom gestures, but layout/fonts/AI are disabled.",
         pdfCanvasWarning: "Typography, AI definitions, and text selection are disabled in Canvas Mode.",
         pdfPageLabel: "Page",
         pdfTotalPages: "Total Pages",
+        pdfCanvasBadge: "PDF-CANVAS",
+        pdfScrollBadge: "PDF-SCROLL",
         txtPageGo: "Go to Page:",
         btnGoPage: "Jump",
         canvasNoText: "This PDF is detected as a scanned image document. Automatically imported to Canvas Mode to preserve its original visual layout.",
 
-        // --- NEW TOGGLE UI (PHASE 2) ---
-        setHideTitles: "Hide UI Book Titles"
+        // --- PHASE 3 UI UPDATES & NEW MODALS ---
+        tocCanvasWarning: "Table of contents is not available in canvas mode.",
+        setHideTitles: "Hide Book Titles in Shelf",
+        uploadDuplicateTitle: "Book Already Exists",
+        uploadDuplicateDesc: "The following book is already in your shelf. Add anyway (as new) or skip?",
+        btnSkip: "Skip",
+        btnAddAnyway: "Add Anyway",
+        batchPdfTitle: "Select PDF Mode",
+        batchPdfDesc: "Choose reading mode for the newly uploaded PDFs:"
     },
     es: {
         libEmpty: "La biblioteca está vacía.", searchBooks: "Buscar libros...", loadingDocs: "Leyendo documento...", 
@@ -293,6 +317,7 @@ const i18n = {
         btnInfo: "Ver instrucciones", btnDonate: "Cómprame un café", btnClose: "Cerrar",
         setData: "Datos de la app", btnBackup: "Copia de seguridad", btnRestore: "Restaurar datos",
         
+        // Teks Sistem Cek Update
         btnUpdate: "Buscar actualizaciones",
         updateChecking: "Comprobando versión...",
         updateLatestTitle: "Actualizado",
@@ -316,21 +341,23 @@ const i18n = {
 
         statTitle: "Estadísticas", statTotal: "Colección", statReading: "Leyendo", statCompleted: "Completados", statNotes: "Notas",
 
+        // Fitur Hapus Sampul
         btnClearCovers: "Borrar Todas las Portadas (Ahorrar Memoria)",
         clearCoversTitle: "¿Borrar Todas las Portadas?",
-        clearCoversDesc: "Todas las portadas se eliminarán permanentemente para ahorrar memoria. El texto y el progreso están 100% seguros. ¿Continuar?",
+        clearCoversDesc: "Todas las portadas se eliminan permanentemente para ahorrar memoria. El texto y progreso están 100% seguros. ¿Continuar?",
         clearCoversSuccess: "¡Portadas borradas! La aplicación ahora es más ligera.",
 
+        // Opsi Backup Baru & Status Fallback
         bakModalTitle: "Tipo de copia", bakModalDesc: "Elige el formato de copia de seguridad:",
         bakJsonTitle: "JSON (Solo progreso)", bakJsonDesc: "Muy ligero. Guarda solo la lista, progreso y notas. Debes volver a subir los libros originales después.",
-        bakZipTitle: "ZIP (Copia completa)", bakZipDesc: "Paquete completo. Guarda todos los textos, portadas, progreso y notas. Listo para leer al restaurar.",
-        bakZipWarn: "Aviso: El proceso ZIP requiere mucha memoria. Puede causar lag o bloqueos en dispositivos de gama baja.",
+        bakZipTitle: "ZIP (Copia completa)", bakZipDesc: "Paquete completo. Guarda textos, portadas, progreso y notas. Listo para leer al restaurar.",
+        bakZipWarn: "Aviso: El proceso ZIP requiere mucha memoria. Puede causar lag en dispositivos de gama baja.",
         bakCancel: "Cancelar",
         btnBakJson: "Copia JSON", btnBakZip: "Copia ZIP",
 
         bakLoadingTitle: "Procesando Copia",
         bakJsonLoading: "Preparando copia JSON ligera...",
-        bakZipLoading: "Preparando archivo ZIP... (No cerrar, esto lleva tiempo y esfuerzo del dispositivo)",
+        bakZipLoading: "Preparando archivo ZIP... (No cerrar, esto lleva tiempo)",
         bakSuccessTitle: "Copia Exitosa",
         bakSuccessJson: "Archivo JSON creado y listo para guardar. ¡Seguro!",
         bakSuccessZip: "Archivo ZIP compilado y listo para guardar. ¡Genial!",
@@ -339,23 +366,32 @@ const i18n = {
         zipExtract: "Extrayendo ZIP...", zipExtractWait: "Leyendo y restaurando libros del archivo ZIP...",
         zipRestoreConfirm: "Se encontraron {n} libros completos en este ZIP. Se restaurarán en tu biblioteca. ¿Continuar?",
 
-        // --- TRANSLATIONS FOR DUAL-MODE PDF ---
+        // --- NEW TRANSLATIONS FOR PHASE 1: DUAL-MODE PDF ---
         scrollRakTitle: "Libros Modo Desplazamiento",
-        canvasRakTitle: "Canvas Mode Books", // Cleaned
+        canvasRakTitle: "Canvas Mode Books",
         pdfModePromptTitle: "Elegir Modo de Lectura",
         pdfModePromptDesc: "Este PDF contiene texto dinámico extraíble. Elija su estilo de lectura preferido:",
         pdfModeBtnScroll: "Modo Desplazamiento (Recomendado)",
-        pdfModeBtnScrollDesc: "Texto fluido, fuentes y tamaños ajustables, admite selección de texto, resaltados y Gemini AI.",
-        pdfModeBtnCanvas: "Modo Canvas",
-        pdfModeBtnCanvasDesc: "Muestra el diseño visual original de las páginas. Admite gestos de pellizco para zoom, pero las fuentes y la IA están deshabilitadas.",
+        pdfModeBtnScrollDesc: "Texto fluido, fuentes ajustables, admite selección de texto, resaltados y Gemini AI.",
+        pdfModeBtnCanvas: "Modo Canvas (Diseño Original)",
+        pdfModeBtnCanvasDesc: "Muestra el diseño visual original de las páginas. Admite zoom, pero las fuentes y la IA están deshabilitadas.",
         pdfCanvasWarning: "Las opciones de tipografía, definiciones de IA y selección de texto están deshabilitadas en el Modo Canvas.",
         pdfPageLabel: "Pág",
         pdfTotalPages: "Total de Páginas",
+        pdfCanvasBadge: "PDF-CANVAS",
+        pdfScrollBadge: "PDF-SCROLL",
         txtPageGo: "Ir a la Página:",
         btnGoPage: "Saltar",
         canvasNoText: "Este PDF se detecta como un documento de imagen escaneada. Importado automáticamente al Modo Canvas para preservar su diseño visual original.",
 
-        // --- NEW TOGGLE UI (PHASE 2) ---
-        setHideTitles: "Ocultar Títulos de Libros UI"
+        // --- PHASE 3 UI UPDATES & NEW MODALS ---
+        tocCanvasWarning: "El índice no está disponible en el modo canvas.",
+        setHideTitles: "Ocultar Títulos de Libros en Estante",
+        uploadDuplicateTitle: "El Libro Ya Existe",
+        uploadDuplicateDesc: "El siguiente libro ya está en tu estante. ¿Añadir de todos modos (nuevo archivo) o saltar?",
+        btnSkip: "Saltar",
+        btnAddAnyway: "Añadir de Todos Modos",
+        batchPdfTitle: "Seleccionar Modo PDF",
+        batchPdfDesc: "Elige el modo de lectura para los PDFs recién subidos:"
     }
 };
