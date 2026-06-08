@@ -103,7 +103,7 @@ mark.search-hl { background-color: var(--md-sys-color-primary) !important; color
 ::-webkit-scrollbar { width: 0px; }
 
 /* ===================================================================
-   STYLE BARU UNTUK DUAL-MODE PDF (PHASE 3 & 4)
+   STYLE BARU UNTUK DUAL-MODE PDF (PHASE 3 & PERBAIKAN)
    =================================================================== */
 
 /* Viewport Zoom & Container Canvas PDF.js murni */
@@ -111,70 +111,106 @@ mark.search-hl { background-color: var(--md-sys-color-primary) !important; color
     -webkit-overflow-scrolling: touch;
     overscroll-behavior: contain;
     display: flex;
-    align-items: center; /* DIUBAH: Dari start ke center agar persis di tengah */
-    justify-content: center;
-    min-height: 100vh; /* TAMBAHAN: Agar area flex setinggi layar penuh */
+    align-items: center; /* Diubah agar kotak kanvas ada tepat di tengah vertikal */
+    justify-content: center; /* Tepat di tengah horizontal */
+    width: 100%;
+    height: 100%;
 }
 
-/* Wrapper Canvas dengan transisi scaling untuk pinch-to-zoom */
+/* Wrapper Canvas dengan transisi scaling untuk pinch-to-zoom dan panning */
 #canvas-wrapper {
     touch-action: none; /* Cegah gesture browser native saat pinch zoom */
     transform-origin: center center;
     transition: transform 0.1s ease-out;
-    max-width: 100%;
+    width: 100%; /* Lebar penuh supaya gak ada sisa kanan-kiri yang aneh */
+    display: flex;
+    justify-content: center;
+    align-items: center;
 }
 
 /* Halaman PDF Canvas murni */
 #pdf-canvas {
     background-color: #FFFFFF;
     transition: filter 0.3s ease;
-    border: none !important; /* Hapus border bawaan/putih tipis */
+    width: 100% !important; /* Paksa width penuh, height menyesuaikan aspek rasio PDF */
+    height: auto !important;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08); /* Shadow halus untuk light mode */
+    border: none !important;
     outline: none !important;
-    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15) !important;
 }
 
 /* Efek Dark Mode murni untuk Mode Canvas */
 .dark #pdf-canvas {
-    filter: invert(0.9) hue-rotate(180deg);
-    border: none !important; /* Pastikan tidak ada border di dark mode */
-    box-shadow: 0 4px 30px rgba(0, 0, 0, 0.8) !important; /* Shadow disesuaikan */
-}
-
-/* ===================================================================
-   HAPUS BLUR & BORDER PUTIH DI CAPSULE / BOTTOM BAR
-   =================================================================== */
-
-/* Kustomisasi paksa ke warna solid, tanpa efek kaca (blur) */
-#reader-bottom-bar, 
-#canvas-page-controller, 
-.capsule-group, 
-.search-capsule {
-    backdrop-filter: none !important;
-    -webkit-backdrop-filter: none !important;
-    background-color: var(--md-sys-color-surface) !important; /* Warna Solid */
-    border: none !important; /* Menghapus border putih tipis */
-    box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.05) !important;
-}
-
-/* Khusus Dark Mode: Pastikan solid dan bayangan pas */
-.dark #reader-bottom-bar, 
-.dark #canvas-page-controller, 
-.dark .capsule-group, 
-.dark .search-capsule {
-    background-color: var(--md-sys-color-surface) !important;
+    filter: invert(0.92) hue-rotate(180deg);
+    box-shadow: none !important; /* Hapus border/glow putih di dark mode */
     border: none !important;
-    box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.5) !important;
 }
 
-/* Mencegah konflik warna tombol aktif di capsule yang harusnya warna primary */
-.capsule-btn.nav-active {
-    background-color: var(--md-sys-color-primary) !important;
-    color: var(--md-sys-color-on-primary) !important;
+/* AMOLED Mode khusus untuk Canvas agar lebih pekat */
+.dark[data-theme="amoled"] #pdf-canvas,
+html[data-amoled="true"] .dark #pdf-canvas {
+    filter: invert(1) hue-rotate(180deg) contrast(1.1);
+}
+
+/* Efek redup untuk kelompok pengaturan yang dinonaktifkan di Mode Canvas */
+.ui-disabled-group {
+    opacity: 0.4 !important;
+    pointer-events: none !important;
+    user-select: none !important;
+    transition: opacity 0.3s ease;
+}
+
+/* Kustomisasi gaya navigasi bottom-controller pada Canvas Mode */
+#canvas-page-controller {
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15) !important;
+    bottom: 90px !important; /* Di posisikan kebawahan, persis diatas bar utama */
+    top: auto !important; /* Hapus setting top default agar nurut bottom */
+    background-color: var(--md-sys-color-surface) !important; /* Warna solid, bye blur */
+    backdrop-filter: none !important; 
+    -webkit-backdrop-filter: none !important;
+    border: none !important; /* Hilangkan garis putih tipis */
+}
+
+/* Capsule dark mode */
+.dark #canvas-page-controller {
+    background-color: var(--md-sys-color-surface-variant) !important;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5) !important;
+    border: none !important;
 }
 
 /* Badge Mode di pojok atas Cover Buku */
 .book-badge {
     text-shadow: 0 1px 2px rgba(0,0,0,0.5);
     box-shadow: 0 2px 6px rgba(0,0,0,0.2);
-    border: none !important;
 }
+
+/* ===================================================================
+   TAMBAHAN CLASS TOGGLE UNTUK MENYEMBUNYIKAN JUDUL BUKU
+   =================================================================== */
+body.hide-book-titles [id^="title-"],
+body.hide-book-titles [id^="pct-"],
+body.hide-book-titles [id^="bar-"],
+body.hide-book-titles [id^="book-icon-"],
+body.hide-book-titles .bg-black\/20,
+body.hide-book-titles .dark\:bg-white\/20 {
+    display: none !important;
+}
+
+body.hide-book-titles .card-morph > div:last-child {
+    justify-content: center !important;
+    align-items: center !important;
+    height: 100% !important;
+    margin-top: 0 !important;
+}
+
+body.hide-book-titles .card-morph [id^="top-icons-"] {
+    justify-content: center !important;
+    margin-bottom: auto;
+    margin-top: auto;
+}
+
+body.hide-book-titles .book-badge {
+    font-size: 0.75rem;
+    padding: 6px 12px;
+}
+
