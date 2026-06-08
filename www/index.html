@@ -183,7 +183,7 @@
             </div>
 
             <!-- MODE CANVAS (Layout Asli) -->
-            <div id="canvas-container" class="hidden absolute inset-0 overflow-hidden w-full h-full flex items-center justify-center bg-m3-bg select-none" style="padding-top: 60px; padding-bottom: 80px;">
+            <div id="canvas-container" class="hidden absolute inset-0 overflow-hidden w-full h-full flex items-center justify-center bg-m3-bg select-none" style="padding-top: env(safe-area-inset-top, 0px); padding-bottom: 120px;">
                 <div id="canvas-zoom-viewport" class="w-full h-full overflow-hidden relative">
                     <!-- Penampung Render Canvas PDF.js murni -->
                     <div id="canvas-wrapper" class="absolute top-0 left-0 shadow-lg bg-white" style="transform-origin: 0 0;">
@@ -192,7 +192,7 @@
                 </div>
                 
                 <!-- CANVAS PAGE CONTROLLER (Next / Prev / Jump) -->
-                <div id="canvas-page-controller" class="absolute bottom-4 left-1/2 -translate-x-1/2 bg-m3-surfaceVariant/95 backdrop-blur-md text-m3-onSurfaceVariant px-4 py-2.5 rounded-full shadow-lg z-30 flex items-center gap-3 border border-m3-surfaceVariant/20 transition-transform duration-300">
+                <div id="canvas-page-controller" class="absolute left-1/2 -translate-x-1/2 bg-m3-surfaceVariant/95 backdrop-blur-md text-m3-onSurfaceVariant px-4 py-2.5 rounded-full shadow-lg z-30 flex items-center gap-3 border border-m3-surfaceVariant/20 transition-transform duration-300" style="bottom: calc(env(safe-area-inset-bottom, 0px) + 8px);">
                     <button onclick="window.prevCanvasPage()" class="w-9 h-9 rounded-full hover:bg-m3-surface flex items-center justify-center transition-colors btn-morph">
                         <i data-lucide="chevron-left" class="w-5 h-5"></i>
                     </button>
