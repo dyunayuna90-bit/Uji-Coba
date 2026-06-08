@@ -59,9 +59,7 @@ document.addEventListener("DOMContentLoaded", () => {
                 // Jika buku adalah Mode Canvas, hentikan fitur pencarian teks dinamis
                 if (book.pdfMode === 'canvas') {
                     if(searchResEl) {
-                        const lang = typeof wikiLang !== 'undefined' ? wikiLang : 'id';
-                        const d = (typeof i18n !== 'undefined' ? (i18n[lang] || i18n['id']) : {});
-                        searchResEl.innerHTML = `<div class="p-4 text-center text-xs opacity-60 font-bold">${d.pdfCanvasWarning || "Fitur pencarian tidak tersedia di Mode Canvas"}</div>`;
+                        searchResEl.innerHTML = `<div class="p-4 text-center text-xs opacity-60 font-bold">${i18n[wikiLang].pdfCanvasWarning}</div>`;
                         searchResEl.classList.remove('hidden');
                     }
                     return;
@@ -102,170 +100,208 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 });
 
-// Helper Function: Menampilkan dialog berbasis Promise & memonitor gesture swipe dismiss
-function showDialogAsync(title, messageHtml, iconStr, btnCancelTxt, btnConfirmTxt) {
-    return new Promise((resolve) => {
-        let isResolved = false;
-        
-        // Observer untuk deteksi swipe/hardware back (modal di-hidden dari luar kode)
-        const dialogEl = document.getElementById('custom-dialog');
-        const observer = new MutationObserver((mutations) => {
-            mutations.forEach((mutation) => {
-                if (mutation.type === 'attributes' && mutation.attributeName === 'class') {
-                    if (dialogEl.classList.contains('hidden') && !isResolved) {
-                        isResolved = true;
-                        observer.disconnect();
-                        resolve(null); // Return null jika dibatalkan secara sepihak
-                    }
-                }
-            });
-        });
-        observer.observe(dialogEl, { attributes: true });
-
-        showDialog(title, messageHtml, iconStr, [
-            { 
-                text: btnCancelTxt, 
-                primary: false, 
-                action: () => { 
-                    isResolved = true; 
-                    observer.disconnect(); 
-                    window.closeDialog(); 
-                    resolve(null); 
-                } 
-            },
-            { 
-                text: btnConfirmTxt, 
-                primary: true, 
-                action: () => { 
-                    isResolved = true; 
-                    observer.disconnect(); 
-                    resolve(true); // Biarkan parent yg panggil closeDialog jika sukses validasi
-                } 
-            }
-        ]);
-    });
-}
-
-// 1b. PROSES BANYAK FILE SEKALIGUS (Multi-select, Duplikat, & Pilihan Mode Terpusat)
+// 1b. PROSES BANYAK FILE SEKALIGUS (multi-select atau folder scan)
 let _importQueue = [];
 let _importRunning = false;
 let _importTotalQueued = 0;
 let _importDoneCount = 0;
 
-async function processMultipleFiles(selectedFiles) {
+async function processMultipleFiles(files) {
     const lang = typeof wikiLang !== 'undefined' ? wikiLang : 'id';
-    const dict = i18n[lang] || i18n['id'];
+    const d = typeof i18n !== 'undefined' ? (i18n[lang] || i18n['id']) : {};
     
-    // --- STEP 1: CEK DUPLIKAT ---
-    let filesToProcess = [];
-    let duplicateNames = [];
+    // Tahap 1: Cek Duplikat Buku di Library
+    let duplicates = [];
+    let newFiles = [];
     
-    for (const f of selectedFiles) {
-        const title = f.name.replace(/\.[^/.]+$/, "");
-        const isExist = library.some(b => b.title === title);
-        if (isExist) {
-            duplicateNames.push(f.name);
-        }
-        filesToProcess.push(f);
-    }
-
-    if (duplicateNames.length > 0) {
-        let dupMsg = lang === 'id' 
-            ? `Ditemukan <b>${duplicateNames.length}</b> buku yang sudah ada di rak Anda. Lanjutkan untuk tetap menambahkannya (ganda) atau lewati?`
-            : (lang === 'es' ? `Se encontraron <b>${duplicateNames.length}</b> libros que ya existen. ¿Continuar añadiéndolos (duplicados) o omitir?` 
-                             : `Found <b>${duplicateNames.length}</b> books that already exist. Continue to add them (duplicates) or skip?`);
+    for(let f of files) {
+        const bookId = btoa(unescape(encodeURIComponent(f.name))).replace(/[^a-zA-Z0-9]/g, '').substring(0, 32);
+        const existingIndex = typeof library !== 'undefined' ? library.findIndex(b => b.id === bookId) : -1;
         
-        let btnSkip = lang === 'id' ? "Lewati" : (lang === 'es' ? "Omitir" : "Skip");
-        let btnAdd = lang === 'id' ? "Tambahkan" : (lang === 'es' ? "Añadir" : "Add All");
-
-        const dupResult = await showDialogAsync("Buku Duplikat", `<p class="text-sm opacity-80 text-center">${dupMsg}</p>`, "copy", btnSkip, btnAdd);
-        
-        if (dupResult === null) {
-            // User milih Skip atau gesture swipe close
-            window.closeDialog();
-            filesToProcess = filesToProcess.filter(f => !duplicateNames.includes(f.name));
-            if (filesToProcess.length === 0) return; // Batal semua
+        if(existingIndex > -1) {
+            duplicates.push({file: f, id: bookId, title: f.name.replace(/\.[^/.]+$/, "")});
         } else {
-            // User milih Tambah, lanjut dengan semua file
-            window.closeDialog();
+            newFiles.push(f);
         }
     }
-
-    // --- STEP 2: CEK FILE PDF & MODAL PILIHAN MODE BERSAMA ---
-    const pdfFiles = filesToProcess.filter(f => f.name.toLowerCase().endsWith('.pdf'));
-    const nonPdfCount = filesToProcess.length - pdfFiles.length;
-    let pdfModeSelections = {}; // Format: { "filename.pdf": "scroll" atau "canvas" }
-
-    if (pdfFiles.length > 0) {
-        let modalHtml = `<div class="max-h-[60vh] overflow-y-auto px-1 hide-scroll text-left">`;
-        
-        let descText = lang === 'id' 
-            ? "Pilih mode membaca untuk dokumen PDF berikut:" 
-            : (lang === 'es' ? "Elija el modo de lectura para los siguientes PDF:" : "Choose reading mode for these PDFs:");
-        
-        modalHtml += `<p class="text-xs font-bold opacity-60 mb-3">${descText}</p>`;
-        
-        pdfFiles.forEach((pdf, idx) => {
-            const shortName = pdf.name.length > 30 ? pdf.name.substring(0, 27) + '...' : pdf.name;
-            modalHtml += `
-            <div class="mb-4 p-3 bg-m3-surfaceVariant rounded-2xl">
-                <div class="text-sm font-bold text-m3-onSurfaceVariant mb-2 line-clamp-1">${shortName}</div>
-                <select id="pdf-mode-sel-${idx}" class="w-full bg-m3-surface text-m3-onSurface text-xs p-2 rounded-xl outline-none font-bold border border-transparent focus:border-m3-primary">
-                    <option value="scroll">${dict.pdfModeBtnScroll || "Mode Scroll (Rekomendasi)"}</option>
-                    <option value="canvas">${dict.pdfModeBtnCanvas || "Mode Canvas (Layout Asli)"}</option>
-                </select>
-            </div>`;
+    
+    let filesToProcess = [...newFiles];
+    
+    // Tahap 2: Modal Konfirmasi Duplikat
+    if(duplicates.length > 0) {
+        let dupListHtml = `<div class="max-h-40 overflow-y-auto mt-2 mb-2 bg-m3-surfaceVariant/30 rounded-xl p-2 text-left">`;
+        duplicates.forEach(dup => {
+            dupListHtml += `<div class="text-xs text-m3-onSurface opacity-80 mb-1 truncate whitespace-nowrap overflow-hidden text-ellipsis">- ${dup.title}</div>`;
         });
+        dupListHtml += `</div>`;
+        
+        const action = await new Promise((resolve) => {
+            let isResolved = false;
+            // Interval pengaman: jika user swipe kebawah untuk tutup modal, anggap Batal!
+            const checkHidden = setInterval(() => {
+                if (document.getElementById('custom-dialog').classList.contains('hidden')) {
+                    clearInterval(checkHidden);
+                    if (!isResolved) resolve('CANCEL');
+                }
+            }, 300);
 
-        if (nonPdfCount > 0) {
-            let nonPdfMsg = lang === 'id' ? `+ ${nonPdfCount} file Teks/EPUB (Otomatis diproses)` : `+ ${nonPdfCount} Text/EPUB files (Auto processed)`;
-            modalHtml += `<div class="text-[10px] font-bold opacity-50 text-center mt-2">${nonPdfMsg}</div>`;
+            window.showDialog(
+                d.uploadDuplicateTitle || "Buku Sudah Ada",
+                (d.uploadDuplicateDesc || "Buku berikut sudah ada di rakmu. Tambahkan lagi (sebagai file baru) atau lewati saja?") + dupListHtml,
+                "copy",
+                [
+                    { text: d.btnSkip || "Lewati", primary: false, action: () => { isResolved = true; window.closeDialog(); resolve('SKIP'); } },
+                    { text: d.btnAddAnyway || "Tambahkan Saja", primary: true, action: () => { isResolved = true; window.closeDialog(); resolve('ADD'); } }
+                ]
+            );
+        });
+        
+        if (action === 'CANCEL') return;
+        if (action === 'ADD') {
+            duplicates.forEach(dup => {
+                dup.file._isDuplicate = true; // Tandai agar ID di-generate unik nantinya
+                filesToProcess.push(dup.file);
+            });
         }
         
-        modalHtml += `</div>`;
+        // Jeda bentar agar animasi tutup dialog selesai
+        await new Promise(r => setTimeout(r, 350));
+    }
+    
+    if (filesToProcess.length === 0) return;
+    
+    // Tahap 3: Pre-flight scan (Mendeteksi file PDF)
+    const hasPdf = filesToProcess.some(f => f.name.toLowerCase().endsWith('.pdf'));
+    let fileModes = []; 
+    
+    if (hasPdf) {
+        // Tampilkan animasi loading analisa
+        DOM.load.classList.remove('hidden');
+        if(DOM.loadTxt) DOM.loadTxt.textContent = "Menganalisa dokumen...";
+        DOM.loadBar.style.width = '100%';
+        if(DOM.loadPct) DOM.loadPct.textContent = '...';
+        
+        for (let f of filesToProcess) {
+            const ext = f.name.split('.').pop().toLowerCase();
+            const title = f.name.replace(/\.[^/.]+$/, "");
+            
+            if (ext === 'pdf') {
+                let isScannedOrOcr = false;
+                let numPages = 1;
+                try {
+                    const arrayBuffer = await f.arrayBuffer();
+                    const pdf = await pdfjsLib.getDocument({ data: arrayBuffer.slice(0) }).promise;
+                    numPages = pdf.numPages;
+                    let textScanSample = "";
+                    const scanLimit = Math.min(numPages, 2);
+                    for (let p = 1; p <= scanLimit; p++) {
+                        try {
+                            const page = await pdf.getPage(p);
+                            const content = await page.getTextContent();
+                            content.items.forEach(item => { if (item.str) textScanSample += item.str.trim(); });
+                        } catch (e) {}
+                    }
+                    const cleanedScanText = textScanSample.replace(/\s+/g, '').trim();
+                    isScannedOrOcr = cleanedScanText.length < 30;
+                } catch(err) { console.error("Gagal pre-scan PDF", err); }
+                
+                fileModes.push({
+                    file: f, title: title, ext: ext,
+                    type: isScannedOrOcr ? 'pdf-canvas-forced' : 'pdf-choice',
+                    pdfNumPages: numPages
+                });
+            } else {
+                fileModes.push({ file: f, title: title, ext: ext, type: 'auto' });
+            }
+        }
+        
+        DOM.load.classList.add('hidden');
+        
+        // Tahap 4: Modal Batch Options (Mode Pemilihan Canvas/Scroll)
+        let batchHtml = `<div class="max-h-[50vh] overflow-y-auto mt-2 mb-2 p-1 text-left flex flex-col gap-3">`;
+        const strScroll = d.pdfModeBtnScroll || "Mode Scroll (Teks)";
+        const strCanvas = d.pdfModeBtnCanvas || "Mode Canvas (Asli)";
+        
+        fileModes.forEach((m, idx) => {
+            const shortTitle = m.title.length > 30 ? m.title.substring(0, 30) + '...' : m.title;
+            let controlHtml = '';
+            
+            if (m.type === 'auto') {
+                controlHtml = `<span class="text-[10px] bg-m3-surfaceVariant text-m3-onSurfaceVariant px-2 py-1 rounded-md font-bold opacity-70">Otomatis (${m.ext.toUpperCase()})</span>`;
+            } else if (m.type === 'pdf-canvas-forced') {
+                controlHtml = `<span class="text-[10px] bg-m3-secondaryContainer text-m3-onSecondaryContainer px-2 py-1 rounded-md font-bold">Canvas (Pindaian)</span>`;
+            } else if (m.type === 'pdf-choice') {
+                controlHtml = `
+                    <select id="mode-select-${idx}" class="text-xs bg-m3-primaryContainer text-m3-onPrimaryContainer px-2 py-1 rounded-md font-bold border-none outline-none">
+                        <option value="scroll">${strScroll}</option>
+                        <option value="canvas">${strCanvas}</option>
+                    </select>
+                `;
+            }
+            
+            batchHtml += `
+                <div class="flex flex-col border-b border-m3-surfaceVariant/50 pb-2">
+                    <span class="text-xs font-bold text-m3-onSurface mb-1 truncate">${shortTitle}</span>
+                    <div class="flex justify-between items-center">
+                        <span class="text-[10px] opacity-60 uppercase">${m.ext}</span>
+                        ${controlHtml}
+                    </div>
+                </div>
+            `;
+        });
+        batchHtml += `</div>`;
+        
+        const batchAction = await new Promise((resolve) => {
+            let isResolved = false;
+            // Deteksi salah gesture/swipe untuk membatalkan seluruh proses
+            const checkHidden = setInterval(() => {
+                if (document.getElementById('custom-dialog').classList.contains('hidden')) {
+                    clearInterval(checkHidden);
+                    if (!isResolved) resolve('CANCEL');
+                }
+            }, 300);
 
-        let btnCancel = dict.cancel || "Batal";
-        let btnImport = lang === 'id' ? "Mulai Import" : (lang === 'es' ? "Importar" : "Start Import");
-
-        const modeResult = await showDialogAsync(
-            lang === 'id' ? "Pengaturan PDF" : "PDF Settings", 
-            modalHtml, 
-            "settings", 
-            btnCancel, 
-            btnImport
-        );
-
-        if (modeResult === null) {
-            // Dibatalkan (klik batal atau swipe gesture)
-            window.closeDialog();
-            return; 
-        } else {
-            // User menekan "Mulai Import", ekstrak nilai select
-            pdfFiles.forEach((pdf, idx) => {
-                const sel = document.getElementById(`pdf-mode-sel-${idx}`);
-                if (sel) pdfModeSelections[pdf.name] = sel.value;
+            window.showDialog(
+                d.batchPdfTitle || "Pilih Mode PDF",
+                (d.batchPdfDesc || "Pilih mode membaca untuk PDF yang baru diunggah:") + batchHtml,
+                "settings",
+                [
+                    { text: d.cancel || "Batal", primary: false, action: () => { isResolved = true; window.closeDialog(); resolve('CANCEL'); } },
+                    { text: "Mulai Proses", primary: true, action: () => { 
+                        fileModes.forEach((m, idx) => {
+                            if (m.type === 'pdf-choice') {
+                                const sel = document.getElementById(`mode-select-${idx}`);
+                                if (sel) m.finalMode = sel.value;
+                            } else if (m.type === 'pdf-canvas-forced') {
+                                m.finalMode = 'canvas';
+                            }
+                        });
+                        isResolved = true; window.closeDialog(); resolve('START'); 
+                    } }
+                ]
+            );
+        });
+        
+        if (batchAction === 'CANCEL') return;
+        await new Promise(r => setTimeout(r, 350));
+        
+    } else {
+        // Jika tidak ada PDF sama sekali, langsung saja
+        for (let f of filesToProcess) {
+            fileModes.push({
+                file: f, title: f.name.replace(/\.[^/.]+$/, ""), ext: f.name.split('.').pop().toLowerCase(), type: 'auto'
             });
-            window.closeDialog();
         }
     }
-
-    // --- STEP 3: EKSEKUSI ANTRIAN ---
     
-    // Trik UI: Tarik user ke halaman teratas supaya kelihatan status loading card-nya
-    const mainContentArea = document.getElementById('library-content-scroll') || document.body;
-    mainContentArea.scrollTo({ top: 0, behavior: 'smooth' });
-
-    for (const f of filesToProcess) {
-        // Tempelkan properti tambahan ke object file agar bisa dibaca di handler antrian
-        if (pdfModeSelections[f.name]) {
-            f._forcedPdfMode = pdfModeSelections[f.name];
-        }
-        _importQueue.push(f);
-    }
+    // Tahap 5: Eksekusi Queue Upload & Tarik layar ke atas
+    const libScroll = document.getElementById('library-content-scroll');
+    if (libScroll) libScroll.scrollTo({ top: 0, behavior: 'smooth' });
+    else window.scrollTo({ top: 0, behavior: 'smooth' });
     
-    _importTotalQueued += filesToProcess.length;
-
-    // Jika sudah ada runner aktif, cukup tambah ke queue — runner terus drain
+    for (const m of fileModes) { _importQueue.push(m); }
+    _importTotalQueued += fileModes.length;
+    
     if (_importRunning) {
         if (DOM.loadTxt) {
             const currentLabel = DOM.loadTxt.textContent;
@@ -274,78 +310,67 @@ async function processMultipleFiles(selectedFiles) {
         }
         return;
     }
-
-    // Mulai runner
+    
     _importRunning = true;
     _importDoneCount = 0;
     const failed = [];
     let imported = 0;
 
-    // Pastikan card terlihat dan tidak di-hide oleh timeout lama
     DOM.load.classList.remove('hidden');
 
-    // Helper potong nama biar ga berantakan UI nya
-    const truncateName = (str, n) => str.length > n ? str.substr(0, n-1) + '...' : str;
-
     while (_importQueue.length > 0) {
-        const file = _importQueue.shift();
-        const originalFilename = file.name;
-        const ext = originalFilename.split('.').pop().toLowerCase();
-        const bookTitle = originalFilename.replace(/\.[^/.]+$/, "");
-        
-        const shortTitle = truncateName(bookTitle, 35); // Potong nama jika kepanjangan
-
+        const m = _importQueue.shift();
+        const ext = m.ext;
+        let bookTitle = m.title;
         const currentIdx = _importDoneCount + 1;
         const totalNow = _importTotalQueued;
+        
+        // Singkat nama file agar tidak beleber di UI Loading
+        const displayTitle = bookTitle.length > 25 ? bookTitle.substring(0, 25) + "..." : bookTitle;
+        
         DOM.loadBar.style.width = '0%';
-        DOM.loadPct.textContent = '0%';
-        if (DOM.loadTxt) DOM.loadTxt.textContent = `(${currentIdx}/${totalNow}) ${shortTitle}`;
+        if(DOM.loadPct) DOM.loadPct.textContent = '0%';
+        if (DOM.loadTxt) DOM.loadTxt.textContent = `(${currentIdx}/${totalNow}) ${displayTitle}`;
 
         try {
             if (ext === 'pdf') {
-                // Gunakan mode paksa (forcedPdfMode) jika sudah dipilih via modal di atas
-                await handlePdf(file, bookTitle, file._forcedPdfMode);
+                await processPdfDirect(m.file, bookTitle, m.finalMode, m.pdfNumPages);
+            } else if (ext === 'epub') {
+                await handleEpub(m.file, bookTitle);
+            } else if (ext === 'txt') {
+                await handleTxt(m.file, bookTitle);
+            } else if (ext === 'md') {
+                await handleMd(m.file, bookTitle);
             }
-            else if (ext === 'epub') await handleEpub(file, bookTitle);
-            else if (ext === 'txt') await handleTxt(file, bookTitle);
-            else if (ext === 'md') await handleMd(file, bookTitle);
-            else { _importDoneCount++; continue; }
             imported++;
         } catch (err) {
             console.error(`Gagal import: ${bookTitle}`, err);
-            failed.push(bookTitle);
+            failed.push(displayTitle);
         }
         _importDoneCount++;
 
-        // Update label total secara real-time setelah setiap buku selesai
         const nextIdx = _importDoneCount + 1;
-        const nextTotal = _importTotalQueued;
         if (_importQueue.length > 0 && DOM.loadTxt) {
-            const nextFile = _importQueue[0];
-            const nextTitle = nextFile.name.replace(/\.[^/.]+$/, "");
-            DOM.loadTxt.textContent = `(${nextIdx}/${nextTotal}) ${truncateName(nextTitle, 35)}`;
+            const nextM = _importQueue[0];
+            const nextTitle = nextM.title.length > 25 ? nextM.title.substring(0, 25) + "..." : nextM.title;
+            DOM.loadTxt.textContent = `(${nextIdx}/${totalNow}) ${nextTitle}`;
         }
     }
 
-    // Semua selesai — reset state
     _importRunning = false;
     const grandTotal = _importTotalQueued;
     _importTotalQueued = 0;
     _importDoneCount = 0;
 
     DOM.loadBar.style.width = '100%';
-    DOM.loadPct.textContent = '100%';
-    // Hide card dengan delay supaya user sempat lihat 100%
+    if(DOM.loadPct) DOM.loadPct.textContent = '100%';
     setTimeout(() => { DOM.load.classList.add('hidden'); }, 900);
-    if (DOM.loadTxt) DOM.loadTxt.textContent = dict.loadingDocs || 'Membaca Dokumen...';
-
-    let summary = lang === 'id' ? `${imported} buku berhasil diimpor.` : `${imported} books imported successfully.`;
-    if (failed.length > 0) {
-        summary += lang === 'id' ? `\n${failed.length} gagal: ${failed.join(', ')}` : `\n${failed.length} failed.`;
-    }
+    if (DOM.loadTxt) DOM.loadTxt.textContent = 'Reading Document...';
 
     if (grandTotal > 1 || failed.length > 0) {
-        showDialog(lang === 'id' ? "Selesai" : "Done", summary, "check-circle", [{ text: "Oke", primary: true }]);
+        let summary = `${imported} buku berhasil diimpor.`;
+        if (failed.length > 0) summary += `\n${failed.length} gagal: ${failed.join(', ')}`;
+        showDialog("Selesai Import", summary, "check-circle", [{ text: "Oke", primary: true }]);
     }
 }
 
@@ -372,20 +397,31 @@ async function handleTxt(file, bookTitle) {
 
     if (parsedNodes.length === 0) throw new Error("File TXT kosong atau tidak bisa dibaca.");
 
-    // ID Unik (pakai timestamp + hash nama biar bisa duplikat kalau mau)
-    const bookId = btoa(unescape(encodeURIComponent(file.name))).replace(/[^a-zA-Z0-9]/g, '').substring(0, 20) + '_' + Date.now();
-    
+    // ID PERMANEN + CEK DUPLIKAT
+    let bookId = btoa(unescape(encodeURIComponent(file.name))).replace(/[^a-zA-Z0-9]/g, '').substring(0, 32);
+    if (file._isDuplicate) {
+        bookId = bookId.substring(0, 20) + Date.now().toString(36);
+        bookTitle = bookTitle + " (Copy)";
+    }
+    const existingIndex = library.findIndex(b => b.id === bookId);
+
+    // OPTIMASI DEWA: Langsung mutilasi data di sumber — teks ke laci sendiri, library cuma KTP
     await localforage.setItem('content_' + bookId, parsedNodes);
 
-    library.push({
-        id: bookId,
-        type: 'txt',
-        title: bookTitle,
-        pages: Math.ceil(parsedNodes.length / 10),
-        progressPct: 0,
-        lastReadId: null,
-        shape: 'square'
-    });
+    if (existingIndex === -1) {
+        library.push({
+            id: bookId,
+            type: 'txt',
+            title: bookTitle,
+            pages: Math.ceil(parsedNodes.length / 10),
+            progressPct: 0,
+            lastReadId: null,
+            shape: 'square'
+        });
+    } else {
+        library[existingIndex].pages = Math.ceil(parsedNodes.length / 10);
+        library[existingIndex].title = bookTitle;
+    }
 
     await localforage.setItem('pdf_epub_master', library);
     renderLibrary();
@@ -436,19 +472,31 @@ async function handleMd(file, bookTitle) {
 
     if (parsedNodes.length === 0) throw new Error("File MD kosong atau tidak valid.");
 
-    const bookId = btoa(unescape(encodeURIComponent(file.name))).replace(/[^a-zA-Z0-9]/g, '').substring(0, 20) + '_' + Date.now();
+    // ID PERMANEN + CEK DUPLIKAT
+    let bookId = btoa(unescape(encodeURIComponent(file.name))).replace(/[^a-zA-Z0-9]/g, '').substring(0, 32);
+    if (file._isDuplicate) {
+        bookId = bookId.substring(0, 20) + Date.now().toString(36);
+        bookTitle = bookTitle + " (Copy)";
+    }
+    const existingIndex = library.findIndex(b => b.id === bookId);
 
+    // OPTIMASI DEWA: Langsung mutilasi data di sumber — teks ke laci sendiri, library cuma KTP
     await localforage.setItem('content_' + bookId, parsedNodes);
 
-    library.push({
-        id: bookId,
-        type: 'md',
-        title: bookTitle,
-        pages: Math.ceil(parsedNodes.length / 10),
-        progressPct: 0,
-        lastReadId: null,
-        shape: 'square'
-    });
+    if (existingIndex === -1) {
+        library.push({
+            id: bookId,
+            type: 'md',
+            title: bookTitle,
+            pages: Math.ceil(parsedNodes.length / 10),
+            progressPct: 0,
+            lastReadId: null,
+            shape: 'square'
+        });
+    } else {
+        library[existingIndex].pages = Math.ceil(parsedNodes.length / 10);
+        library[existingIndex].title = bookTitle;
+    }
 
     await localforage.setItem('pdf_epub_master', library);
     renderLibrary();
@@ -542,48 +590,60 @@ function renderSearchResults(results, keyword) {
     searchResEl.classList.remove('hidden');
 }
 
-// 2. FUNGSI EKSTRAK PDF — ENGINE DUA PILIHAN (SCROLL VS CANVAS)
-// Menerima parameter forcedMode opsional dari modal terpusat
-async function handlePdf(file, bookTitle, forcedMode = null) {
+// 2. FUNGSI EKSTRAK PDF DENGAN LOGIKA PENUH
+async function processPdfDirect(file, bookTitle, finalMode, total) {
     const arrayBuffer = await file.arrayBuffer();
     const pdf = await pdfjsLib.getDocument({ data: arrayBuffer.slice(0) }).promise;
-    const total = pdf.numPages;
 
     // --- EKSTRAK COVER ---
-    const coverCanvas = document.createElement('canvas');
-    const coverCtx = coverCanvas.getContext('2d');
-    const firstPage = await pdf.getPage(1);
-    const viewport = firstPage.getViewport({ scale: 0.5 });
-    coverCanvas.width = viewport.width;
-    coverCanvas.height = viewport.height;
-    await firstPage.render({ canvasContext: coverCtx, viewport: viewport }).promise;
-    const coverBase64 = coverCanvas.toDataURL('image/jpeg', 0.8);
+    let coverBase64 = null;
+    try {
+        const coverCanvas = document.createElement('canvas');
+        const coverCtx = coverCanvas.getContext('2d');
+        const firstPage = await pdf.getPage(1);
+        const viewport = firstPage.getViewport({ scale: 0.5 });
+        coverCanvas.width = viewport.width;
+        coverCanvas.height = viewport.height;
+        await firstPage.render({ canvasContext: coverCtx, viewport: viewport }).promise;
+        coverBase64 = coverCanvas.toDataURL('image/jpeg', 0.8);
+    } catch(e) { console.error("Gagal cover PDF", e); }
 
-    const newBookId = btoa(unescape(encodeURIComponent(file.name))).replace(/[^a-zA-Z0-9]/g, '').substring(0, 20) + '_' + Date.now();
+    let newBookId = btoa(unescape(encodeURIComponent(file.name))).replace(/[^a-zA-Z0-9]/g, '').substring(0, 32);
+    if (file._isDuplicate) {
+        newBookId = newBookId.substring(0, 20) + Date.now().toString(36);
+        bookTitle = bookTitle + " (Copy)";
+    }
 
     // Helper untuk menyimpan dokumen PDF asli murni (Mode Canvas)
     const saveAsCanvasMode = async () => {
         DOM.loadBar.style.width = '50%';
-        DOM.loadPct.textContent = '50%';
+        if(DOM.loadPct) DOM.loadPct.textContent = '50%';
         
         const pdfBlob = new Blob([arrayBuffer], { type: 'application/pdf' });
         await localforage.setItem('rawpdf_' + newBookId, pdfBlob);
-        await localforage.setItem('cover_' + newBookId, coverBase64);
+        if(coverBase64) await localforage.setItem('cover_' + newBookId, coverBase64);
 
-        library.push({
-            id: newBookId,
-            type: 'pdf',
-            pdfMode: 'canvas',
-            title: bookTitle,
-            pages: total,
-            progressPct: 0,
-            lastReadId: 1, 
-            shape: 'square'
-        });
+        const existingIndex = library.findIndex(b => b.id === newBookId);
+        if (existingIndex === -1) {
+            library.push({
+                id: newBookId,
+                type: 'pdf',
+                pdfMode: 'canvas',
+                title: bookTitle,
+                pages: total,
+                progressPct: 0,
+                lastReadId: 1, 
+                shape: 'square'
+            });
+        } else {
+            library[existingIndex].pages = total;
+            library[existingIndex].title = bookTitle;
+            library[existingIndex].pdfMode = 'canvas';
+        }
 
         await localforage.setItem('pdf_epub_master', library);
         DOM.loadBar.style.width = '100%';
-        DOM.loadPct.textContent = '100%';
+        if(DOM.loadPct) DOM.loadPct.textContent = '100%';
         renderLibrary();
     };
 
@@ -652,7 +712,7 @@ async function handlePdf(file, bookTitle, forcedMode = null) {
 
         for (let i = 1; i <= total; i++) {
             DOM.loadBar.style.width = `${Math.round((i / total) * 100)}%`;
-            DOM.loadPct.textContent = `${Math.round((i / total) * 100)}%`;
+            if(DOM.loadPct) DOM.loadPct.textContent = `${Math.round((i / total) * 100)}%`;
 
             const page = await pdf.getPage(i);
             const textContent = await page.getTextContent();
@@ -910,119 +970,34 @@ async function handlePdf(file, bookTitle, forcedMode = null) {
         }
 
         await localforage.setItem('content_' + newBookId, mergedNodes);
-        await localforage.setItem('cover_' + newBookId, coverBase64);
+        if(coverBase64) await localforage.setItem('cover_' + newBookId, coverBase64);
 
-        library.push({
-            id: newBookId,
-            type: 'pdf',
-            pdfMode: 'scroll',
-            title: bookTitle,
-            pages: total,
-            progressPct: 0,
-            lastReadId: null,
-            shape: 'square'
-        });
+        const existingIndex = library.findIndex(b => b.id === newBookId);
+        if (existingIndex === -1) {
+            library.push({
+                id: newBookId,
+                type: 'pdf',
+                pdfMode: 'scroll', 
+                title: bookTitle,
+                pages: total,
+                progressPct: 0,
+                lastReadId: null,
+                shape: 'square'
+            });
+        } else {
+            library[existingIndex].pages = total;
+            library[existingIndex].title = bookTitle;
+            library[existingIndex].pdfMode = 'scroll';
+        }
 
         await localforage.setItem('pdf_epub_master', library);
         renderLibrary();
     };
 
-    // JIKA forcedMode SUDAH DIBERIKAN DARI MODAL TERPUSAT, LANGSUNG EKSEKUSI TANPA PRE-SCAN
-    if (forcedMode === 'canvas') {
-        return saveAsCanvasMode();
-    } else if (forcedMode === 'scroll') {
-        return saveAsScrollMode();
-    }
-
-    // ===================================================================
-    // JIKA TIDAK ADA FORCED MODE (Fallback safety)
-    // Lakukan Scan Pre-flight untuk mendeteksi Teks Murni vs Scanned Image
-    // ===================================================================
-    let textScanSample = "";
-    const scanLimit = Math.min(total, 2);
-    for (let p = 1; p <= scanLimit; p++) {
-        try {
-            const page = await pdf.getPage(p);
-            const content = await page.getTextContent();
-            content.items.forEach(item => {
-                if (item.str) textScanSample += item.str.trim();
-            });
-        } catch (e) {
-            console.error("Gagal melakukan pre-scan halaman " + p, e);
-        }
-    }
-
-    const cleanedScanText = textScanSample.replace(/\s+/g, '').trim();
-    const isScannedOrOcr = cleanedScanText.length < 30;
-
-    if (isScannedOrOcr) {
-        return new Promise((resolve) => {
-            const lang = typeof wikiLang !== 'undefined' ? wikiLang : 'id';
-            const dict = i18n[lang] || i18n['id'];
-            showDialog(
-                bookTitle, 
-                dict.canvasNoText || "PDF ini terdeteksi sebagai pindaian gambar. Otomatis di-import ke Mode Canvas agar format visual aslinya tetap terjaga sempurna.", 
-                "image", 
-                [{
-                    text: "Oke", 
-                    primary: true, 
-                    action: async () => {
-                        window.closeDialog();
-                        await saveAsCanvasMode();
-                        resolve();
-                    }
-                }]
-            );
-        });
+    if (finalMode === 'canvas') {
+        await saveAsCanvasMode();
     } else {
-        return new Promise(async (resolve) => {
-            const lang = typeof wikiLang !== 'undefined' ? wikiLang : 'id';
-            const dict = i18n[lang] || i18n['id'];
-            
-            let modalHtml = `
-            <div class="mb-4">
-                <p class="text-sm opacity-80 mb-4">${dict.pdfModePromptDesc || "Pilih gaya membaca Anda:"}</p>
-                <div class="flex flex-col gap-3">
-                    <label class="flex items-start gap-3 p-3 rounded-2xl bg-m3-surfaceVariant border border-transparent focus-within:border-m3-primary cursor-pointer transition-colors">
-                        <input type="radio" name="fallback_pdf_mode" value="scroll" checked class="mt-1 w-4 h-4 accent-m3-primary">
-                        <div>
-                            <div class="text-sm font-bold text-m3-onSurfaceVariant">${dict.pdfModeBtnScroll || "Mode Scroll (Rekomendasi)"}</div>
-                            <div class="text-xs opacity-70 mt-1">${dict.pdfModeBtnScrollDesc || "Teks mengalir, bisa ubah font dan AI"}</div>
-                        </div>
-                    </label>
-                    <label class="flex items-start gap-3 p-3 rounded-2xl bg-m3-surfaceVariant border border-transparent focus-within:border-m3-primary cursor-pointer transition-colors">
-                        <input type="radio" name="fallback_pdf_mode" value="canvas" class="mt-1 w-4 h-4 accent-m3-primary">
-                        <div>
-                            <div class="text-sm font-bold text-m3-onSurfaceVariant">${dict.pdfModeBtnCanvas || "Mode Canvas (Layout Asli)"}</div>
-                            <div class="text-xs opacity-70 mt-1">${dict.pdfModeBtnCanvasDesc || "Halaman asli, gestur zoom cubit"}</div>
-                        </div>
-                    </label>
-                </div>
-            </div>`;
-
-            const res = await showDialogAsync(
-                bookTitle.length > 20 ? bookTitle.substring(0,20)+'...' : bookTitle,
-                modalHtml,
-                "book-open",
-                dict.cancel || "Batal",
-                lang === 'id' ? "Pilih" : "Select"
-            );
-
-            if (res === null) {
-                resolve(); // dibatalkan
-            } else {
-                window.closeDialog();
-                const radios = document.getElementsByName('fallback_pdf_mode');
-                let selectedVal = 'scroll';
-                for (let i = 0; i < radios.length; i++) {
-                    if (radios[i].checked) { selectedVal = radios[i].value; break; }
-                }
-
-                if (selectedVal === 'canvas') await saveAsCanvasMode();
-                else await saveAsScrollMode();
-                resolve();
-            }
-        });
+        await saveAsScrollMode();
     }
 }
 
@@ -1080,7 +1055,7 @@ async function handleEpub(file, bookTitle) {
     for (const idref of spine) {
         order++;
         DOM.loadBar.style.width = `${Math.round((order / spine.length) * 100)}%`;
-        DOM.loadPct.textContent = `${Math.round((order / spine.length) * 100)}%`;
+        if(DOM.loadPct) DOM.loadPct.textContent = `${Math.round((order / spine.length) * 100)}%`;
 
         if (!manifest[idref]) continue;
         const htmlPath = opfDir + manifest[idref].href; 
@@ -1183,20 +1158,31 @@ async function handleEpub(file, bookTitle) {
         }
     }
     
-    const newBookId = btoa(unescape(encodeURIComponent(file.name))).replace(/[^a-zA-Z0-9]/g, '').substring(0, 20) + '_' + Date.now();
+    // ID PERMANEN + CEK DUPLIKAT
+    let newBookId = btoa(unescape(encodeURIComponent(file.name))).replace(/[^a-zA-Z0-9]/g, '').substring(0, 32);
+    if (file._isDuplicate) {
+        newBookId = newBookId.substring(0, 20) + Date.now().toString(36);
+        bookTitle = bookTitle + " (Copy)";
+    }
+    const existingIndex = library.findIndex(b => b.id === newBookId);
 
     await localforage.setItem('content_' + newBookId, parsedNodes);
     if (coverBase64) await localforage.setItem('cover_' + newBookId, coverBase64);
 
-    library.push({
-        id: newBookId,
-        type: 'epub',
-        title: bookTitle,
-        pages: spine.length,
-        progressPct: 0,
-        lastReadId: null,
-        shape: 'square'
-    });
+    if (existingIndex === -1) {
+        library.push({
+            id: newBookId,
+            type: 'epub',
+            title: bookTitle,
+            pages: spine.length,
+            progressPct: 0,
+            lastReadId: null,
+            shape: 'square'
+        });
+    } else {
+        library[existingIndex].pages = spine.length;
+        library[existingIndex].title = bookTitle;
+    }
 
     await localforage.setItem('pdf_epub_master', library); 
     renderLibrary();
