@@ -183,16 +183,16 @@
             </div>
 
             <!-- MODE CANVAS (Layout Asli) -->
-            <div id="canvas-container" class="hidden absolute inset-0 overflow-hidden w-full h-full pt-24 pb-40 flex items-center justify-center bg-m3-bg select-none">
-                <div id="canvas-zoom-viewport" class="w-full h-full overflow-auto flex items-start justify-center p-4">
+            <div id="canvas-container" class="hidden absolute inset-0 overflow-hidden w-full h-full flex items-center justify-center bg-m3-bg select-none" style="padding-top: 60px; padding-bottom: 80px;">
+                <div id="canvas-zoom-viewport" class="w-full h-full overflow-hidden relative">
                     <!-- Penampung Render Canvas PDF.js murni -->
-                    <div id="canvas-wrapper" class="relative shadow-lg border border-m3-surfaceVariant/10 rounded-2xl overflow-hidden transition-transform duration-200 origin-center bg-white">
-                        <canvas id="pdf-canvas" class="block max-w-full h-auto"></canvas>
+                    <div id="canvas-wrapper" class="absolute top-0 left-0 shadow-lg bg-white" style="transform-origin: 0 0;">
+                        <canvas id="pdf-canvas" class="block" style="display:block; width:100%; height:auto;"></canvas>
                     </div>
                 </div>
                 
                 <!-- CANVAS PAGE CONTROLLER (Next / Prev / Jump) -->
-                <div id="canvas-page-controller" class="absolute bottom-28 left-1/2 -translate-x-1/2 bg-m3-surfaceVariant/95 backdrop-blur-md text-m3-onSurfaceVariant px-4 py-2.5 rounded-full shadow-lg z-30 flex items-center gap-3 border border-m3-surfaceVariant/20 transition-transform duration-300">
+                <div id="canvas-page-controller" class="absolute bottom-4 left-1/2 -translate-x-1/2 bg-m3-surfaceVariant/95 backdrop-blur-md text-m3-onSurfaceVariant px-4 py-2.5 rounded-full shadow-lg z-30 flex items-center gap-3 border border-m3-surfaceVariant/20 transition-transform duration-300">
                     <button onclick="window.prevCanvasPage()" class="w-9 h-9 rounded-full hover:bg-m3-surface flex items-center justify-center transition-colors btn-morph">
                         <i data-lucide="chevron-left" class="w-5 h-5"></i>
                     </button>
