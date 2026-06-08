@@ -70,7 +70,7 @@ html, body {
 
 /* Mencegah default browser gesture (kayak pull-to-refresh) di modal/panel saat swipe-dismiss */
 #global-settings-sheet, #b-opt-sheet, #edit-sheet, #bookmark-sheet, #raw-backup-sheet, #raw-restore-sheet, #welcome-sheet,
-#toc-panel, #settings-panel, #bookmark-panel {
+#toc-panel, #settings-panel, #bookmark-panel, #pdf-mode-sheet, #custom-dialog-sheet {
     overscroll-behavior-y: contain; 
 }
 
@@ -102,4 +102,54 @@ mark.search-hl { background-color: var(--md-sys-color-primary) !important; color
 .reader-dynamic-text h2 { font-family: var(--reader-font) !important; font-size: calc(var(--reader-size) * 1.4) !important; text-align: left !important; line-height: 1.4 !important; font-weight: bold; margin-top: 1.5rem; margin-bottom: 1rem; color: var(--md-sys-color-on-surface-variant); border-bottom: 1px solid var(--md-sys-color-surface-variant); padding-bottom: 0.5rem; opacity: 1; }
 ::-webkit-scrollbar { width: 0px; }
 
+/* ===================================================================
+   STYLE BARU UNTUK DUAL-MODE PDF (PHASE 3)
+   =================================================================== */
 
+/* Viewport Zoom & Container Canvas PDF.js murni */
+#canvas-zoom-viewport {
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+    display: flex;
+    align-items: start;
+    justify-content: center;
+}
+
+/* Wrapper Canvas dengan transisi scaling untuk pinch-to-zoom */
+#canvas-wrapper {
+    touch-action: none; /* Cegah gesture browser native saat pinch zoom */
+    transform-origin: center center;
+    transition: transform 0.1s ease-out;
+    max-width: 100%;
+}
+
+/* Halaman PDF Canvas murni */
+#pdf-canvas {
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+    background-color: #FFFFFF;
+    transition: filter 0.3s ease;
+}
+
+/* Efek Dark Mode murni untuk Mode Canvas */
+.dark #pdf-canvas {
+    filter: invert(0.9) hue-rotate(180deg);
+}
+
+/* Efek redup untuk kelompok pengaturan yang dinonaktifkan di Mode Canvas */
+.ui-disabled-group {
+    opacity: 0.4 !important;
+    pointer-events: none !important;
+    user-select: none !important;
+    transition: opacity 0.3s ease;
+}
+
+/* Kustomisasi gaya navigasi bottom-controller pada Canvas Mode */
+#canvas-page-controller {
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12);
+}
+
+/* Badge Mode di pojok atas Cover Buku */
+.book-badge {
+    text-shadow: 0 1px 2px rgba(0,0,0,0.5);
+    box-shadow: 0 2px 6px rgba(0,0,0,0.2);
+}
