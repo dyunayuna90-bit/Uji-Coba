@@ -18,6 +18,14 @@ let currentThemeKey = localStorage.getItem('m3-key') || 'orchid';
 let isAmoled = localStorage.getItem('amoled') === 'true';
 let wikiLang = localStorage.getItem('wiki_lang') || 'en';
 
+// --- CANVAS MODE STATE ---
+let currentPdfDoc = null;
+let currentCanvasPage = 1;
+let currentCanvasScale = 1.0;
+let isRenderingCanvas = false;
+let canvasTouchStartScale = 1.0;
+let canvasTouchStartDist = 0;
+
 const DOM = {};
 
 document.addEventListener("DOMContentLoaded", () => {
@@ -51,11 +59,23 @@ document.addEventListener("DOMContentLoaded", () => {
         progTxt: document.getElementById('reader-progress-text'),
         searchInput: document.getElementById('inbook-search-input'), 
         searchRes: document.getElementById('search-results-panel'),
-        globalSearch: document.getElementById('global-search')
+        globalSearch: document.getElementById('global-search'),
+        // DOM Tambahan Canvas Mode
+        scrollGrid: document.getElementById('scroll-book-grid'),
+        canvasGrid: document.getElementById('canvas-book-grid'),
+        scrollSection: document.getElementById('scroll-collection-section'),
+        canvasSection: document.getElementById('canvas-collection-section'),
+        canvasContainer: document.getElementById('canvas-container'),
+        pdfCanvas: document.getElementById('pdf-canvas'),
+        canvasWrapper: document.getElementById('canvas-wrapper'),
+        canvasPageNum: document.getElementById('canvas-page-num'),
+        canvasPageTotal: document.getElementById('canvas-page-total'),
+        canvasWarning: document.getElementById('canvas-warning-info')
     });
 
     setupScrollListeners();
     setupSearchListeners();
+    setupCanvasPinchZoom();
     syncWikiLangUI();
     applyLanguage();
     applyTypo();
@@ -167,6 +187,7 @@ window.addEventListener('popstate', (e) => {
     else if (!document.getElementById('global-settings-modal').classList.contains('opacity-0')) { _closeModalAction('global-settings-modal', 'global-settings-sheet', false, true); }
     else if (!document.getElementById('welcome-modal').classList.contains('opacity-0')) { closeWelcome(true); }
     else if (!document.getElementById('backup-type-modal').classList.contains('opacity-0')) { _closeModalAction('backup-type-modal', 'backup-type-sheet', true, true); }
+    else if (!document.getElementById('pdf-mode-modal').classList.contains('opacity-0')) { _closeModalAction('pdf-mode-modal', 'pdf-mode-sheet', true, true); }
     else if (isBatchDeleteMode) { window.toggleBatchDelete(true); }
     else if (activePanel) { _closeSidePanelsAction(true); } 
     else if (document.getElementById('search-area').classList.contains('search-active')) { closeSearch(true); }
@@ -247,7 +268,6 @@ function applyLanguage() {
     if (!Object.keys(d).length) return;
 
     setElementText('str-lib-empty', d.libEmpty); setElementText('str-continue-reading', d.continueReading);
-    setElementText('str-book-collection', d.bookCollection); setElementText('loading-text', d.loadingDocs);
     setElementText('btn-batch-cancel', d.cancel); setElementText('btn-batch-exec', d.delete);
     setElementText('str-opt-select', d.optSelect); setElementText('str-opt-edit', d.optEdit);
     setElementText('str-opt-delete', d.optDelete); setElementText('str-opt-cancel', d.optCancel);
@@ -308,6 +328,18 @@ function applyLanguage() {
     setElementText('str-raw-res-title', d.rawResTitle); setElementText('str-raw-res-desc', d.rawResDesc);
     setElementText('str-raw-res-btn-file', d.rawResFile); setElementText('str-raw-res-btn-process', d.rawResProcess);
     setElementText('str-raw-res-btn-close', d.rawResClose);
+
+    // Translasi Tambahan Phase 5
+    setElementText('str-scroll-rak-title', d.scrollRakTitle || "Rak Mode Scroll");
+    setElementText('str-canvas-rak-title', d.canvasRakTitle || "Rak Mode Canvas (Layout Asli)");
+    setElementText('str-pdf-canvas-warning', d.pdfCanvasWarning || "Fitur tipografi dinonaktifkan pada Mode Canvas.");
+    setElementText('str-pdf-mode-prompt-title', d.pdfModePromptTitle);
+    setElementText('str-pdf-mode-prompt-desc', d.pdfModePromptDesc);
+    setElementText('str-pdf-mode-btn-scroll', d.pdfModeBtnScroll);
+    setElementText('str-pdf-mode-btn-scroll-desc', d.pdfModeBtnScrollDesc);
+    setElementText('str-pdf-mode-btn-canvas', d.pdfModeBtnCanvas);
+    setElementText('str-pdf-mode-btn-canvas-desc', d.pdfModeBtnCanvasDesc);
+    setElementText('str-pdf-mode-btn-cancel', d.cancel);
 
     if(document.getElementById('str-bak-modal-title')) {
         setElementText('str-bak-modal-title', d.bakModalTitle);
@@ -417,6 +449,7 @@ window.closeDialog = function(isFromHistory = false) {
     const m = document.getElementById('custom-dialog');
     const s = document.getElementById('custom-dialog-sheet');
     
+    s.scale = '75';
     s.classList.add('scale-75');
     m.classList.add('opacity-0');
     setTimeout(() => m.classList.add('hidden'), 300);
@@ -540,7 +573,6 @@ window.clearAllCoversConfirm = function() {
 
 // 7. BACKUP & RESTORE DATA (JSON PROGRESS & ZIP FULL)
 window.executeBackup = async function(type) {
-    // 1. Langsung tutup Modal Pilihan Backup seketika pakai fungsi standar yang support routing history
     _closeModalAction('backup-type-modal', 'backup-type-sheet', true, true);
     
     if (!library || library.length === 0) {
@@ -550,13 +582,11 @@ window.executeBackup = async function(type) {
         return;
     }
 
-    // 2. Tunggu dikit biar animasi nutup mulus
     setTimeout(async () => {
         const txt = i18n[wikiLang] || i18n['id'];
         const title = txt.bakLoadingTitle || "Memproses Backup";
         const desc = type === 'zip' ? (txt.bakZipLoading || "Menyiapkan file ZIP...") : (txt.bakJsonLoading || "Menyiapkan file backup JSON...");
 
-        // 3. Tampilkan Loading Dialog (tombol kosong = ga bisa di-close sembarangan)
         showDialog(title, `
             <div class="flex flex-col items-center justify-center gap-4 py-4">
                 <div class="w-8 h-8 border-4 border-m3-primary border-t-transparent rounded-full animate-spin"></div>
@@ -575,10 +605,16 @@ window.executeBackup = async function(type) {
                 
                 const contentsFolder = zip.folder("contents");
                 const coversFolder = zip.folder("covers");
+                const canvasFolder = zip.folder("canvas_pdf");
 
                 for (const b of library) {
-                    const nodes = await localforage.getItem('content_' + b.id);
-                    if (nodes) contentsFolder.file(`${b.id}.json`, JSON.stringify(nodes));
+                    if (b.pdfMode === 'canvas') {
+                        const rawPdf = await localforage.getItem('rawpdf_' + b.id);
+                        if (rawPdf) canvasFolder.file(`${b.id}.pdf`, rawPdf);
+                    } else {
+                        const nodes = await localforage.getItem('content_' + b.id);
+                        if (nodes) contentsFolder.file(`${b.id}.json`, JSON.stringify(nodes));
+                    }
                     
                     const cover = await localforage.getItem('cover_' + b.id);
                     if (cover) coversFolder.file(`${b.id}.txt`, cover);
@@ -599,7 +635,7 @@ window.executeBackup = async function(type) {
 async function saveFileNativeOrWeb(text, filename, mime) {
     const txt = i18n[wikiLang] || i18n['id'];
     const successTitle = txt.bakSuccessTitle || "Backup Sukses";
-    const successDesc = txt.bakSuccessJson || "File JSON berhasil dibuat dan siap di-save.";
+    const successDesc = txt.bakSuccessJson || "File JSON berhasil dibuat.";
     const btnOk = txt.btnClose || "Tutup";
 
     if (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.Filesystem) {
@@ -608,7 +644,7 @@ async function saveFileNativeOrWeb(text, filename, mime) {
                 path: filename, data: text, directory: 'DOCUMENTS', encoding: 'utf8'
             });
             window.closeDialog();
-            setTimeout(() => showDialog(successTitle, `${successDesc}\n\nDisimpan di Documents:\n${filename}`, "check-circle", [{text: btnOk, primary: true}]), 400);
+            setTimeout(() => showDialog(successTitle, `${successDesc}\n\nDocuments:\n${filename}`, "check-circle", [{text: btnOk, primary: true}]), 400);
             return;
         } catch (e) {
             console.log("Capacitor write gagal, beralih ke teks raw.", e);
@@ -618,19 +654,18 @@ async function saveFileNativeOrWeb(text, filename, mime) {
             return;
         }
     }
-    // Fallback Web
     const blob = new Blob([text], {type: mime});
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a'); a.href = url; a.download = filename;
     document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
     window.closeDialog();
-    setTimeout(() => showDialog(successTitle, `${successDesc}\n\nFile berhasil diunduh:\n${filename}`, "check-circle", [{text: btnOk, primary: true}]), 400);
+    setTimeout(() => showDialog(successTitle, `${successDesc}\n\nFile diunduh:\n${filename}`, "check-circle", [{text: btnOk, primary: true}]), 400);
 }
 
 async function saveFileNativeOrWebBlob(blob, filename) {
     const txt = i18n[wikiLang] || i18n['id'];
     const successTitle = txt.bakSuccessTitle || "Backup Sukses";
-    const successDesc = txt.bakSuccessZip || "File ZIP berhasil disusun dan siap di-save.";
+    const successDesc = txt.bakSuccessZip || "File ZIP berhasil disusun.";
     const btnOk = txt.btnClose || "Tutup";
 
     if (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.Filesystem) {
@@ -643,17 +678,16 @@ async function saveFileNativeOrWebBlob(blob, filename) {
                     path: filename, data: base64data, directory: 'DOCUMENTS'
                 });
                 window.closeDialog();
-                setTimeout(() => showDialog(successTitle, `${successDesc}\n\nDisimpan di Documents:\n${filename}`, "check-circle", [{text: btnOk, primary: true}]), 400);
+                setTimeout(() => showDialog(successTitle, `${successDesc}\n\nDocuments:\n${filename}`, "check-circle", [{text: btnOk, primary: true}]), 400);
             }
             return;
         } catch (e) { console.log("Capacitor write blob gagal", e); }
     }
-    // Fallback Web
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a'); a.href = url; a.download = filename;
     document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
     window.closeDialog();
-    setTimeout(() => showDialog(successTitle, `${successDesc}\n\nFile berhasil diunduh:\n${filename}`, "check-circle", [{text: btnOk, primary: true}]), 400);
+    setTimeout(() => showDialog(successTitle, `${successDesc}\n\nFile diunduh:\n${filename}`, "check-circle", [{text: btnOk, primary: true}]), 400);
 }
 
 window.copyRawBackup = function() {
@@ -667,7 +701,7 @@ window.copyRawBackup = function() {
         btnSpan.innerText = wikiLang === 'id' ? "Berhasil Disalin!" : "Copied!";
         setTimeout(() => { btnSpan.innerText = originalText; }, 2000);
     } catch (err) {
-        showDialog("Error", "Gagal menyalin otomatis. Silakan blok semua teks secara manual dan salin.", "alert-circle", [{ text: "Tutup", primary: true }]);
+        showDialog("Error", "Gagal menyalin otomatis.", "alert-circle", [{ text: "Tutup", primary: true }]);
     }
 };
 
@@ -721,10 +755,18 @@ window.importDataFile = async function(event) {
                         let count = 0;
 
                         for (const b of metadata) {
-                            const nodeFile = zip.file(`contents/${b.id}.json`);
-                            if (nodeFile) {
-                                const nodesStr = await nodeFile.async("string");
-                                await localforage.setItem('content_' + b.id, JSON.parse(nodesStr));
+                            if (b.pdfMode === 'canvas') {
+                                const pdfFile = zip.file(`canvas_pdf/${b.id}.pdf`);
+                                if (pdfFile) {
+                                    const pdfBlob = await pdfFile.async("blob");
+                                    await localforage.setItem('rawpdf_' + b.id, pdfBlob);
+                                }
+                            } else {
+                                const nodeFile = zip.file(`contents/${b.id}.json`);
+                                if (nodeFile) {
+                                    const nodesStr = await nodeFile.async("string");
+                                    await localforage.setItem('content_' + b.id, JSON.parse(nodesStr));
+                                }
                             }
                             
                             const coverFile = zip.file(`covers/${b.id}.txt`);
@@ -824,6 +866,7 @@ async function executeRestoreLogic(jsonString) {
                                 annotations: meta.annotations || [],
                                 isPinned: meta.isPinned,
                                 title: meta.title,
+                                pdfMode: meta.pdfMode || 'scroll'
                             };
                         } else {
                             mergedLibrary.push(meta);
@@ -865,18 +908,15 @@ async function loadLibrary() {
         library = await localforage.getItem('pdf_epub_master') || []; 
         let needsMigration = false;
 
-        // [OPTIMASI DEWA]: Auto-Migrasi. Bersihin Nodes & Cover dari RAM UI
         for (let i = 0; i < library.length; i++) {
             let changed = false;
             
-            // Pindahin teks buku
             if (library[i].nodes && library[i].nodes.length > 0) {
                 await localforage.setItem('content_' + library[i].id, library[i].nodes);
                 delete library[i].nodes; 
                 changed = true;
             }
             
-            // Pindahin gambar sampul
             if (library[i].coverBase64 && library[i].coverBase64.length > 50) {
                 await localforage.setItem('cover_' + library[i].id, library[i].coverBase64);
                 delete library[i].coverBase64; 
@@ -888,7 +928,7 @@ async function loadLibrary() {
 
         if (needsMigration) {
             await localforage.setItem('pdf_epub_master', library);
-            console.log("Database Node & Cover dipisah biar RAM ga jebol. Mantap!");
+            console.log("Database Node & Cover dipisah.");
         }
 
         renderLibrary(); 
@@ -898,8 +938,12 @@ async function loadLibrary() {
 function renderLibrary(filterText = "") {
     if(!DOM.grid || !DOM.topSlider) return;
     
-    DOM.grid.innerHTML = ''; 
-    DOM.topSlider.innerHTML = '';
+    // Clear penampung dynamic grids
+    if(DOM.scrollGrid) DOM.scrollGrid.innerHTML = '';
+    if(DOM.canvasGrid) DOM.canvasGrid.innerHTML = '';
+    if(DOM.grid) DOM.grid.innerHTML = ''; 
+    if(DOM.topSlider) DOM.topSlider.innerHTML = '';
+    
     const pinnedGrid = document.getElementById('pinned-book-grid');
     if(pinnedGrid) pinnedGrid.innerHTML = '';
     
@@ -928,13 +972,29 @@ function renderLibrary(filterText = "") {
         if(pinnedSection) pinnedSection.classList.add('hidden');
     }
 
-    if (regularBooks.length === 0) { 
-        DOM.empty.classList.remove('hidden'); DOM.grid.classList.add('hidden'); 
-        if(document.getElementById('collection-heading')) document.getElementById('collection-heading').classList.add('hidden');
+    // Pilah Regular Books menjadi 2 Rak: Scroll Mode & Canvas Mode
+    const scrollBooks = regularBooks.filter(b => b.pdfMode !== 'canvas');
+    const canvasBooks = regularBooks.filter(b => b.pdfMode === 'canvas');
+
+    if (scrollBooks.length === 0) {
+        if(DOM.scrollSection) DOM.scrollSection.classList.add('hidden');
     } else {
-        DOM.empty.classList.add('hidden'); DOM.grid.classList.remove('hidden');
-        if(document.getElementById('collection-heading')) document.getElementById('collection-heading').classList.remove('hidden');
-        regularBooks.forEach((book, index) => { DOM.grid.appendChild(createBookCard(book, false, index)); });
+        if(DOM.scrollSection) DOM.scrollSection.classList.remove('hidden');
+        scrollBooks.forEach((book, index) => { if(DOM.scrollGrid) DOM.scrollGrid.appendChild(createBookCard(book, false, index)); });
+    }
+
+    if (canvasBooks.length === 0) {
+        if(DOM.canvasSection) DOM.canvasSection.classList.add('hidden');
+    } else {
+        if(DOM.canvasSection) DOM.canvasSection.classList.remove('hidden');
+        canvasBooks.forEach((book, index) => { if(DOM.canvasGrid) DOM.canvasGrid.appendChild(createBookCard(book, false, index + 100)); });
+    }
+
+    // Sembunyikan state kosong jika ada buku di rak mana pun
+    if (regularBooks.length === 0 && pinnedBooks.length === 0) { 
+        DOM.empty.classList.remove('hidden');
+    } else {
+        DOM.empty.classList.add('hidden');
     }
 
     updateStatistics(); 
@@ -942,7 +1002,6 @@ function renderLibrary(filterText = "") {
     window.updateBatchSelectionUI();
 }
 
-// [OPTIMASI UI]: Render Cover Secara Async
 function createBookCard(book, isSlider = false, index = 0) {
     const progress = book.progressPct || 0; 
     const card = document.createElement('div');
@@ -966,20 +1025,26 @@ function createBookCard(book, isSlider = false, index = 0) {
         </div>
     ` : '';
 
-    // Render HTML Dasar (Tanpa Cover)
+    // Menyiapkan Badge khusus PDF-Canvas vs PDF-Scroll
+    const d = i18n[wikiLang] || i18n['id'];
+    let badgeText = book.type;
+    if (book.type === 'pdf') {
+        badgeText = book.pdfMode === 'canvas' ? (d.pdfCanvasBadge || 'PDF-CANVAS') : (d.pdfScrollBadge || 'PDF-SCROLL');
+    }
+
     card.innerHTML = `
         ${batchOverlayHTML}
         <div class="absolute inset-x-0 bottom-0 h-[80%] bg-gradient-to-t from-black via-black/40 to-transparent pointer-events-none z-0 rounded-b-inherit border-none outline-none hidden" id="overlay-${book.id}"></div>
         
         <div class="relative z-10 flex flex-col h-full justify-between pointer-events-none border-none">
-            <div class="flex ${isSlider ? 'justify-between items-start' : 'justify-end gap-1'} w-full drop-shadow-md" id="top-icons-${book.id}">
-                ${isSlider ? `<span class="inline-block text-[0.65rem] font-bold px-2 py-0.5 bg-black/40 rounded-full text-white uppercase tracking-widest">${book.type}</span>` : (book.isPinned ? `<i data-lucide="pin" class="w-3.5 h-3.5 opacity-90 fill-current"></i>` : '')}
+            <div class="flex ${isSlider ? 'justify-between items-start' : 'justify-between items-center gap-1'} w-full drop-shadow-md" id="top-icons-${book.id}">
+                <span class="book-badge inline-block text-[0.55rem] font-black px-2 py-0.5 bg-black/40 rounded-full text-white uppercase tracking-wider">${badgeText}</span>
+                ${book.isPinned ? `<i data-lucide="pin" class="w-3.5 h-3.5 opacity-90 fill-current text-white"></i>` : ''}
             </div>
             <div class="mt-auto flex flex-col border-none">
                 ${!isSlider ? `<i data-lucide="book" class="w-6 h-6 mb-2 opacity-80" id="book-icon-${book.id}"></i>` : ''}
                 <h3 class="font-bold ${isSlider ? 'text-sm line-clamp-2' : 'text-sm mt-1 line-clamp-3'} leading-tight drop-shadow-md" id="title-${book.id}">${book.title}</h3>
-                ${!isSlider ? `<span class="inline-block mt-2 mb-2 text-[0.6rem] font-bold px-2 py-0.5 bg-black/40 rounded-full text-white uppercase tracking-widest self-start">${book.type}</span>` : ''}
-                <div class="w-full ${isSlider ? 'mt-2' : ''} border-none">
+                <div class="w-full ${isSlider ? 'mt-2' : 'mt-2'} border-none">
                     <div class="flex justify-between text-[${isSlider ? '0.65rem' : '0.6rem'}] font-bold opacity-90 mb-1" id="pct-${book.id}"><span>${progress}%</span></div>
                     <div class="h-1.5 w-full bg-black/20 dark:bg-white/20 rounded-full overflow-hidden border-none">
                         <div class="h-full bg-m3-primary dark:bg-m3-primaryContainer rounded-full border-none" style="width: ${progress}%" id="bar-${book.id}"></div>
@@ -989,14 +1054,12 @@ function createBookCard(book, isSlider = false, index = 0) {
         </div>
     `;
 
-    // Load Cover di Background
     localforage.getItem('cover_' + book.id).then(coverData => {
         if (coverData && coverData.length > 50) {
             card.style.backgroundImage = `url('${coverData}')`;
             card.style.backgroundSize = 'cover';
             card.style.backgroundPosition = 'top center';
             
-            // Terapin efek teks putih & shadow karena ada background gelap
             card.classList.remove(...baseClass.split(' '));
             card.classList.add('text-white', 'shadow-lg');
             
@@ -1153,9 +1216,9 @@ window.executeBatchDelete = async function() {
             window.closeDialog();
             const toDeleteSet = new Set(selectedForDelete.map(String));
             
-            // Bersihin DB Pecahan
             for(let id of selectedForDelete) {
                 await localforage.removeItem('content_' + id);
+                await localforage.removeItem('rawpdf_' + id);
                 await localforage.removeItem('cover_' + id);
             }
 
@@ -1176,6 +1239,7 @@ window.triggerDeleteView = async function() {
             window.closeDialog();
             
             await localforage.removeItem('content_' + activeOptsId);
+            await localforage.removeItem('rawpdf_' + activeOptsId);
             await localforage.removeItem('cover_' + activeOptsId);
 
             library = library.filter(b => !selectedForDelete.includes(b.id) && b.id !== activeOptsId); 
@@ -1226,7 +1290,7 @@ window.saveBookEdit = async function() {
         if (coverFile) { 
             const reader = new FileReader(); 
             reader.onload = async function(e) { 
-                await localforage.setItem('cover_' + id, e.target.result); // Save langsung ke DB pecahan
+                await localforage.setItem('cover_' + id, e.target.result);
                 await localforage.setItem('pdf_epub_master', library); 
                 history.back(); renderLibrary(); 
             }; 
@@ -1375,76 +1439,247 @@ window.openBook = async function(book) {
 
     DOM.progBar.style.width = `${book.progressPct || 0}%`; DOM.progTxt.textContent = `${book.progressPct || 0}%`;
 
-    // Fetch nodes dari storage independen
-    if (!book.nodes) {
-        const savedNodes = await localforage.getItem('content_' + book.id);
-        if(savedNodes) {
-            book.nodes = savedNodes;
-        } else {
-            book.nodes = [{tag: 'p', text: 'Error: Konten teks gagal dimuat atau korup.'}];
+    // Ambil preferensi bahasa untuk menu disabled warning
+    const currentBook = library.find(b => b.id === book.id);
+    const isCanvas = currentBook && currentBook.pdfMode === 'canvas';
+
+    // Kelola visibilitas viewport pembaca secara dinamis (Scroll vs Canvas)
+    if (isCanvas) {
+        DOM.readContent.classList.add('hidden');
+        if (DOM.canvasContainer) DOM.canvasContainer.classList.remove('hidden');
+        if (DOM.canvasWarning) DOM.canvasWarning.classList.remove('hidden');
+
+        // Redupkan grup setting tipografi & AI secara halus
+        ['size', 'align', 'font', 'search'].forEach(grp => {
+            const el = document.getElementById('setting-group-' + grp);
+            if (el) el.classList.add('ui-disabled-group');
+        });
+
+        // Load PDF murni & render
+        try {
+            const rawPdfBlob = await localforage.getItem('rawpdf_' + book.id);
+            if (!rawPdfBlob) throw new Error("File PDF asli rusak atau hilang.");
+
+            const pdfDataUrl = URL.createObjectURL(rawPdfBlob);
+            currentPdfDoc = await pdfjsLib.getDocument({ url: pdfDataUrl }).promise;
+            
+            currentCanvasPage = parseInt(book.lastReadId) || 1;
+            currentCanvasScale = 1.0;
+            if (DOM.canvasPageTotal) DOM.canvasPageTotal.textContent = currentPdfDoc.numPages;
+
+            await renderCanvasPage(currentCanvasPage);
+        } catch (err) {
+            console.error(err);
+            showDialog("Error", "Gagal memuat Canvas PDF: " + err.message, "alert-circle", [{ text: "Tutup", primary: true }]);
+        } finally {
+            loader.classList.add('opacity-0'); 
+            setTimeout(() => loader.classList.add('hidden'), 300);
         }
-    }
 
-    setTimeout(() => {
-        let hCounter = 0; const fragment = document.createDocumentFragment(); let currentHeadingId = null;
+    } else {
+        DOM.readContent.classList.remove('hidden');
+        if (DOM.canvasContainer) DOM.canvasContainer.classList.add('hidden');
+        if (DOM.canvasWarning) DOM.canvasWarning.classList.add('hidden');
 
-        book.nodes.forEach((node, i) => {
-            let el; const annots = (book.annotations || []).filter(a => a.nodeIdx === i);
+        // Kembalikan visibilitas grup setting secara utuh
+        ['size', 'align', 'font', 'search'].forEach(grp => {
+            const el = document.getElementById('setting-group-' + grp);
+            if (el) el.classList.remove('ui-disabled-group');
+        });
 
-            if (node.tag === 'img') {
-                el = document.createElement('img'); el.src = node.src; el.id = `node-${i}`;
-                el.className = "w-full max-w-lg mx-auto rounded-2xl my-8 object-contain shadow-sm"; el.loading = "lazy";
+        // Fetch nodes dari storage independen
+        if (!book.nodes) {
+            const savedNodes = await localforage.getItem('content_' + book.id);
+            if(savedNodes) {
+                book.nodes = savedNodes;
             } else {
-                el = document.createElement(node.tag); 
-                el.innerHTML = window.renderNodeText ? window.renderNodeText(node.text, annots) : node.text; 
-                el.id = `node-${i}`;
-                if (node.tag === 'h1' || node.tag === 'h2') {
-                    hCounter++; currentHeadingId = el.id; 
-                    el.className = node.tag === 'h1' ? "text-3xl font-bold tracking-tight mt-12 mb-6 text-m3-primary leading-snug break-words" : "text-xl font-bold mt-10 mb-4 text-m3-onSurfaceVariant border-b border-m3-surfaceVariant pb-2 break-words";
-                    const tocItem = document.createElement('button'); tocItem.id = `toc-btn-${el.id}`;
-                    tocItem.className = `text-left text-sm p-3 rounded-2xl hover:bg-m3-surface transition-all duration-300 ${node.tag==='h1'?'font-bold text-m3-primary':'ml-4 opacity-80'}`;
-                    tocItem.textContent = node.text;
-                    tocItem.onclick = () => { el.scrollIntoView({ behavior: 'smooth', block: 'start' }); history.back(); };
-                    DOM.tocList.appendChild(tocItem);
-                } else { el.className = "text-m3-onSurface opacity-90 mb-5 tracking-wide"; }
+                book.nodes = [{tag: 'p', text: 'Error: Konten teks gagal dimuat atau korup.'}];
             }
-            el.dataset.headingId = currentHeadingId; fragment.appendChild(el);
-        });
-        DOM.inner.appendChild(fragment);
+        }
+
+        setTimeout(() => {
+            let hCounter = 0; const fragment = document.createDocumentFragment(); let currentHeadingId = null;
+
+            book.nodes.forEach((node, i) => {
+                let el; const annots = (book.annotations || []).filter(a => a.nodeIdx === i);
+
+                if (node.tag === 'img') {
+                    el = document.createElement('img'); el.src = node.src; el.id = `node-${i}`;
+                    el.className = "w-full max-w-lg mx-auto rounded-2xl my-8 object-contain shadow-sm"; el.loading = "lazy";
+                } else {
+                    el = document.createElement(node.tag); 
+                    el.innerHTML = window.renderNodeText ? window.renderNodeText(node.text, annots) : node.text; 
+                    el.id = `node-${i}`;
+                    if (node.tag === 'h1' || node.tag === 'h2') {
+                        hCounter++; currentHeadingId = el.id; 
+                        el.className = node.tag === 'h1' ? "text-3xl font-bold tracking-tight mt-12 mb-6 text-m3-primary leading-snug break-words" : "text-xl font-bold mt-10 mb-4 text-m3-onSurfaceVariant border-b border-m3-surfaceVariant pb-2 break-words";
+                        const tocItem = document.createElement('button'); tocItem.id = `toc-btn-${el.id}`;
+                        tocItem.className = `text-left text-sm p-3 rounded-2xl hover:bg-m3-surface transition-all duration-300 ${node.tag==='h1'?'font-bold text-m3-primary':'ml-4 opacity-80'}`;
+                        tocItem.textContent = node.text;
+                        tocItem.onclick = () => { el.scrollIntoView({ behavior: 'smooth', block: 'start' }); history.back(); };
+                        DOM.tocList.appendChild(tocItem);
+                    } else { el.className = "text-m3-onSurface opacity-90 mb-5 tracking-wide"; }
+                }
+                el.dataset.headingId = currentHeadingId; fragment.appendChild(el);
+            });
+            DOM.inner.appendChild(fragment);
+            
+            if(hCounter === 0) DOM.tocList.innerHTML = "<p class='text-sm opacity-50 block p-3'>No Table of Contents.</p>";
+            DOM.searchRes.classList.add('hidden'); DOM.searchInput.value = '';
+
+            const header = document.getElementById('reader-floating-header');
+            header.classList.remove('-translate-y-[150%]', 'opacity-0');
+            header.classList.add('translate-y-0', 'opacity-100');
+
+            renderBookmarkPanel(); 
+
+            requestAnimationFrame(() => {
+                if (book.lastReadId) { 
+                    const target = document.getElementById(book.lastReadId); 
+                    const container = DOM.readContent;
+                    if (target && container) {
+                        const cRect = container.getBoundingClientRect();
+                        const tRect = target.getBoundingClientRect();
+                        const offset = tRect.top - cRect.top + container.scrollTop - (cRect.height / 2) + (tRect.height / 2);
+                        container.scrollTo({ top: offset, behavior: 'auto' });
+                    } 
+                } else { 
+                    DOM.readContent.scrollTo({ top: 0, behavior: 'auto' }); 
+                }
+                
+                setTimeout(() => {
+                    loader.classList.add('opacity-0'); 
+                    setTimeout(() => loader.classList.add('hidden'), 300);
+                    window.setupIntersectionObserver(); 
+                }, 150);
+            });
+
+        }, 300); 
+    }
+}
+
+// --- ENGINE RENDER CANVAS PDF ---
+async function renderCanvasPage(pageNum) {
+    if (!currentPdfDoc || isRenderingCanvas) return;
+    isRenderingCanvas = true;
+
+    try {
+        const page = await currentPdfDoc.getPage(pageNum);
         
-        if(hCounter === 0) DOM.tocList.innerHTML = "<p class='text-sm opacity-50 block p-3'>No Table of Contents.</p>";
-        DOM.searchRes.classList.add('hidden'); DOM.searchInput.value = '';
+        // Sesuaikan ukuran render di HP agar selalu pas lebar & tajam
+        const viewport = page.getViewport({ scale: currentCanvasScale * 1.5 });
+        const canvas = DOM.pdfCanvas;
+        const ctx = canvas.getContext('2d');
 
-        const header = document.getElementById('reader-floating-header');
-        header.classList.remove('-translate-y-[150%]', 'opacity-0');
-        header.classList.add('translate-y-0', 'opacity-100');
+        canvas.height = viewport.height;
+        canvas.width = viewport.width;
 
-        renderBookmarkPanel(); 
+        const renderContext = {
+            canvasContext: ctx,
+            viewport: viewport
+        };
 
-        requestAnimationFrame(() => {
+        await page.render(renderContext).promise;
+
+        // Sync visual data
+        if (DOM.canvasPageNum) DOM.canvasPageNum.textContent = pageNum;
+        
+        const pct = Math.round((pageNum / currentPdfDoc.numPages) * 100);
+        DOM.progBar.style.width = `${pct}%`; 
+        DOM.progTxt.textContent = `${pct}%`;
+
+        // Update progress murni ke DB
+        updateBookProgress(activeBookId, pageNum, pct);
+        renderBookmarkPanel();
+
+    } catch (e) {
+        console.error("Gagal merender halaman canvas: ", e);
+    } finally {
+        isRenderingCanvas = false;
+    }
+}
+
+window.nextCanvasPage = async function() {
+    if (!currentPdfDoc || currentCanvasPage >= currentPdfDoc.numPages) return;
+    currentCanvasPage++;
+    await renderCanvasPage(currentCanvasPage);
+};
+
+window.prevCanvasPage = async function() {
+    if (!currentPdfDoc || currentCanvasPage <= 1) return;
+    currentCanvasPage--;
+    await renderCanvasPage(currentCanvasPage);
+};
+
+window.showJumpToPageDialog = function() {
+    const d = i18n[wikiLang] || i18n['id'];
+    const total = currentPdfDoc ? currentPdfDoc.numPages : 100;
+    showDialog(
+        d.txtPageGo || "Lompat ke Halaman:",
+        `
+        <div class="flex flex-col gap-2 py-2">
+            <input type="number" id="jump-page-input" min="1" max="${total}" value="${currentCanvasPage}" class="w-full bg-m3-surfaceVariant text-m3-onSurfaceVariant p-3 rounded-2xl font-bold text-center outline-none border border-transparent focus:border-m3-primary">
+            <p class="text-[10px] text-center opacity-60 font-bold">${d.pdfTotalPages || 'Total Halaman'}: ${total}</p>
+        </div>
+        `,
+        "hash",
+        [
+            { text: d.cancel || "Batal", primary: false },
+            { text: d.btnGoPage || "Lompat", primary: true, action: async () => {
+                const val = parseInt(document.getElementById('jump-page-input').value);
+                window.closeDialog();
+                if (val >= 1 && val <= total) {
+                    currentCanvasPage = val;
+                    await renderCanvasPage(currentCanvasPage);
+                }
+            }}
+        ]
+    );
+};
+
+// --- LOGIKA MULTI-TOUCH ZOOM (PINCH GESTURE) MURNI HP ---
+function setupCanvasPinchZoom() {
+    const viewport = document.getElementById('canvas-zoom-viewport');
+    const wrapper = DOM.canvasWrapper;
+    if (!viewport || !wrapper) return;
+
+    viewport.addEventListener('touchstart', (e) => {
+        if (e.touches.length === 2) {
+            canvasTouchStartDist = Math.hypot(
+                e.touches[0].clientX - e.touches[1].clientX,
+                e.touches[0].clientY - e.touches[1].clientY
+            );
+            canvasTouchStartScale = currentCanvasScale;
+        }
+    }, { passive: true });
+
+    viewport.addEventListener('touchmove', (e) => {
+        if (e.touches.length === 2 && canvasTouchStartDist > 0) {
+            const dist = Math.hypot(
+                e.touches[0].clientX - e.touches[1].clientX,
+                e.touches[0].clientY - e.touches[1].clientY
+            );
             
-            if (book.lastReadId) { 
-                const target = document.getElementById(book.lastReadId); 
-                const container = DOM.readContent;
-                if (target && container) {
-                    const cRect = container.getBoundingClientRect();
-                    const tRect = target.getBoundingClientRect();
-                    const offset = tRect.top - cRect.top + container.scrollTop - (cRect.height / 2) + (tRect.height / 2);
-                    container.scrollTo({ top: offset, behavior: 'auto' });
-                } 
-            } else { 
-                DOM.readContent.scrollTo({ top: 0, behavior: 'auto' }); 
+            // Hitung persentase zoom & batasi min 1.0x dan max 3.5x agar tidak rusak visualnya
+            const factor = dist / canvasTouchStartDist;
+            let targetScale = canvasTouchStartScale * factor;
+            targetScale = Math.max(1.0, Math.min(3.5, targetScale));
+
+            currentCanvasScale = targetScale;
+            wrapper.style.transform = `scale(${currentCanvasScale})`;
+        }
+    }, { passive: true });
+
+    viewport.addEventListener('touchend', (e) => {
+        if (e.touches.length < 2) {
+            canvasTouchStartDist = 0;
+            // Jika scale kembali mengecil ke 1.0, reset transform agar posisinya pas di tengah
+            if (currentCanvasScale <= 1.05) {
+                currentCanvasScale = 1.0;
+                wrapper.style.transform = '';
             }
-            
-            setTimeout(() => {
-                loader.classList.add('opacity-0'); 
-                setTimeout(() => loader.classList.add('hidden'), 300);
-                window.setupIntersectionObserver(); 
-            }, 150);
-            
-        });
-
-    }, 300); 
+        }
+    }, { passive: true });
 }
 
 window._closeReaderAction = function(isFromHistory = false) {
@@ -1452,7 +1687,12 @@ window._closeReaderAction = function(isFromHistory = false) {
     DOM.readView.classList.add('translate-y-full'); DOM.libView.style.transform = 'scale(1)';
     if(observer) observer.disconnect(); 
     
-    // Bebasin RAM pas buku ditutup
+    // Reset Canvas State
+    currentPdfDoc = null;
+    currentCanvasPage = 1;
+    currentCanvasScale = 1.0;
+    if (DOM.canvasWrapper) DOM.canvasWrapper.style.transform = '';
+
     if (activeBookId) {
         let bIdx = library.findIndex(b => b.id === activeBookId);
         if (bIdx > -1 && library[bIdx].nodes) {
@@ -1555,7 +1795,7 @@ let progressSaveTimeout = null;
 async function updateBookProgress(bookId, lastNodeId, pct) {
     let bookIndex = library.findIndex(b => b.id === bookId);
     if(bookIndex > -1) { 
-        library[bookIndex].lastReadId = lastNodeId; library[bookIndex].progressPct = pct; 
+        library[bookIndex].lastReadId = String(lastNodeId); library[bookIndex].progressPct = pct; 
         if (progressSaveTimeout) clearTimeout(progressSaveTimeout);
         progressSaveTimeout = setTimeout(() => { localforage.setItem('pdf_epub_master', library); updateStatistics(); }, 1500);
     }
@@ -1641,6 +1881,11 @@ document.addEventListener('touchend', () => {
 
 function _handleSelectionChange() {
     if(!activeBookId) return;
+    
+    // Skip deteksi selection jika buku saat ini adalah Canvas Mode
+    const book = library.find(b => b.id === activeBookId);
+    if(book && book.pdfMode === 'canvas') return;
+
     const sel = window.getSelection(); const text = sel.toString().trim(); const menu = document.getElementById('selection-menu');
 
     if (text.length > 0 && sel.rangeCount > 0 && DOM.inner) {
@@ -1729,17 +1974,22 @@ async function registerAnnotation(annotObj) {
     const book = library[bookIndex]; if(!book.annotations) book.annotations = [];
     book.annotations.push(annotObj); await localforage.setItem('pdf_epub_master', library);
     
-    const nodeEl = document.getElementById(`node-${annotObj.nodeIdx}`);
-    if(nodeEl && book.nodes && book.nodes[annotObj.nodeIdx]) {
-        const currentAnnots = book.annotations.filter(a => a.nodeIdx === annotObj.nodeIdx);
-        nodeEl.innerHTML = window.renderNodeText(book.nodes[annotObj.nodeIdx].text, currentAnnots);
+    // Hanya render ulang node jika bukan Canvas Mode
+    if (book.pdfMode !== 'canvas') {
+        const nodeEl = document.getElementById(`node-${annotObj.nodeIdx}`);
+        if(nodeEl && book.nodes && book.nodes[annotObj.nodeIdx]) {
+            const currentAnnots = book.annotations.filter(a => a.nodeIdx === annotObj.nodeIdx);
+            nodeEl.innerHTML = window.renderNodeText(book.nodes[annotObj.nodeIdx].text, currentAnnots);
+        }
+        window.getSelection().removeAllRanges();
     }
-    window.getSelection().removeAllRanges();
+
     window.renderBookmarkPanel();
     updateStatistics(); 
 }
 
 window.openBookmarkModal = function(color) {
+    // Tombol bookmark floating di index.html (tapi di Mode Canvas, bookmark dibuat via panel kanan)
     if(currentSelection.nodeIdx === -1) return;
     
     activeNoteColor = color; 
@@ -1752,11 +2002,40 @@ window.openBookmarkModal = function(color) {
     openModal('bookmark-modal', 'bookmark-sheet', true);
 };
 
+// --- SHORTCUT UNTUK MEMBUAT BOOKMARK HALAMAN PADA CANVAS MODE ---
+window.createCanvasPageBookmark = function() {
+    const book = library.find(b => b.id === activeBookId);
+    if (!book) return;
+
+    activeNoteColor = 'yellow';
+    editingAnnotId = null;
+
+    const d = i18n[wikiLang] || i18n['id'];
+
+    // Prefill data bookmark berdasarkan nomor halaman canvas murni
+    document.getElementById('bookmark-input-title').value = `${d.pdfPageLabel || 'Hal'} ${currentCanvasPage}`;
+    document.getElementById('bookmark-input-text').value = '';
+    document.getElementById('btn-delete-bookmark').classList.add('hidden');
+
+    // Paksa set target seleksi ke index halaman murni agar di-save dengan selamat
+    currentSelection = {
+        text: `${d.pdfPageLabel || 'Hal'} ${currentCanvasPage}`,
+        nodeIdx: currentCanvasPage,
+        startOff: 0,
+        endOff: 0
+    };
+
+    openModal('bookmark-modal', 'bookmark-sheet', true);
+};
+
 window.saveBookmarkAnnotation = function() {
     const titleVal = document.getElementById('bookmark-input-title').value.trim();
     const noteVal = document.getElementById('bookmark-input-text').value.trim();
     history.back(); 
     
+    const book = library.find(b => b.id === activeBookId);
+    if (!book) return;
+
     if(editingAnnotId) {
         const bookIndex = library.findIndex(b => b.id === activeBookId);
         if(bookIndex > -1) {
@@ -1770,34 +2049,48 @@ window.saveBookmarkAnnotation = function() {
             }
         }
     } else {
-        const book = library.find(b => b.id === activeBookId);
-        if (!book || !book.nodes) return;
-
-        const totalNodes = book.nodes.length;
-        const pct = Math.round(((currentSelection.nodeIdx + 1) / totalNodes) * 100);
-
-        let closestChapterName = wikiLang === 'id' ? "Bagian Buku" : "Book Section";
-        for (let i = currentSelection.nodeIdx; i >= 0; i--) {
-            if (book.nodes[i].tag === 'h1' || book.nodes[i].tag === 'h2') {
-                closestChapterName = book.nodes[i].text;
-                break;
-            }
-        }
-        const chapterPreview = closestChapterName.length > 15 ? closestChapterName.substring(0, 15) + '...' : closestChapterName;
-
-        const newAnnot = { 
-            id: 'BM_' + Date.now().toString(), 
-            nodeIdx: currentSelection.nodeIdx, 
-            startOff: currentSelection.startOff, 
-            endOff: currentSelection.endOff,
-            text: currentSelection.text, 
-            color: activeNoteColor, 
-            title: titleVal || (wikiLang === 'id' ? "Bookmark Baru" : "New Bookmark"), 
-            note: noteVal,
-            meta: `${chapterPreview} — ${pct}%`
-        };
+        const d = i18n[wikiLang] || i18n['id'];
         
-        setTimeout(() => { registerAnnotation(newAnnot); }, 300);
+        if (book.pdfMode === 'canvas') {
+            const newAnnot = { 
+                id: 'BM_' + Date.now().toString(), 
+                nodeIdx: currentCanvasPage, // menyimpan index halaman canvas murni
+                startOff: 0, 
+                endOff: 0,
+                text: `${d.pdfPageLabel || 'Hal'} ${currentCanvasPage}`, 
+                color: activeNoteColor, 
+                title: titleVal || `${d.pdfPageLabel || 'Hal'} ${currentCanvasPage}`, 
+                note: noteVal,
+                meta: `${d.pdfPageLabel || 'Hal'} ${currentCanvasPage} / ${book.pages}`
+            };
+            setTimeout(() => { registerAnnotation(newAnnot); }, 300);
+        } else {
+            if (!book.nodes) return;
+            const totalNodes = book.nodes.length;
+            const pct = Math.round(((currentSelection.nodeIdx + 1) / totalNodes) * 100);
+
+            let closestChapterName = wikiLang === 'id' ? "Bagian Buku" : "Book Section";
+            for (let i = currentSelection.nodeIdx; i >= 0; i--) {
+                if (book.nodes[i].tag === 'h1' || book.nodes[i].tag === 'h2') {
+                    closestChapterName = book.nodes[i].text;
+                    break;
+                }
+            }
+            const chapterPreview = closestChapterName.length > 15 ? closestChapterName.substring(0, 15) + '...' : closestChapterName;
+
+            const newAnnot = { 
+                id: 'BM_' + Date.now().toString(), 
+                nodeIdx: currentSelection.nodeIdx, 
+                startOff: currentSelection.startOff, 
+                endOff: currentSelection.endOff,
+                text: currentSelection.text, 
+                color: activeNoteColor, 
+                title: titleVal || (wikiLang === 'id' ? "Bookmark Baru" : "New Bookmark"), 
+                note: noteVal,
+                meta: `${chapterPreview} — ${pct}%`
+            };
+            setTimeout(() => { registerAnnotation(newAnnot); }, 300);
+        }
     }
 };
 
@@ -1838,10 +2131,12 @@ window.deleteAnnotationById = async function(annotId) {
     book.annotations.splice(annotIndex, 1);
     await localforage.setItem('pdf_epub_master', library);
     
-    const nodeEl = document.getElementById(`node-${nodeIdx}`);
-    if(nodeEl && book.nodes && book.nodes[nodeIdx]) {
-        const currentAnnots = book.annotations.filter(a => a.nodeIdx === nodeIdx);
-        nodeEl.innerHTML = window.renderNodeText(book.nodes[nodeIdx].text, currentAnnots);
+    if (book.pdfMode !== 'canvas') {
+        const nodeEl = document.getElementById(`node-${nodeIdx}`);
+        if(nodeEl && book.nodes && book.nodes[nodeIdx]) {
+            const currentAnnots = book.annotations.filter(a => a.nodeIdx === nodeIdx);
+            nodeEl.innerHTML = window.renderNodeText(book.nodes[nodeIdx].text, currentAnnots);
+        }
     }
 
     window.renderBookmarkPanel();
@@ -1866,6 +2161,19 @@ function _renderBookmarkList(annotations) {
 
     const bookmarks = [...annotations].sort((a,b) => a.nodeIdx - b.nodeIdx);
 
+    const book = library.find(b => b.id === activeBookId);
+    const isCanvas = book && book.pdfMode === 'canvas';
+
+    // Jika mode Canvas, tambahkan tombol Pintasan "Tambah Bookmark Halaman Ini" di baris paling atas
+    if (isCanvas) {
+        const d = i18n[wikiLang] || i18n['id'];
+        const quickAddBtn = document.createElement('button');
+        quickAddBtn.className = "w-full p-4 mb-4 rounded-3xl bg-m3-primary text-m3-onPrimary font-bold text-xs flex items-center justify-center gap-2 btn-morph shadow-sm sticky top-0 z-10";
+        quickAddBtn.innerHTML = `<i data-lucide="plus-circle" class="w-4 h-4"></i> ${d.bookmarkModalTitle || 'Bookmark'} ${d.pdfPageLabel || 'Hal'} ${currentCanvasPage}`;
+        quickAddBtn.onclick = () => window.createCanvasPageBookmark();
+        DOM.bookmarkList.appendChild(quickAddBtn);
+    }
+
     if(bookmarks.length === 0) {
         if(emptyState) emptyState.classList.remove('hidden');
     } else {
@@ -1875,19 +2183,23 @@ function _renderBookmarkList(annotations) {
             const btn = document.createElement('div');
             btn.className = "group relative flex flex-col p-4 mb-3 rounded-3xl bg-m3-surface shadow-sm overflow-hidden text-left transition-all hover:shadow-md cursor-pointer";
             
-            btn.onclick = () => {
-                const markTarget = document.querySelector(`mark[data-id="${bm.id}"]`);
-                const paragraphTarget = document.getElementById(`node-${bm.nodeIdx}`);
-                const container = DOM.readContent;
-                
-                if (container) {
-                    let targetEl = markTarget || paragraphTarget;
-                    if (targetEl) {
-                        const cRect = container.getBoundingClientRect();
-                        const tRect = targetEl.getBoundingClientRect();
-                        const offset = tRect.top - cRect.top + container.scrollTop - (cRect.height / 2) + (tRect.height / 2);
-                        
-                        container.scrollTo({ top: offset, behavior: 'smooth' });
+            btn.onclick = async () => {
+                if (isCanvas) {
+                    currentCanvasPage = parseInt(bm.nodeIdx) || 1;
+                    await renderCanvasPage(currentCanvasPage);
+                } else {
+                    const markTarget = document.querySelector(`mark[data-id="${bm.id}"]`);
+                    const paragraphTarget = document.getElementById(`node-${bm.nodeIdx}`);
+                    const container = DOM.readContent;
+                    
+                    if (container) {
+                        let targetEl = markTarget || paragraphTarget;
+                        if (targetEl) {
+                            const cRect = container.getBoundingClientRect();
+                            const tRect = targetEl.getBoundingClientRect();
+                            const offset = tRect.top - cRect.top + container.scrollTop - (cRect.height / 2) + (tRect.height / 2);
+                            container.scrollTo({ top: offset, behavior: 'smooth' });
+                        }
                     }
                 }
                 history.back(); 
@@ -1910,11 +2222,11 @@ function _renderBookmarkList(annotations) {
                     ${bm.note}
                 </div>` : '';
             
-            let quoteHtml = `
+            let quoteHtml = !isCanvas ? `
                 <div class="mt-2 p-3 rounded-2xl ${quoteBgCls}">
                     <span class="text-[11px] font-medium opacity-90 italic line-clamp-2 leading-relaxed">"${bm.text}"</span>
                 </div>
-            `;
+            ` : '';
             
             let metaText = bm.meta || 'Chapter';
             if (metaText.length > 15) metaText = metaText.substring(0, 15) + '...';
@@ -1959,7 +2271,7 @@ window.filterBookmarkPanel = function(query) {
 
 // 12. SWIPE TO DISMISS LOGIC & SCROLL LOCK
 function setupSwipeToDismiss() {
-    const sheets = ['global-settings-sheet', 'b-opt-sheet', 'edit-sheet', 'bookmark-sheet', 'raw-backup-sheet', 'raw-restore-sheet', 'welcome-sheet', 'backup-type-sheet', 'ai-sheet'];
+    const sheets = ['global-settings-sheet', 'b-opt-sheet', 'edit-sheet', 'bookmark-sheet', 'raw-backup-sheet', 'raw-restore-sheet', 'welcome-sheet', 'backup-type-sheet', 'pdf-mode-sheet', 'ai-sheet'];
     
     sheets.forEach(sheetId => {
         const sheet = document.getElementById(sheetId);
@@ -1970,7 +2282,6 @@ function setupSwipeToDismiss() {
             let target = e.target;
             let isScrollableArea = false;
             
-            // FIX: Cek dari target sentuhan sampai ke elemen sheet itu sendiri
             while (target && target !== document.body) {
                 const style = window.getComputedStyle(target);
                 if (style.overflowY === 'auto' || style.overflowY === 'scroll') {
@@ -1979,7 +2290,7 @@ function setupSwipeToDismiss() {
                         break;
                     }
                 }
-                if (target === sheet) break; // Berhenti ngecek setelah ngetes badan sheet-nya
+                if (target === sheet) break;
                 target = target.parentNode;
             }
             
