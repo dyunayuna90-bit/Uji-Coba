@@ -1504,6 +1504,9 @@ window.openBook = async function(book) {
             initCanvasGestures();
             // Baru render — canvas digambar ke wrapper yang sudah terpasang listener
             await renderCanvasPage(currentCanvasPage);
+            // Set posisi awal Y ke offset vertikal setelah render
+            const wInit = document.getElementById('canvas-wrapper');
+            if (wInit) { canvasTranslateY = wInit._offsetY || 0; _applyCanvasTransform(wInit); }
         } catch (err) {
             console.error(err);
             showDialog("Error", "Gagal memuat Canvas PDF: " + err.message, "alert-circle", [{ text: "Tutup", primary: true }]);
@@ -1618,23 +1621,32 @@ async function renderCanvasPage(pageNum) {
         const fitScale = containerW / naturalViewport.width;
         const viewport = page.getViewport({ scale: fitScale });
 
+        const displayW = containerW;
+        const displayH = Math.floor(viewport.height);
+
         // Set canvas pixel size (tajam di retina)
         canvas.width = Math.floor(viewport.width * pixelRatio);
         canvas.height = Math.floor(viewport.height * pixelRatio);
 
         // Set display size pas dengan container
-        canvas.style.width = containerW + 'px';
-        canvas.style.height = Math.floor(viewport.height) + 'px';
+        canvas.style.width = displayW + 'px';
+        canvas.style.height = displayH + 'px';
 
         // Set wrapper size sama dengan canvas display size
-        wrapper.style.width = containerW + 'px';
-        wrapper.style.height = Math.floor(viewport.height) + 'px';
+        wrapper.style.width = displayW + 'px';
+        wrapper.style.height = displayH + 'px';
+
+        // Center wrapper secara vertikal jika halaman lebih pendek dari container
+        const offsetY = Math.max(0, Math.floor((containerH - displayH) / 2));
+        wrapper.style.top = offsetY + 'px';
+        wrapper.style.left = '0px';
 
         // Simpan ukuran natural untuk clamping pan
-        wrapper._naturalW = containerW;
-        wrapper._naturalH = Math.floor(viewport.height);
+        wrapper._naturalW = displayW;
+        wrapper._naturalH = displayH;
         wrapper._containerW = containerW;
         wrapper._containerH = containerH;
+        wrapper._offsetY = offsetY;
 
         const ctx = canvas.getContext('2d');
         const renderContext = {
@@ -1667,25 +1679,28 @@ async function renderCanvasPage(pageNum) {
 window.nextCanvasPage = async function() {
     if (!currentPdfDoc || currentCanvasPage >= currentPdfDoc.numPages) return;
     currentCanvasPage++;
-    // Reset zoom & posisi saat ganti halaman
     currentCanvasScale = 1.0;
     canvasTranslateX = 0;
-    canvasTranslateY = 0;
+    canvasTranslateY = 0; // akan di-set ulang setelah render
     const w = document.getElementById('canvas-wrapper');
     if (w) { w.style.transition = 'none'; _applyCanvasTransform(w); }
     await renderCanvasPage(currentCanvasPage);
+    // Setelah render, apply offset vertikal yang baru
+    const w2 = document.getElementById('canvas-wrapper');
+    if (w2) { canvasTranslateY = w2._offsetY || 0; _applyCanvasTransform(w2); }
 };
 
 window.prevCanvasPage = async function() {
     if (!currentPdfDoc || currentCanvasPage <= 1) return;
     currentCanvasPage--;
-    // Reset zoom & posisi saat ganti halaman
     currentCanvasScale = 1.0;
     canvasTranslateX = 0;
     canvasTranslateY = 0;
     const w = document.getElementById('canvas-wrapper');
     if (w) { w.style.transition = 'none'; _applyCanvasTransform(w); }
     await renderCanvasPage(currentCanvasPage);
+    const w2 = document.getElementById('canvas-wrapper');
+    if (w2) { canvasTranslateY = w2._offsetY || 0; _applyCanvasTransform(w2); }
 };
 
 window.showJumpToPageDialog = function() {
@@ -1817,7 +1832,8 @@ function initCanvasGestures() {
                 // Snap balik ke posisi asal
                 currentCanvasScale = 1.0;
                 canvasTranslateX = 0;
-                canvasTranslateY = 0;
+                const w2 = document.getElementById('canvas-wrapper');
+                canvasTranslateY = w2 ? (w2._offsetY || 0) : 0;
                 wrapper.style.transition = 'transform 0.2s ease';
                 _applyCanvasTransform(wrapper);
                 setTimeout(() => { wrapper.style.transition = 'none'; }, 220);
@@ -1848,12 +1864,15 @@ function _applyCanvasTransform(wrapper) {
         const scaledH = wrapper._naturalH * currentCanvasScale;
         const cW = wrapper._containerW || wrapper._naturalW;
         const cH = wrapper._containerH || wrapper._naturalH;
+        const offY = wrapper._offsetY || 0;
 
-        // Batas: tidak boleh ada ruang kosong di sisi manapun
+        // Batas X: kiri tidak boleh geser kanan melebihi 0, kanan tidak boleh ada ruang kosong
         const maxX = 0;
         const minX = Math.min(0, cW - scaledW);
-        const maxY = 0;
-        const minY = Math.min(0, cH - scaledH);
+
+        // Batas Y: atas tidak boleh geser bawah melebihi offset asal, bawah tidak boleh ada ruang kosong
+        const maxY = offY;
+        const minY = Math.min(offY, offY + cH - scaledH);
 
         canvasTranslateX = Math.max(minX, Math.min(maxX, canvasTranslateX));
         canvasTranslateY = Math.max(minY, Math.min(maxY, canvasTranslateY));
