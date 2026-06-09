@@ -3429,66 +3429,53 @@ window.archiveDownload = async function(identifier, title) {
             chosenType = 'pdf';
         }
 
-        // Step 2: download file dengan ReadableStream progress
+        // Step 2: download file menggunakan XMLHttpRequest (Bypass CORS + Realtime Progress via CapacitorHttp)
         const fileUrl = `https://archive.org/download/${identifier}/${encodeURIComponent(chosen.name)}`;
-        const fileRes = await fetch(fileUrl, { signal });
-        if (!fileRes.ok) throw new Error('Gagal mengunduh file (HTTP ' + fileRes.status + ')');
-
-        const contentLen = fileRes.headers.get('content-length');
-        const totalBytes = contentLen ? parseInt(contentLen, 10) : parseInt(chosen.size || 0, 10);
-
         const cleanTitle = title.replace(/[<>:"/\\|?*]/g, '').trim().substring(0, 60) || identifier;
         const fileName   = `${cleanTitle}.${chosenType}`;
         const mimeType   = chosenType === 'epub' ? 'application/epub+zip' : 'application/pdf';
 
-        let file;
-
-        // Langkah Download pakai STREAM Murni
-        const reader = fileRes.body.getReader();
-        let receivedBytes = 0;
-        const chunks = [];
-        let lastUpdate = 0; // Timer untuk throttle UI
-
-        while (true) {
-            const { done, value } = await reader.read();
-            if (done) break;
-            chunks.push(value);
-            receivedBytes += value.length;
-            const now = Date.now();
+        let file = await new Promise((resolve, reject) => {
+            const xhr = new XMLHttpRequest();
+            xhr.open('GET', fileUrl, true);
+            xhr.responseType = 'blob'; 
             
-            // THROTTLE: Update UI maksimal tiap 150ms biar HP gak ngelag/freeze
-            if (now - lastUpdate > 150) {
-                const receivedMB = (receivedBytes / 1024 / 1024).toFixed(1);
-                if (totalBytes > 0) {
-                    const totalMB = (totalBytes / 1024 / 1024).toFixed(1);
-                    let pct = Math.round((receivedBytes / totalBytes) * 100);
-                    if (pct > 100) pct = 100;
-                    _updateDlMsg(`${txt.downloading} ${chosenType.toUpperCase()}...\n${receivedMB} MB / ${totalMB} MB (${pct}%)`);
-                } else {
-                    // Kalau totalBytes 0, persentase ga ditampilin, tapi MB-nya tetep jalan!
-                    _updateDlMsg(`${txt.downloading} ${chosenType.toUpperCase()}...\n${receivedMB} MB terunduh...`);
+            let lastUpdate = 0;
+            
+            xhr.onprogress = (event) => {
+                const now = Date.now();
+                if (now - lastUpdate > 150) { 
+                    const receivedMB = (event.loaded / 1024 / 1024).toFixed(1);
+                    if (event.lengthComputable && event.total > 0) {
+                        const totalMB = (event.total / 1024 / 1024).toFixed(1);
+                        let pct = Math.round((event.loaded / event.total) * 100);
+                        if (pct > 100) pct = 100;
+                        _updateDlMsg(`${txt.downloading} ${chosenType.toUpperCase()}...\n${receivedMB} MB / ${totalMB} MB (${pct}%)`);
+                    } else {
+                        _updateDlMsg(`${txt.downloading} ${chosenType.toUpperCase()}...\n${receivedMB} MB terunduh...`);
+                    }
+                    lastUpdate = now;
                 }
-                lastUpdate = now;
-            }
-        }
+            };
 
-        // Paksa update ke 100% pas loop selesai
-        if (totalBytes > 0) {
-            const receivedMB = (receivedBytes / 1024 / 1024).toFixed(1);
-            const totalMB = (totalBytes / 1024 / 1024).toFixed(1);
-            _updateDlMsg(`${txt.downloading} ${chosenType.toUpperCase()}...\n${receivedMB} MB / ${totalMB} MB (100%)`);
-        } else {
-            const receivedMB = (receivedBytes / 1024 / 1024).toFixed(1);
-            _updateDlMsg(`${txt.downloading} ${chosenType.toUpperCase()}...\n${receivedMB} MB Selesai.`);
-        }
+            xhr.onload = () => {
+                if (xhr.status >= 200 && xhr.status < 300) {
+                    _updateDlMsg(`${txt.downloading} ${chosenType.toUpperCase()}...\nSelesai (100%)`);
+                    resolve(new File([xhr.response], fileName, { type: mimeType }));
+                } else {
+                    reject(new Error(`Gagal mengunduh file (HTTP ${xhr.status})`));
+                }
+            };
 
-        _updateDlMsg(txt.merging);
+            xhr.onerror = () => reject(new Error('Koneksi terputus atau diblokir CORS.'));
+            
+            signal.addEventListener('abort', () => {
+                xhr.abort();
+                reject(new DOMException('Aborted', 'AbortError'));
+            });
 
-        const combinedArray = new Uint8Array(receivedBytes);
-        let position = 0;
-        for (const chunk of chunks) { combinedArray.set(chunk, position); position += chunk.length; }
-
-        file = new File([combinedArray.buffer], fileName, { type: mimeType });
+            xhr.send();
+        });
 
         _hideDlOverlay();
         _archiveDownloading = false;
