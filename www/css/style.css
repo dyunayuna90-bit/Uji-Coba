@@ -205,7 +205,7 @@ html[data-amoled="true"] .dark #pdf-canvas {
 /* ===================================================================
    TAMBAHAN CLASS TOGGLE UNTUK MENYEMBUNYIKAN JUDUL BUKU
    =================================================================== */
-body.hide-book-titles [id^="title-"],
+body.hide-book-titles [id^="title-"]:not(#title-area),
 body.hide-book-titles [id^="pct-"],
 body.hide-book-titles [id^="book-icon-"] {
     display: none !important;
