@@ -41,6 +41,9 @@ let canvasTapStartTime = 0;
 
 const DOM = {};
 
+let typoPrefs;
+try { typoPrefs = JSON.parse(localStorage.getItem('typo_prefs')) || { size: '1.2rem', align: 'left', font: 'Lora' }; } catch(e) { typoPrefs = { size: '1.2rem', align: 'left', font: 'Lora' }; }
+
 document.addEventListener("DOMContentLoaded", () => {
     // Terapkan state sembunyi judul kalau aktif dari localStorage
     if (isTitlesHidden) {
@@ -91,29 +94,29 @@ document.addEventListener("DOMContentLoaded", () => {
         canvasWarning: document.getElementById('canvas-warning-info')
     });
 
-    setupScrollListeners();
-    setupSearchListeners();
-    setupCanvasPinchZoom();
-    syncWikiLangUI();
-    applyLanguage();
-    applyTypo();
-    applyThemeToDOM();
-    loadLibrary().finally(() => {
-        // Sembunyikan splash screen setelah library siap
-        const splash = document.getElementById('splash-screen');
-        if (splash) {
-            splash.style.opacity = '0';
-            setTimeout(() => { splash.style.display = 'none'; }, 500);
-        }
-    });
-    // Safety net: pastikan splash selalu hilang max 5 detik
-    setTimeout(() => {
+    const _hideSplash = () => {
         const splash = document.getElementById('splash-screen');
         if (splash && splash.style.display !== 'none') {
             splash.style.opacity = '0';
             setTimeout(() => { splash.style.display = 'none'; }, 500);
         }
-    }, 5000);
+    };
+
+    // Safety net mutlak — splash hilang max 4 detik apapun yang terjadi
+    const _splashSafetyTimer = setTimeout(_hideSplash, 4000);
+
+    try { setupScrollListeners(); } catch(e) { console.error('setupScrollListeners:', e); }
+    try { setupSearchListeners(); } catch(e) { console.error('setupSearchListeners:', e); }
+    try { setupCanvasPinchZoom(); } catch(e) { console.error('setupCanvasPinchZoom:', e); }
+    try { syncWikiLangUI(); } catch(e) { console.error('syncWikiLangUI:', e); }
+    try { applyLanguage(); } catch(e) { console.error('applyLanguage:', e); }
+    try { applyTypo(); } catch(e) { console.error('applyTypo:', e); }
+    try { applyThemeToDOM(); } catch(e) { console.error('applyThemeToDOM:', e); }
+
+    loadLibrary().finally(() => {
+        clearTimeout(_splashSafetyTimer);
+        _hideSplash();
+    });
 
     setupSwipeToDismiss(); // Nyalain Gestur Aman
 
@@ -406,6 +409,7 @@ function updateBottomNavUI(activeId) {
 
 // 3. HARDWARE BACK BUTTON & HISTORY ROUTING
 window.addEventListener('popstate', (e) => {
+    try {
     if (!document.getElementById('raw-backup-modal').classList.contains('opacity-0')) { _closeModalAction('raw-backup-modal', 'raw-backup-sheet', true, true); }
     else if (!document.getElementById('raw-restore-modal').classList.contains('opacity-0')) { _closeModalAction('raw-restore-modal', 'raw-restore-sheet', true, true); }
     else if (!document.getElementById('custom-dialog').classList.contains('opacity-0')) { window.closeDialog(true); }
@@ -419,9 +423,10 @@ window.addEventListener('popstate', (e) => {
     else if (!document.getElementById('pdf-mode-modal').classList.contains('opacity-0')) { _closeModalAction('pdf-mode-modal', 'pdf-mode-sheet', true, true); }
     else if (isBatchDeleteMode) { window.toggleBatchDelete(true); }
     else if (activePanel) { _closeSidePanelsAction(true); } 
-    else if (document.getElementById('search-area').classList.contains('search-active')) { closeSearch(true); }
+    else if (document.getElementById('search-area') && document.getElementById('search-area').classList.contains('search-active')) { closeSearch(true); }
     else if (document.getElementById('reader-bottom-bar') && document.getElementById('reader-bottom-bar').classList.contains('hidden')) { window.toggleFullscreenReading(true); }
     else if (DOM.readView && !DOM.readView.classList.contains('translate-y-full')) { _closeReaderAction(true); }
+    } catch(e) { console.error('popstate error:', e); }
 });
 
 function pushAppHistory(stateName) { history.pushState({ state: stateName }, '', `#${stateName}`); }
@@ -1795,7 +1800,6 @@ window.setReaderTheme = function(mode) {
     applyThemeToDOM();
 };
 
-let typoPrefs = JSON.parse(localStorage.getItem('typo_prefs')) || { size: '1.2rem', align: 'left', font: 'Lora' };
 function applyTypo() {
     document.documentElement.style.setProperty('--reader-size', typoPrefs.size);
     document.documentElement.style.setProperty('--reader-align', typoPrefs.align);
