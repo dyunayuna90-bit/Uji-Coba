@@ -424,6 +424,28 @@ window.addEventListener('popstate', (e) => {
 function pushAppHistory(stateName) { history.pushState({ state: stateName }, '', `#${stateName}`); }
 
 // 4. SEARCH & I18N
+function _hideRacksForSearch(hide) {
+    // Menyembunyikan semua rak buku saat mode archive search aktif
+    const rackIds = ['continue-reading-section', 'pinned-books-section', 'scroll-collection-section', 'canvas-collection-section'];
+    rackIds.forEach(id => {
+        const el = document.getElementById(id);
+        if (!el) return;
+        if (hide) {
+            el.style.transition = 'opacity 0.25s ease, max-height 0.35s cubic-bezier(0.4,0,0.2,1)';
+            el.style.overflow = 'hidden';
+            el.style.maxHeight = '0px';
+            el.style.opacity = '0';
+            el.style.marginBottom = '0';
+        } else {
+            el.style.transition = 'opacity 0.3s ease, max-height 0.4s cubic-bezier(0.2,0,0,1)';
+            el.style.maxHeight = '';
+            el.style.opacity = '';
+            el.style.overflow = '';
+            el.style.marginBottom = '';
+        }
+    });
+}
+
 function setupSearchListeners() {
     const searchArea = document.getElementById('search-area');
     const searchCapsule = document.querySelector('.search-capsule');
@@ -501,6 +523,7 @@ window.closeSearch = function(fromHistory = false) {
         const archivePanel = document.getElementById('archive-results-panel');
         if (modeRow) modeRow.classList.add('hidden');
         if (archivePanel) archivePanel.classList.add('hidden');
+        _hideRacksForSearch(false);
         _syncSearchModeUI();
 
         renderLibrary();
@@ -3083,6 +3106,7 @@ window.setSearchMode = function(mode) {
     const query = DOM.globalSearch ? DOM.globalSearch.value.trim() : '';
     if (_archiveMode) {
         if (archivePanel) archivePanel.classList.remove('hidden');
+        _hideRacksForSearch(true);
         if (query.length >= 2) {
             _archiveSearch(query);
         } else {
@@ -3090,6 +3114,7 @@ window.setSearchMode = function(mode) {
         }
     } else {
         if (archivePanel) archivePanel.classList.add('hidden');
+        _hideRacksForSearch(false);
         renderLibrary(query);
     }
 };
@@ -3099,6 +3124,7 @@ function _archiveOnInput(query) {
     const archivePanel = document.getElementById('archive-results-panel');
     if (!archivePanel) return;
     archivePanel.classList.remove('hidden');
+    _hideRacksForSearch(true);
     if (query.trim().length < 2) {
         _archiveShowState('empty');
         return;
@@ -3202,13 +3228,43 @@ window.archiveDownload = async function(identifier, title) {
             return n.endsWith('.pdf') && !n.includes('_text') && !n.includes('_djvu');
         });
 
+        if (epubCandidates.length === 0 && pdfCandidates.length === 0) throw new Error('Tidak ada file PDF atau EPUB yang tersedia untuk buku ini.');
+
+        // Jika ada KEDUANYA, tanya user mau pilih mana
         let chosen = null, chosenType = null;
-        if (epubCandidates.length > 0) { chosen = epubCandidates[0]; chosenType = 'epub'; }
-        else if (pdfCandidates.length > 0) {
+        if (epubCandidates.length > 0 && pdfCandidates.length > 0) {
+            // Tutup dialog loading sementara, tampilkan pilihan format
+            window.closeDialog();
+            _archiveDownloading = false;
+            const epubFile = epubCandidates[0];
+            const pdfFile = pdfCandidates.sort((a,b) => parseInt(a.size||0) - parseInt(b.size||0))[0];
+            const epubSizeMb = epubFile.size ? (parseInt(epubFile.size)/1024/1024).toFixed(1) + ' MB' : '?';
+            const pdfSizeMb = pdfFile.size ? (parseInt(pdfFile.size)/1024/1024).toFixed(1) + ' MB' : '?';
+
+            const userChoice = await new Promise((resolve) => {
+                showDialog(
+                    'Pilih Format',
+                    `<div class="flex flex-col gap-3 py-2"><p class="text-xs opacity-70 text-center">Buku ini tersedia dalam dua format.<br>Pilih yang kamu inginkan:</p></div>`,
+                    'book-open',
+                    [
+                        { text: `EPUB  (${epubSizeMb})`, primary: false, action: () => { window.closeDialog(); resolve({ file: epubFile, type: 'epub' }); } },
+                        { text: `PDF  (${pdfSizeMb})`, primary: true, action: () => { window.closeDialog(); resolve({ file: pdfFile, type: 'pdf' }); } }
+                    ]
+                );
+            });
+
+            chosen = userChoice.file;
+            chosenType = userChoice.type;
+            _archiveDownloading = true;
+            // Tampilkan ulang dialog loading setelah user pilih
+            showDialog('Mengunduh buku...', `<div class="flex flex-col items-center gap-3 py-4"><div class="w-8 h-8 border-4 border-m3-primary border-t-transparent rounded-full animate-spin"></div><p class="text-xs font-bold text-center opacity-70 leading-relaxed max-w-[220px]">${_esc(title)}</p></div>`, 'download', []);
+
+        } else if (epubCandidates.length > 0) {
+            chosen = epubCandidates[0]; chosenType = 'epub';
+        } else {
             chosen = pdfCandidates.sort((a,b) => parseInt(a.size||0) - parseInt(b.size||0))[0];
             chosenType = 'pdf';
         }
-        if (!chosen) throw new Error('Tidak ada file PDF atau EPUB yang tersedia untuk buku ini.');
 
         // Step 2: download file
         const sizeMb = chosen.size ? (parseInt(chosen.size) / 1024 / 1024).toFixed(1) + ' MB' : '?';
@@ -3233,6 +3289,10 @@ window.archiveDownload = async function(identifier, title) {
 
         // Step 3: langsung proses ke library (tanpa file input — works di Capacitor)
         setTimeout(async () => {
+            // Tutup search & scroll ke atas agar user bisa lihat loading bar konversi
+            if (typeof window.closeSearch === 'function') window.closeSearch(false);
+            const libScroll = document.getElementById('library-content-scroll');
+            if (libScroll) libScroll.scrollTo({ top: 0, behavior: 'smooth' });
             try {
                 if (typeof window._processFilesFromArchive === 'function') {
                     await window._processFilesFromArchive([file]);
