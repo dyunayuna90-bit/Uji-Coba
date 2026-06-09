@@ -99,7 +99,7 @@ const i18n = {
         extractingEpub: "Mengekstrak EPUB...", analyzingStruct: "Menganalisa Struktur...", extractingChapter: "Mengekstrak Bab",
         welcomeTitle: "Selamat Datang di Baca.", welcomeDesc: "Harap baca instruksi berikut untuk pengalaman membaca yang optimal.",
         welBackup: "Pencadangan Data", 
-        welBackupDesc: "Ada 2 opsi backup di Pengaturan → Data Aplikasi:<br><br><b>JSON (Progres Saja)</b> — Ringan & cepat. Hanya menyimpan bookmark, progres baca, dan catatan. <u>Sebelum restore, wajib upload ulang file buku (PDF/Canvas) sesuai rak yang terakhir di-backup dulu.</u><br><br><b>ZIP (Paket Lengkap)</b> ⭐ — Lebih superior karena backup <i>semua data</i> termasuk isi buku. Langsung bisa dibaca setelah restore tanpa upload ulang.<br><br>📁 <b>Cara backup:</b> Klik Backup → pilih format → file otomatis tersimpan di folder <b>Documents</b> di Android lu (bukan di Google Drive, tapi di penyimpanan internal HP).",
+        welBackupDesc: "Ada 2 opsi backup di Pengaturan → Data Aplikasi:<br><br><b>JSON (Progres Saja)</b> — Ringan & cepat. Hanya menyimpan bookmark, progres baca, dan catatan. <u>Sebelum restore, wajib upload ulang file buku (PDF/Canvas) sesuai rak yang terakhir di-backup dulu.</u><br><br><b>ZIP (Paket Lengkap)</b> — Lebih superior karena backup <i>semua data</i> termasuk isi buku. Langsung bisa dibaca setelah restore tanpa upload ulang.<br><br><b>Cara backup:</b> Klik Backup → pilih format → file otomatis tersimpan di folder <b>Documents</b> di Android lu (bukan di Google Drive, tapi di penyimpanan internal HP).",
         welFormat: "Batasan Format",
         welFormatDesc: "<b>PDF Mode Scroll:</b> Hanya teks yang diekstrak. Gambar di dalam PDF diabaikan. Mendukung text selection, highlight, dan AI.<br><b>PDF Mode Canvas:</b> Tampilan visual asli PDF seperti cetakan fisik. Gambar tetap muncul. Mendukung zoom cubit. Tidak mendukung ubah font atau AI.<br><b>EPUB:</b> Didukung penuh termasuk gambar.",
         welCanvas: "Mode Canvas PDF",
@@ -228,7 +228,7 @@ const i18n = {
         archiveSectionTitle: "Temukan & Unduh Buku",
 
         // --- ARCHIVE DOWNLOAD RESULT TOASTS ---
-        toastBookAdded: "Buku berhasil ditambah! 📚",
+        toastBookAdded: "Buku berhasil ditambah!",
         toastBookDuplicate: "Buku \"{title}\" udah ada di rak sebelumnya.",
         toastBookFailed: "Gagal diproses, file mungkin rusak."
     },
@@ -255,7 +255,7 @@ const i18n = {
         extractingEpub: "Extracting EPUB...", analyzingStructure: "Analyzing Structure...", extractingChapter: "Extracting Chapter",
         welcomeTitle: "Welcome to Baca.", welcomeDesc: "Please read these instructions for the optimal reading experience.",
         welBackup: "Data Backup", 
-        welBackupDesc: "There are 2 backup options in Settings → App Data:<br><br><b>JSON (Progress Only)</b> — Lightweight & fast. Saves only bookmarks, reading progress, and notes. <u>Before restoring, you must re-upload your book files (PDF/Canvas) matching the shelf from your last backup.</u><br><br><b>ZIP (Full Package)</b> ⭐ — Superior because it backs up <i>all data</i> including book contents. Immediately readable after restore — no re-upload needed.<br><br>📁 <b>How to backup:</b> Tap Backup → choose format → the file is automatically saved to the <b>Documents</b> folder on your Android device (internal storage, not Google Drive).",
+        welBackupDesc: "There are 2 backup options in Settings → App Data:<br><br><b>JSON (Progress Only)</b> — Lightweight & fast. Saves only bookmarks, reading progress, and notes. <u>Before restoring, you must re-upload your book files (PDF/Canvas) matching the shelf from your last backup.</u><br><br><b>ZIP (Full Package)</b> — Superior because it backs up <i>all data</i> including book contents. Immediately readable after restore — no re-upload needed.<br><br><b>How to backup:</b> Tap Backup → choose format → the file is automatically saved to the <b>Documents</b> folder on your Android device (internal storage, not Google Drive).",
         welFormat: "Format Limitations",
         welFormatDesc: "<b>PDF Scroll Mode:</b> Only text is extracted. Images inside PDFs are ignored. Supports text selection, highlights, and AI.<br><b>PDF Canvas Mode:</b> Shows the original visual layout like a physical printout. Images are visible. Supports pinch-to-zoom. Does not support font changes or AI.<br><b>EPUB:</b> Fully supported including images.",
         welCanvas: "PDF Canvas Mode",
@@ -384,7 +384,7 @@ const i18n = {
         archiveSectionTitle: "Discover & Download Books",
 
         // --- ARCHIVE DOWNLOAD RESULT TOASTS ---
-        toastBookAdded: "Book added successfully! 📚",
+        toastBookAdded: "Book added successfully!",
         toastBookDuplicate: "Book \"{title}\" is already in your shelf.",
         toastBookFailed: "Processing failed, file may be corrupted."
     },
@@ -411,7 +411,7 @@ const i18n = {
         extractingEpub: "Extrayendo EPUB...", analyzingStructure: "Analizando estructura...", extractingChapter: "Extrayendo capítulo",
         welcomeTitle: "Bienvenido a Baca.", welcomeDesc: "Por favor, lee estas instrucciones para una experiencia de lectura óptima.",
         welBackup: "Copia de seguridad", 
-        welBackupDesc: "Hay 2 opciones de copia en Ajustes → Datos de la app:<br><br><b>JSON (Solo progreso)</b> — Ligero y rápido. Guarda solo marcadores, progreso e notas. <u>Antes de restaurar, debes volver a subir los archivos del libro (PDF/Canvas) correspondientes al estante de tu última copia.</u><br><br><b>ZIP (Paquete completo)</b> ⭐ — Superior porque guarda <i>todos los datos</i> incluyendo el contenido del libro. Listo para leer tras restaurar, sin necesidad de volver a subir.<br><br>📁 <b>Cómo hacer copia:</b> Pulsa Copia → elige formato → el archivo se guarda automáticamente en la carpeta <b>Documentos</b> de tu Android (almacenamiento interno, no Google Drive).",
+        welBackupDesc: "Hay 2 opciones de copia en Ajustes → Datos de la app:<br><br><b>JSON (Solo progreso)</b> — Ligero y rápido. Guarda solo marcadores, progreso e notas. <u>Antes de restaurar, debes volver a subir los archivos del libro (PDF/Canvas) correspondientes al estante de tu última copia.</u><br><br><b>ZIP (Paquete completo)</b> — Superior porque guarda <i>todos los datos</i> incluyendo el contenido del libro. Listo para leer tras restaurar, sin necesidad de volver a subir.<br><br><b>Cómo hacer copia:</b> Pulsa Copia → elige formato → el archivo se guarda automáticamente en la carpeta <b>Documentos</b> de tu Android (almacenamiento interno, no Google Drive).",
         welFormat: "Limitaciones de formato",
         welFormatDesc: "<b>PDF Modo Desplazamiento:</b> Solo se extrae el texto. Las imágenes se ignoran. Compatible con selección de texto, resaltados e IA.<br><b>PDF Modo Canvas:</b> Muestra el diseño visual original como impresión física. Las imágenes son visibles. Admite zoom. No admite cambio de fuente ni IA.<br><b>EPUB:</b> Totalmente compatible incluyendo imágenes.",
         welCanvas: "Modo Canvas PDF",
@@ -540,7 +540,7 @@ const i18n = {
         archiveSectionTitle: "Descubrir y Descargar Libros",
 
         // --- ARCHIVE DOWNLOAD RESULT TOASTS ---
-        toastBookAdded: "¡Libro añadido con éxito! 📚",
+        toastBookAdded: "¡Libro añadido con éxito!",
         toastBookDuplicate: "El libro \"{title}\" ya está en tu estante.",
         toastBookFailed: "Error al procesar, el archivo puede estar dañado."
     }
