@@ -164,8 +164,12 @@ async function processMultipleFiles(files) {
             });
         }
         
-        // Jeda bentar agar animasi tutup dialog selesai
+        // Jeda bentar agar animasi tutup dialog selesai, tampilkan spinner
+        if (typeof window.showGlobalLoading === 'function') {
+            window.showGlobalLoading(d.loadingDocs || 'Menganalisa dokumen...');
+        }
         await new Promise(r => setTimeout(r, 350));
+        if (typeof window.hideGlobalLoading === 'function') window.hideGlobalLoading();
     }
     
     if (filesToProcess.length === 0) return;
@@ -177,9 +181,13 @@ async function processMultipleFiles(files) {
     if (hasPdf) {
         // Tampilkan animasi loading analisa
         DOM.load.classList.remove('hidden');
-        if(DOM.loadTxt) DOM.loadTxt.textContent = "Menganalisa dokumen...";
+        if(DOM.loadTxt) DOM.loadTxt.textContent = d.loadingDocs || "Menganalisa dokumen...";
         DOM.loadBar.style.width = '100%';
         if(DOM.loadPct) DOM.loadPct.textContent = '...';
+        // Juga tampilkan global spinner supaya user tahu
+        if (typeof window.showGlobalLoading === 'function') {
+            window.showGlobalLoading(d.loadingDocs || 'Menganalisa dokumen...');
+        }
         
         for (let f of filesToProcess) {
             const ext = f.name.split('.').pop().toLowerCase();
@@ -216,6 +224,7 @@ async function processMultipleFiles(files) {
         }
         
         DOM.load.classList.add('hidden');
+        if (typeof window.hideGlobalLoading === 'function') window.hideGlobalLoading();
         
         // Tahap 4: Modal Batch Options (Mode Pemilihan Canvas/Scroll)
         let batchHtml = `<div class="max-h-[50vh] overflow-y-auto mt-2 mb-2 p-1 text-left flex flex-col gap-3">`;
@@ -283,7 +292,13 @@ async function processMultipleFiles(files) {
         });
         
         if (batchAction === 'CANCEL') return;
+        // Spinner saat jeda antara modal batch → mulai proses import
+        if (typeof window.showGlobalLoading === 'function') {
+            const dL = typeof i18n !== 'undefined' ? (i18n[lang] || i18n['id']) : {};
+            window.showGlobalLoading(dL.loadingDocs || 'Menyiapkan proses...');
+        }
         await new Promise(r => setTimeout(r, 350));
+        if (typeof window.hideGlobalLoading === 'function') window.hideGlobalLoading();
         
     } else {
         // Jika tidak ada PDF sama sekali, langsung saja
