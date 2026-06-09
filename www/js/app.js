@@ -120,9 +120,6 @@ document.addEventListener("DOMContentLoaded", () => {
     // Update versi app di layar pengaturan
     const verDisplay = document.getElementById('app-version-display');
     if (verDisplay && window.APP_VERSION) verDisplay.textContent = `v${window.APP_VERSION}`;
-
-    // Inisialisasi Archive Search
-    _initArchiveSearch();
 });
 
 // Update UI Statistik
@@ -427,6 +424,10 @@ function setupSearchListeners() {
     
     document.addEventListener('click', (e) => {
         if (searchArea && searchArea.classList.contains('search-active') && !searchArea.contains(e.target)) {
+            // Jangan tutup kalau klik di archive-results-panel atau search-mode-row
+            const modeRow = document.getElementById('search-mode-row');
+            const archivePanel = document.getElementById('archive-results-panel');
+            if ((modeRow && modeRow.contains(e.target)) || (archivePanel && archivePanel.contains(e.target))) return;
             window.closeSearch(false);
         }
     });
@@ -437,6 +438,11 @@ function setupSearchListeners() {
                 searchArea.classList.add('search-active');
                 if (window.location.hash !== '#search') pushAppHistory('search');
             }
+            // Tampilkan mode row
+            const modeRow = document.getElementById('search-mode-row');
+            if (modeRow) modeRow.classList.remove('hidden');
+            // Sync offline badge
+            _syncOfflineBadge();
         });
         DOM.globalSearch.addEventListener('input', (e) => {
             // Auto-hide statistik saat search
@@ -452,7 +458,12 @@ function setupSearchListeners() {
                     statSection.style.marginBottom = '';
                 }
             }
-            renderLibrary(e.target.value);
+            // Tindakan berdasarkan mode aktif
+            if (_archiveMode) {
+                _archiveOnInput(e.target.value);
+            } else {
+                renderLibrary(e.target.value);
+            }
         });
     }
 
@@ -463,6 +474,10 @@ function setupSearchListeners() {
             } else { DOM.globalSearch.focus(); }
         });
     }
+
+    // Listener online/offline
+    window.addEventListener('online', _syncOfflineBadge);
+    window.addEventListener('offline', _syncOfflineBadge);
 }
 
 window.closeSearch = function(fromHistory = false) {
@@ -478,6 +493,15 @@ window.closeSearch = function(fromHistory = false) {
              statSection.style.opacity = '1';
              statSection.style.marginBottom = '';
         }
+
+        // Reset archive mode dan sembunyikan panel
+        _archiveMode = false;
+        _archiveLastQuery = '';
+        const modeRow = document.getElementById('search-mode-row');
+        const archivePanel = document.getElementById('archive-results-panel');
+        if (modeRow) modeRow.classList.add('hidden');
+        if (archivePanel) archivePanel.classList.add('hidden');
+        _syncSearchModeUI();
 
         renderLibrary();
         if (!fromHistory && window.location.hash === '#search') history.back();
@@ -603,19 +627,6 @@ function applyLanguage() {
 
     // TOC canvas warning
     setElementText('str-toc-canvas-warning', d.tocCanvasWarning || 'Untuk mode canvas, daftar isi tidak tersedia.');
-
-    // Archive Search i18n
-    setElementText('str-archive-section-title', d.archiveSectionTitle || 'Temukan & Unduh Buku');
-    setElementText('str-archive-loading', d.archiveSearchLoading || 'Mencari di arsip...');
-    setElementText('str-archive-empty', d.archiveSearchEmpty || 'Tidak ada hasil. Coba kata kunci lain.');
-    const archiveInput = document.getElementById('archive-search-input');
-    if (archiveInput) archiveInput.placeholder = d.archiveSearchPlaceholder || 'Cari judul, penulis...';
-    const archiveFilterAll = document.getElementById('archive-filter-all');
-    if (archiveFilterAll) archiveFilterAll.textContent = d.archiveFilterAll || 'Semua';
-    const archiveFilterPdf = document.getElementById('archive-filter-pdf');
-    if (archiveFilterPdf) archiveFilterPdf.textContent = d.archiveFilterPdf || 'PDF';
-    const archiveFilterEpub = document.getElementById('archive-filter-epub');
-    if (archiveFilterEpub) archiveFilterEpub.textContent = d.archiveFilterEpub || 'EPUB';
 }
 
 window.setWikiLang = function(lang) {
@@ -3079,335 +3090,311 @@ document.addEventListener("DOMContentLoaded", () => {
 });
 
 // ============================================================
-// 14. ARCHIVE.ORG SEARCH & DOWNLOAD
+// 14. ARCHIVE.ORG SEARCH — terintegrasi dengan search bar utama
 // ============================================================
 
-// State
-let _archiveFilter = 'all';         // 'all' | 'pdf' | 'epub'
-let _archiveLastResults = [];       // hasil terakhir dari API
-let _archiveDownloading = false;
+let _archiveMode = false;           // true = mode cari Archive.org
+let _archiveLastQuery = '';         // query terakhir yang di-search ke Archive
+let _archiveSearchTimer = null;     // debounce timer
+let _archiveDownloading = false;    // lock agar tidak double-download
 
-// Inisialisasi listener search bar Archive
-function _initArchiveSearch() {
-    const input = document.getElementById('archive-search-input');
-    if (!input) return;
-    // Enter key sudah di-handle via onkeydown di HTML, tapi tambahkan juga via JS
-    input.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter') window.searchArchive();
-    });
+// Sync visual offline badge
+function _syncOfflineBadge() {
+    const badge = document.getElementById('offline-badge');
+    if (!badge) return;
+    if (!navigator.onLine) {
+        badge.classList.remove('hidden');
+    } else {
+        badge.classList.add('hidden');
+    }
 }
 
-// Set filter tipe file
-window.setArchiveFilter = function(filter) {
-    _archiveFilter = filter;
-    const btns = {
-        all: document.getElementById('archive-filter-all'),
-        pdf: document.getElementById('archive-filter-pdf'),
-        epub: document.getElementById('archive-filter-epub')
-    };
-    Object.entries(btns).forEach(([key, btn]) => {
-        if (!btn) return;
-        if (key === filter) {
-            btn.classList.add('bg-m3-primary', 'text-m3-onPrimary');
-            btn.classList.remove('bg-m3-surfaceVariant', 'text-m3-onSurfaceVariant');
-        } else {
-            btn.classList.remove('bg-m3-primary', 'text-m3-onPrimary');
-            btn.classList.add('bg-m3-surfaceVariant', 'text-m3-onSurfaceVariant');
+// Sync tampilan tombol mode (primary vs ghost)
+function _syncSearchModeUI() {
+    const btnLocal = document.getElementById('search-mode-local');
+    const btnArchive = document.getElementById('search-mode-archive');
+    if (!btnLocal || !btnArchive) return;
+
+    if (_archiveMode) {
+        btnLocal.classList.remove('bg-m3-primary', 'text-m3-onPrimary');
+        btnLocal.classList.add('bg-m3-surfaceVariant', 'text-m3-onSurfaceVariant');
+        btnArchive.classList.add('bg-m3-primary', 'text-m3-onPrimary');
+        btnArchive.classList.remove('bg-m3-surfaceVariant', 'text-m3-onSurfaceVariant');
+    } else {
+        btnArchive.classList.remove('bg-m3-primary', 'text-m3-onPrimary');
+        btnArchive.classList.add('bg-m3-surfaceVariant', 'text-m3-onSurfaceVariant');
+        btnLocal.classList.add('bg-m3-primary', 'text-m3-onPrimary');
+        btnLocal.classList.remove('bg-m3-surfaceVariant', 'text-m3-onSurfaceVariant');
+    }
+}
+
+// User klik tombol mode
+window.setSearchMode = function(mode) {
+    _archiveMode = (mode === 'archive');
+    _syncSearchModeUI();
+
+    const archivePanel = document.getElementById('archive-results-panel');
+
+    if (!_archiveMode) {
+        // Kembali ke mode library lokal
+        if (archivePanel) archivePanel.classList.add('hidden');
+        const q = DOM.globalSearch ? DOM.globalSearch.value : '';
+        renderLibrary(q);
+    } else {
+        // Masuk mode Archive.org
+        if (!navigator.onLine) {
+            if (archivePanel) archivePanel.classList.remove('hidden');
+            _archiveShowState('offline');
+            return;
         }
-    });
-    // Re-render hasil dengan filter baru
-    if (_archiveLastResults.length > 0) {
-        _renderArchiveResults(_archiveLastResults);
+        const q = DOM.globalSearch ? DOM.globalSearch.value.trim() : '';
+        if (q.length >= 2) {
+            if (archivePanel) archivePanel.classList.remove('hidden');
+            _archiveDoSearch(q);
+        } else {
+            // Belum ada query, sembunyikan panel (tunggu user ketik)
+            if (archivePanel) archivePanel.classList.add('hidden');
+        }
     }
 };
 
-// Main search function
-window.searchArchive = async function() {
-    const input = document.getElementById('archive-search-input');
-    const query = input ? input.value.trim() : '';
-    if (!query) return;
+// Handler input saat archive mode aktif — debounce 600ms
+function _archiveOnInput(val) {
+    clearTimeout(_archiveSearchTimer);
+    const archivePanel = document.getElementById('archive-results-panel');
 
-    const d = i18n[wikiLang] || i18n['id'];
+    if (!_archiveMode) return;
 
-    // Sembunyikan stat section saat search aktif (konsisten dengan global search)
-    const statSection = document.getElementById('statistics-section');
-    if (statSection) {
-        statSection.style.height = '0px';
-        statSection.style.opacity = '0';
-        statSection.style.marginBottom = '0px';
-        statSection.style.overflow = 'hidden';
+    if (!navigator.onLine) {
+        if (archivePanel) archivePanel.classList.remove('hidden');
+        _archiveShowState('offline');
+        return;
     }
 
-    // Tampilkan loading
-    _archiveSetState('loading');
+    if (!val || val.trim().length < 2) {
+        if (archivePanel) archivePanel.classList.add('hidden');
+        return;
+    }
+
+    if (archivePanel) archivePanel.classList.remove('hidden');
+    _archiveShowState('loading');
+
+    _archiveSearchTimer = setTimeout(() => {
+        _archiveDoSearch(val.trim());
+    }, 600);
+}
+
+// Hit API Archive.org
+async function _archiveDoSearch(query) {
+    if (query === _archiveLastQuery) return; // tidak re-search query sama
+    _archiveLastQuery = query;
+
+    _archiveShowState('loading');
 
     try {
-        // Bangun query Archive.org Advanced Search
-        // mediatype: texts, format: pdf atau epub, sort: downloads desc
-        let mediaFilter = '';
-        if (_archiveFilter === 'pdf') mediaFilter = ' AND format:PDF';
-        else if (_archiveFilter === 'epub') mediaFilter = ' AND format:EPUB';
-        else mediaFilter = ' AND (format:PDF OR format:EPUB)';
+        // Archive.org Advanced Search — ambil semua teks (pdf+epub), sort downloads desc
+        const q = encodeURIComponent(`(title:(${query}) OR creator:(${query})) AND mediatype:texts AND (format:PDF OR format:EPUB)`);
+        const url = `https://archive.org/advancedsearch.php?q=${q}&fl[]=identifier,title,creator,downloads,format&sort[]=downloads+desc&rows=15&page=1&output=json`;
 
-        const apiQuery = `(title:(${encodeURIComponent(query)}) OR creator:(${encodeURIComponent(query)}) OR subject:(${encodeURIComponent(query)})) AND mediatype:texts${mediaFilter}`;
-        const url = `https://archive.org/advancedsearch.php?q=${apiQuery}&fl[]=identifier,title,creator,subject,description,mediatype,downloads,format&sort[]=downloads+desc&rows=20&page=1&output=json`;
-
-        const res = await fetch(url);
+        const res = await fetch(url, { signal: AbortSignal.timeout(12000) });
         if (!res.ok) throw new Error('HTTP ' + res.status);
         const data = await res.json();
 
         const docs = data.response?.docs || [];
-        _archiveLastResults = docs;
-        _renderArchiveResults(docs);
-
+        if (docs.length === 0) {
+            _archiveShowState('empty');
+            return;
+        }
+        _archiveRenderCards(docs);
     } catch (err) {
         console.error('Archive search error:', err);
-        _archiveSetState('error', d.archiveSearchError || 'Gagal mencari. Cek koneksi internet lu.');
+        if (!navigator.onLine) {
+            _archiveShowState('offline');
+        } else {
+            _archiveShowState('error', 'Gagal mencari. Cek koneksi internet.');
+        }
     }
-};
+}
 
-// Render daftar hasil ke UI
-function _renderArchiveResults(docs) {
-    const d = i18n[wikiLang] || i18n['id'];
-    const container = document.getElementById('archive-cards-container');
-    const countEl = document.getElementById('archive-result-count');
-
-    // Filter lokal berdasarkan format
-    let filtered = docs;
-    if (_archiveFilter !== 'all') {
-        filtered = docs.filter(doc => {
-            if (!doc.format) return false;
-            const fmts = Array.isArray(doc.format) ? doc.format : [doc.format];
-            if (_archiveFilter === 'pdf') return fmts.some(f => f.toLowerCase().includes('pdf'));
-            if (_archiveFilter === 'epub') return fmts.some(f => f.toLowerCase().includes('epub'));
-            return true;
-        });
-    }
-
-    if (filtered.length === 0) {
-        _archiveSetState('empty');
-        if (countEl) countEl.classList.add('hidden');
-        return;
-    }
-
-    // Update count
-    if (countEl) {
-        countEl.textContent = (d.archiveResultCount || '{n} hasil ditemukan').replace('{n}', filtered.length);
-        countEl.classList.remove('hidden');
-    }
-
-    // Render kartu
+// Render kartu hasil
+function _archiveRenderCards(docs) {
+    const container = document.getElementById('archive-cards');
+    if (!container) return;
     container.innerHTML = '';
-    filtered.forEach(doc => {
-        const card = _createArchiveCard(doc, d);
+
+    docs.forEach(doc => {
+        const id = doc.identifier;
+        const title = doc.title || 'Untitled';
+        const creator = Array.isArray(doc.creator) ? doc.creator[0] : (doc.creator || '');
+        const fmts = doc.format ? (Array.isArray(doc.format) ? doc.format : [doc.format]) : [];
+        const hasPdf = fmts.some(f => f.toLowerCase().includes('pdf'));
+        const hasEpub = fmts.some(f => f.toLowerCase().includes('epub'));
+        const badge = hasPdf && hasEpub ? 'PDF + EPUB' : hasPdf ? 'PDF' : hasEpub ? 'EPUB' : '?';
+        const downloads = doc.downloads ? parseInt(doc.downloads).toLocaleString('id') : '—';
+
+        const card = document.createElement('div');
+        card.className = 'flex items-start gap-3 bg-m3-surfaceVariant rounded-[20px] p-3';
+        card.innerHTML = `
+            <img
+                src="https://archive.org/services/img/${id}"
+                alt=""
+                class="w-9 h-12 object-cover rounded-xl shrink-0 bg-m3-surface"
+                onerror="this.style.display='none'"
+                loading="lazy"
+            >
+            <div class="flex-1 min-w-0">
+                <p class="text-xs font-bold text-m3-onSurfaceVariant leading-snug line-clamp-2 mb-0.5">${_esc(title)}</p>
+                ${creator ? `<p class="text-[10px] text-m3-onSurfaceVariant opacity-55 truncate mb-1">${_esc(creator)}</p>` : ''}
+                <div class="flex items-center gap-1.5">
+                    <span class="text-[9px] font-black bg-m3-primary/15 text-m3-primary px-1.5 py-0.5 rounded-full">${badge}</span>
+                    <span class="text-[9px] opacity-40 font-bold">↓${downloads}</span>
+                </div>
+            </div>
+            <button
+                class="shrink-0 w-9 h-9 rounded-full bg-m3-primary text-m3-onPrimary flex items-center justify-center btn-morph shadow-sm"
+                onclick="window.archiveDownload('${_esc(id)}', '${_esc(title.replace(/'/g, '\\'').replace(/"/g, '&quot;'))}')"
+                title="Unduh & baca"
+            >
+                <i data-lucide="download" class="w-4 h-4 pointer-events-none"></i>
+            </button>
+        `;
         container.appendChild(card);
     });
 
-    _archiveSetState('results');
+    // Re-render lucide icons di dalam cards baru
     if (window.lucide) window.lucide.createIcons({ nodes: Array.from(container.querySelectorAll('[data-lucide]')) });
+
+    _archiveShowState('cards');
 }
 
-// Buat satu kartu buku Archive.org
-function _createArchiveCard(doc, d) {
-    const card = document.createElement('div');
-    card.className = 'bg-m3-surfaceVariant rounded-[24px] p-4 flex gap-3 items-start';
+// Tampilkan state tertentu di panel Archive
+function _archiveShowState(state, errMsg) {
+    const ids = ['archive-state-loading', 'archive-state-offline', 'archive-state-empty', 'archive-state-error', 'archive-cards'];
+    ids.forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.classList.add('hidden');
+    });
 
-    const title = doc.title || 'Untitled';
-    const creator = Array.isArray(doc.creator) ? doc.creator.join(', ') : (doc.creator || '');
-    const identifier = doc.identifier;
-    const downloads = doc.downloads ? parseInt(doc.downloads).toLocaleString() : '—';
+    const target = {
+        loading: 'archive-state-loading',
+        offline: 'archive-state-offline',
+        empty:   'archive-state-empty',
+        error:   'archive-state-error',
+        cards:   'archive-cards'
+    }[state];
 
-    // Deteksi format yang tersedia
-    const fmts = doc.format ? (Array.isArray(doc.format) ? doc.format : [doc.format]) : [];
-    const hasPdf = fmts.some(f => f.toLowerCase().includes('pdf'));
-    const hasEpub = fmts.some(f => f.toLowerCase().includes('epub'));
+    if (target) {
+        const el = document.getElementById(target);
+        if (el) el.classList.remove('hidden');
+    }
 
-    // Badge tipe
-    let badgeHtml = '';
-    if (hasPdf) badgeHtml += `<span class="inline-block text-[9px] font-black px-2 py-0.5 bg-m3-primary/20 text-m3-primary rounded-full uppercase tracking-wider mr-1">PDF</span>`;
-    if (hasEpub) badgeHtml += `<span class="inline-block text-[9px] font-black px-2 py-0.5 bg-m3-tertiaryContainer text-m3-onTertiaryContainer rounded-full uppercase tracking-wider">EPUB</span>`;
-
-    card.innerHTML = `
-        <div class="w-10 h-14 shrink-0 rounded-xl bg-m3-primary/10 flex items-center justify-center overflow-hidden">
-            <img
-                src="https://archive.org/services/img/${identifier}"
-                alt=""
-                class="w-full h-full object-cover rounded-xl"
-                onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';"
-                loading="lazy"
-            >
-            <div style="display:none" class="w-full h-full items-center justify-center">
-                <i data-lucide="book" class="w-5 h-5 text-m3-primary opacity-60"></i>
-            </div>
-        </div>
-        <div class="flex-1 min-w-0">
-            <h3 class="text-sm font-bold text-m3-onSurfaceVariant leading-tight line-clamp-2 mb-1">${_escHtml(title)}</h3>
-            ${creator ? `<p class="text-[10px] text-m3-onSurfaceVariant opacity-60 font-medium mb-1.5 truncate">${_escHtml(creator)}</p>` : ''}
-            <div class="flex items-center gap-1 mb-2 flex-wrap">
-                ${badgeHtml}
-                <span class="text-[9px] opacity-40 font-bold ml-1">↓ ${downloads}</span>
-            </div>
-            <div class="flex gap-2">
-                <button
-                    class="flex-1 flex items-center justify-center gap-1.5 py-2 px-3 bg-m3-primary text-m3-onPrimary rounded-full text-xs font-bold btn-morph"
-                    onclick="window.downloadArchiveBook('${_escHtml(identifier)}', '${_escHtml(title.replace(/'/g,'&apos;'))}')"
-                >
-                    <i data-lucide="download" class="w-3.5 h-3.5 shrink-0"></i>
-                    <span>${d.archiveDownloadBtn || 'Unduh & Baca'}</span>
-                </button>
-                <a
-                    href="https://archive.org/details/${identifier}"
-                    target="_blank"
-                    rel="noopener"
-                    class="w-9 h-9 flex items-center justify-center bg-m3-surfaceVariant text-m3-onSurfaceVariant rounded-full btn-morph border border-m3-onSurfaceVariant/20"
-                    title="Buka di Archive.org"
-                >
-                    <i data-lucide="external-link" class="w-3.5 h-3.5"></i>
-                </a>
-            </div>
-        </div>
-    `;
-    return card;
+    if (state === 'error' && errMsg) {
+        const errEl = document.getElementById('archive-error-text');
+        if (errEl) errEl.textContent = errMsg;
+    }
 }
 
-// Download buku dari Archive.org lalu proses ke library
-window.downloadArchiveBook = async function(identifier, title) {
+// Download buku dari Archive.org dan masukkan ke library
+window.archiveDownload = async function(identifier, title) {
     if (_archiveDownloading) return;
     _archiveDownloading = true;
 
+    if (!navigator.onLine) {
+        _archiveDownloading = false;
+        showDialog('Offline', 'Tidak ada koneksi internet.', 'wifi-off', [{ text: 'Oke', primary: true }]);
+        return;
+    }
+
     const d = i18n[wikiLang] || i18n['id'];
 
-    // Tampilkan dialog loading
+    // Tampilkan loading dialog
     showDialog(
-        d.archiveDownloading || 'Mengunduh buku...',
-        `<div class="flex flex-col items-center justify-center gap-4 py-4">
+        'Mengunduh buku...',
+        `<div class="flex flex-col items-center gap-3 py-4">
             <div class="w-8 h-8 border-4 border-m3-primary border-t-transparent rounded-full animate-spin"></div>
-            <p class="text-xs font-bold text-center opacity-70">${_escHtml(title)}</p>
+            <p class="text-xs font-bold text-center opacity-70 leading-relaxed max-w-[220px]">${_esc(title)}</p>
         </div>`,
         'download',
         []
     );
 
     try {
-        // Ambil metadata file dari Archive.org
-        const metaUrl = `https://archive.org/metadata/${identifier}`;
-        const metaRes = await fetch(metaUrl);
-        if (!metaRes.ok) throw new Error('Metadata tidak tersedia');
+        // 1. Ambil metadata file dari Archive.org
+        const metaRes = await fetch(`https://archive.org/metadata/${identifier}`, { signal: AbortSignal.timeout(15000) });
+        if (!metaRes.ok) throw new Error('Metadata tidak tersedia (HTTP ' + metaRes.status + ')');
         const meta = await metaRes.json();
 
         const files = meta.files || [];
 
-        // Prioritas: EPUB dulu, lalu PDF
-        let targetFile = null;
-        let fileType = null;
+        // 2. Pilih file: EPUB dulu, baru PDF (hindari *_text.pdf karena itu versi OCR noise)
+        let chosen = null;
+        let chosenType = null;
 
-        const epubFile = files.find(f => f.name && f.name.toLowerCase().endsWith('.epub'));
-        const pdfFile = files.find(f => f.name && f.name.toLowerCase().endsWith('.pdf') && !f.name.toLowerCase().includes('_text'));
+        const epubCandidates = files.filter(f => f.name && f.name.toLowerCase().endsWith('.epub'));
+        const pdfCandidates  = files.filter(f => {
+            if (!f.name) return false;
+            const n = f.name.toLowerCase();
+            return n.endsWith('.pdf') && !n.includes('_text') && !n.includes('_djvu');
+        });
 
-        // Pilih berdasarkan filter aktif
-        if (_archiveFilter === 'epub' && epubFile) {
-            targetFile = epubFile;
-            fileType = 'epub';
-        } else if (_archiveFilter === 'pdf' && pdfFile) {
-            targetFile = pdfFile;
-            fileType = 'pdf';
-        } else if (epubFile) {
-            targetFile = epubFile;
-            fileType = 'epub';
-        } else if (pdfFile) {
-            targetFile = pdfFile;
-            fileType = 'pdf';
+        if (epubCandidates.length > 0) {
+            chosen = epubCandidates[0];
+            chosenType = 'epub';
+        } else if (pdfCandidates.length > 0) {
+            // Pilih PDF terkecil jika ada banyak pilihan, supaya lebih cepat
+            chosen = pdfCandidates.sort((a, b) => parseInt(a.size || 0) - parseInt(b.size || 0))[0];
+            chosenType = 'pdf';
         }
 
-        if (!targetFile) {
-            window.closeDialog();
-            _archiveDownloading = false;
-            setTimeout(() => {
-                showDialog('Info', d.archiveNoFile || 'Buku ini tidak punya file PDF atau EPUB yang bisa diunduh.', 'info', [{ text: d.btnClose || 'Oke', primary: true }]);
-            }, 300);
-            return;
+        if (!chosen) {
+            throw new Error('Tidak ada file PDF atau EPUB yang tersedia untuk buku ini.');
         }
 
-        const fileUrl = `https://archive.org/download/${identifier}/${encodeURIComponent(targetFile.name)}`;
-
-        // Download file
-        const fileRes = await fetch(fileUrl);
-        if (!fileRes.ok) throw new Error('Download gagal: HTTP ' + fileRes.status);
+        // 3. Download file
+        const fileUrl = `https://archive.org/download/${identifier}/${encodeURIComponent(chosen.name)}`;
+        const fileRes = await fetch(fileUrl, { signal: AbortSignal.timeout(120000) }); // 2 menit timeout
+        if (!fileRes.ok) throw new Error('Gagal mengunduh file (HTTP ' + fileRes.status + ')');
 
         const arrayBuffer = await fileRes.arrayBuffer();
-        const blob = new Blob([arrayBuffer], { type: fileType === 'epub' ? 'application/epub+zip' : 'application/pdf' });
 
-        // Buat objek File dari blob
-        const fileName = `${title.replace(/[^a-zA-Z0-9\s]/g, '').trim().substring(0, 40)}.${fileType}`;
-        const file = new File([blob], fileName, { type: blob.type });
+        // 4. Bungkus jadi File object dengan nama yang bersih
+        const cleanTitle = title.replace(/[<>:"/\\|?*]/g, '').trim().substring(0, 60) || identifier;
+        const fileName = `${cleanTitle}.${chosenType}`;
+        const mimeType = chosenType === 'epub' ? 'application/epub+zip' : 'application/pdf';
+        const file = new File([arrayBuffer], fileName, { type: mimeType });
 
         window.closeDialog();
         _archiveDownloading = false;
 
-        // Tutup dialog lalu proses file via sistem upload yang sudah ada
-        // (dengan sedikit delay agar animasi dialog selesai dulu)
-        setTimeout(async () => {
-            // Gunakan processMultipleFiles yang sudah ada di reader.js
-            if (typeof processMultipleFiles === 'function') {
-                await processMultipleFiles([file]);
-            } else {
-                // Fallback: inject ke file input
+        // 5. Inject ke file input doc-upload — ini yang paling reliable untuk trigger
+        //    pipeline reader.js yang sudah ada (processMultipleFiles adalah closure internal
+        //    di reader.js, tidak bisa dipanggil langsung dari sini)
+        setTimeout(() => {
+            try {
                 const dt = new DataTransfer();
                 dt.items.add(file);
                 const fileInput = document.getElementById('doc-upload');
-                if (fileInput) {
-                    fileInput.files = dt.files;
-                    fileInput.dispatchEvent(new Event('change', { bubbles: true }));
-                }
+                if (!fileInput) throw new Error('File input tidak ditemukan');
+                fileInput.files = dt.files;
+                fileInput.dispatchEvent(new Event('change', { bubbles: true }));
+            } catch (injectErr) {
+                console.error('Inject error:', injectErr);
+                showDialog('Error', 'File berhasil diunduh tapi gagal diproses: ' + injectErr.message, 'alert-circle', [{ text: 'Tutup', primary: true }]);
             }
-        }, 400);
+        }, 350);
 
     } catch (err) {
         console.error('Archive download error:', err);
         window.closeDialog();
         _archiveDownloading = false;
         setTimeout(() => {
-            showDialog('Error', (d.archiveDownloadError || 'Gagal mengunduh.') + '\n\n' + err.message, 'alert-circle', [{ text: d.btnClose || 'Oke', primary: true }]);
+            showDialog('Gagal Mengunduh', err.message || 'Terjadi kesalahan saat mengunduh.', 'alert-circle', [{ text: 'Oke', primary: true }]);
         }, 300);
     }
 };
 
-// Helper: atur tampilan state di archive section
-function _archiveSetState(state, errorMsg) {
-    const placeholder = document.getElementById('archive-placeholder');
-    const loading = document.getElementById('archive-loading');
-    const empty = document.getElementById('archive-empty');
-    const cards = document.getElementById('archive-cards-container');
-    const countEl = document.getElementById('archive-result-count');
-
-    // Sembunyikan semua
-    [placeholder, loading, empty, cards].forEach(el => { if (el) el.classList.add('hidden'); });
-
-    if (state === 'loading') {
-        if (loading) loading.classList.remove('hidden');
-        if (countEl) countEl.classList.add('hidden');
-    } else if (state === 'empty') {
-        if (empty) empty.classList.remove('hidden');
-        const d = i18n[wikiLang] || i18n['id'];
-        const emptyTxt = document.getElementById('str-archive-empty');
-        if (emptyTxt) emptyTxt.textContent = d.archiveSearchEmpty || 'Tidak ada hasil. Coba kata kunci lain.';
-    } else if (state === 'results') {
-        if (cards) cards.classList.remove('hidden');
-    } else if (state === 'error') {
-        if (empty) {
-            empty.classList.remove('hidden');
-            const emptyTxt = document.getElementById('str-archive-empty');
-            if (emptyTxt) emptyTxt.textContent = errorMsg || 'Error.';
-        }
-    } else {
-        // default/placeholder
-        if (placeholder) placeholder.classList.remove('hidden');
-        if (countEl) countEl.classList.add('hidden');
-    }
-}
-
-// Helper: escape HTML sederhana untuk prevent XSS di innerHTML
-function _escHtml(str) {
+// Helper escape HTML sederhana
+function _esc(str) {
     if (!str) return '';
     return String(str)
         .replace(/&/g, '&amp;')
