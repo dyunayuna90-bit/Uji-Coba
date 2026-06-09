@@ -74,13 +74,16 @@
                 </button>
             </div>
 
-            <!-- MODE TOGGLE: Library / Archive.org — muncul saat search aktif -->
-            <div id="search-mode-row" class="hidden flex gap-2 mt-2.5 items-center">
+            <!-- MODE TOGGLE: Library / Archive.org / Gutendex — muncul saat search aktif -->
+            <div id="search-mode-row" class="hidden flex gap-2 mt-2.5 items-center overflow-x-auto hide-scroll">
                 <button id="search-mode-local" onclick="window.setSearchMode('local')" class="px-3 py-1.5 rounded-full text-xs font-bold bg-m3-primary text-m3-onPrimary btn-morph flex items-center gap-1.5 shrink-0">
                     <i data-lucide="library" class="w-3 h-3"></i> Library
                 </button>
                 <button id="search-mode-archive" onclick="window.setSearchMode('archive')" class="px-3 py-1.5 rounded-full text-xs font-bold bg-m3-surfaceVariant text-m3-onSurfaceVariant btn-morph flex items-center gap-1.5 shrink-0">
                     <i data-lucide="globe" class="w-3 h-3"></i> Internet Archive
+                </button>
+                <button id="search-mode-gutendex" onclick="window.setSearchMode('gutendex')" class="px-3 py-1.5 rounded-full text-xs font-bold bg-m3-surfaceVariant text-m3-onSurfaceVariant btn-morph flex items-center gap-1.5 shrink-0">
+                    <i data-lucide="book-open" class="w-3 h-3"></i> Gutenberg
                 </button>
                 <span id="offline-badge" class="hidden ml-auto flex items-center gap-1 text-[9px] font-bold text-red-500 shrink-0">
                     <i data-lucide="wifi-off" class="w-3 h-3"></i> Offline
@@ -173,7 +176,30 @@
                 <div id="archive-cards" class="flex flex-col gap-2.5"></div>
             </div>
 
-            <!-- VIEW: SEMUA BUKU -->
+            <!-- GUTENDEX (Project Gutenberg) RESULTS PANEL -->
+            <div id="gutendex-results-panel" class="hidden mb-6 flex flex-col gap-2.5 overflow-y-auto pb-2">
+                <div id="gutendex-state-loading" class="hidden flex items-center justify-center gap-3 py-8">
+                    <div class="w-6 h-6 border-[3px] border-green-500 border-t-transparent rounded-full animate-spin shrink-0"></div>
+                    <span class="text-xs font-bold text-m3-onBg opacity-60">Mencari di Gutenberg...</span>
+                </div>
+                <div id="gutendex-state-offline" class="hidden flex flex-col items-center justify-center py-8 gap-2 opacity-50">
+                    <i data-lucide="wifi-off" class="w-10 h-10 text-m3-onBg"></i>
+                    <span class="text-xs font-bold text-m3-onBg text-center">Tidak ada koneksi internet.</span>
+                </div>
+                <div id="gutendex-state-empty" class="hidden flex flex-col items-center justify-center py-8 gap-2 opacity-50">
+                    <i data-lucide="book-x" class="w-10 h-10 text-m3-onBg"></i>
+                    <span class="text-xs font-bold text-m3-onBg">Tidak ada hasil. Coba kata lain.</span>
+                </div>
+                <div id="gutendex-state-error" class="hidden flex flex-col items-center justify-center py-8 gap-2 opacity-50">
+                    <i data-lucide="alert-circle" class="w-10 h-10 text-m3-onBg"></i>
+                    <span id="gutendex-error-text" class="text-xs font-bold text-m3-onBg text-center">Gagal mencari.</span>
+                </div>
+                <div class="flex items-center gap-2 px-1 mb-1">
+                    <div class="w-2 h-2 rounded-full bg-green-500"></div>
+                    <span class="text-[10px] font-bold text-m3-onBg opacity-50 uppercase tracking-widest">Project Gutenberg · EPUB Gratis</span>
+                </div>
+                <div id="gutendex-cards" class="flex flex-col gap-2.5"></div>
+            </div>
             <div id="continue-reading-section" class="hidden mb-8 -mx-5 mt-2">
                 <h2 id="str-continue-reading" class="text-base font-bold mb-4 text-m3-onBg px-5 tracking-tight">Lanjutkan Membaca</h2>
                 <div id="top-books-slider" class="flex gap-3 overflow-x-auto snap-x snap-proximity px-5 pb-2 hide-scroll" style="scroll-padding-left: 1.25rem;">
