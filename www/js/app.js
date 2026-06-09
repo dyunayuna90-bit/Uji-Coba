@@ -468,7 +468,10 @@ function setupSearchListeners() {
         if (searchArea && searchArea.classList.contains('search-active') && !searchArea.contains(e.target)) {
             const modeRow = document.getElementById('search-mode-row');
             const archivePanel = document.getElementById('archive-results-panel');
+            const archiveFmtOverlay = document.getElementById('archive-fmt-overlay');
+            const archiveDlOverlay = document.getElementById('archive-dl-overlay');
             if ((modeRow && modeRow.contains(e.target)) || (archivePanel && archivePanel.contains(e.target))) return;
+            if ((archiveFmtOverlay && archiveFmtOverlay.contains(e.target)) || (archiveDlOverlay && archiveDlOverlay.contains(e.target))) return;
             window.closeSearch(false);
         }
     });
