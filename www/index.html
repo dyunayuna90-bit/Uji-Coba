@@ -192,7 +192,7 @@
                 </div>
                 
                 <!-- CANVAS PAGE CONTROLLER -->
-                <div id="canvas-page-controller" class="hidden absolute left-1/2 -translate-x-1/2 bg-m3-surfaceVariant/95 backdrop-blur-md text-m3-onSurfaceVariant px-4 py-2.5 rounded-full shadow-lg z-30 flex items-center gap-3 border border-m3-surfaceVariant/20" style="bottom: 12px;">
+                <div id="canvas-page-controller" class="hidden absolute left-1/2 -translate-x-1/2 bg-m3-surfaceVariant text-m3-onSurfaceVariant px-4 py-2.5 rounded-full shadow-lg z-30 flex items-center gap-3 border border-m3-surfaceVariant/20" style="bottom: 12px;">
                     <button onclick="window.prevCanvasPage()" class="w-9 h-9 rounded-full hover:bg-m3-surface flex items-center justify-center transition-colors btn-morph">
                         <i data-lucide="chevron-left" class="w-5 h-5"></i>
                     </button>
@@ -211,7 +211,7 @@
                 </div>
             </div>
 
-            <div id="side-panel-overlay" class="hidden absolute inset-0 bg-black/20 z-30 transition-opacity" onclick="history.back()"></div>
+            <div id="side-panel-overlay" class="hidden absolute inset-0 bg-black/20 z-30 transition-opacity"></div>
 
             <!-- Panel Daftar Isi -->
             <div id="toc-panel" class="side-panel absolute right-0 top-0 bottom-0 w-72 bg-m3-surfaceVariant p-6 transform translate-x-full opacity-0 z-40 overflow-y-auto rounded-l-[32px]">
@@ -232,7 +232,7 @@
                     <input type="text" id="bookmark-search-input" oninput="filterBookmarkPanel(this.value)" class="w-full bg-m3-surface text-m3-onSurface text-sm font-bold pl-9 pr-3 py-2.5 rounded-2xl border-none outline-none placeholder:opacity-50" placeholder="Cari judul bookmark...">
                 </div>
                 <div id="bookmark-list" class="space-y-2 flex flex-col pb-20"></div>
-                <div id="bookmark-empty" class="text-sm opacity-50 p-3 text-center hidden font-bold" id="str-bookmark-empty">Belum ada pembatas buku.</div>
+                <div id="bookmark-empty" class="text-sm opacity-50 p-3 text-center hidden font-bold"><span id="str-bookmark-empty">Belum ada pembatas buku.</span></div>
             </div>
             
             <!-- Panel Tampilan & Pencarian -->
@@ -441,9 +441,13 @@
                 <input type="file" id="import-upload" accept=".json,.zip" class="hidden" onchange="importDataFile(event)">
             </div>
             
-            <button onclick="clearAllCoversConfirm()" id="btn-clear-covers" class="flex items-center justify-center gap-2 w-full p-3 bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-400 rounded-2xl font-bold btn-morph mb-4 mt-2">
+            <button onclick="clearAllCoversConfirm()" id="btn-clear-covers" class="flex items-center justify-center gap-2 w-full p-3 bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-400 rounded-2xl font-bold btn-morph mb-2 mt-2">
                 <i data-lucide="image-off" class="w-5 h-5"></i>
                 <span id="str-btn-clear-covers">Hapus Semua Sampul (Biar Ringan)</span>
+            </button>
+            <button onclick="clearAllBooksConfirm()" id="btn-clear-books" class="flex items-center justify-center gap-2 w-full p-3 bg-red-500/10 text-red-700 dark:bg-red-500/20 dark:text-red-400 rounded-2xl font-bold btn-morph mb-4 border border-red-500/20">
+                <i data-lucide="trash-2" class="w-5 h-5"></i>
+                <span id="str-btn-clear-books">Hapus Semua Buku (Reset Total)</span>
             </button>
 
             <h4 id="str-set-info" class="text-xs font-bold opacity-70 mb-3 px-1 mt-6 uppercase tracking-wider">Info & Dukungan</h4>
@@ -721,7 +725,7 @@
     </div>
 
     <!-- Global Loading Spinner (antar modal, analisa PDF, dll) -->
-    <div id="global-loading-overlay" class="hidden fixed inset-0 z-[500] bg-black/50 backdrop-blur-sm flex flex-col items-center justify-center transition-opacity duration-200 opacity-0">
+    <div id="global-loading-overlay" class="hidden fixed inset-0 z-[500] bg-black/65 flex flex-col items-center justify-center transition-opacity duration-200 opacity-0">
         <div class="bg-m3-surface rounded-[32px] p-8 flex flex-col items-center gap-4 shadow-2xl min-w-[200px]">
             <div class="w-12 h-12 rounded-full border-4 border-m3-surfaceVariant border-t-m3-primary animate-spin"></div>
             <p id="global-loading-text" class="text-sm font-bold text-m3-onSurface text-center opacity-80">Memproses...</p>
