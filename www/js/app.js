@@ -106,6 +106,15 @@ document.addEventListener("DOMContentLoaded", () => {
             setTimeout(() => { splash.style.display = 'none'; }, 500);
         }
     });
+    // Safety net: pastikan splash selalu hilang max 5 detik
+    setTimeout(() => {
+        const splash = document.getElementById('splash-screen');
+        if (splash && splash.style.display !== 'none') {
+            splash.style.opacity = '0';
+            setTimeout(() => { splash.style.display = 'none'; }, 500);
+        }
+    }, 5000);
+
     setupSwipeToDismiss(); // Nyalain Gestur Aman
 
     if (!localStorage.getItem('first_time_seen_v5')) {
@@ -1256,7 +1265,11 @@ async function loadLibrary() {
         }
 
         renderLibrary(); 
-    } catch (e) { console.error(e); } 
+    } catch (e) { 
+        console.error('loadLibrary error:', e);
+        // Tetap render library kosong agar splash tidak stuck
+        try { renderLibrary(); } catch(e2) {}
+    } 
 }
 
 function renderLibrary(filterText = "") {
