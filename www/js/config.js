@@ -135,6 +135,13 @@ const i18n = {
         clearCoversDesc: "Semua gambar sampul akan dihapus permanen untuk menghemat memori. Buku dan progres bacaan tetap aman 100%. Lanjutkan?",
         clearCoversSuccess: "Semua sampul berhasil dihapus! Aplikasi sekarang jauh lebih ringan.",
 
+        // Fitur Hapus Semua Buku
+        btnClearAllBooks: "Hapus Semua Buku (Reset Total)",
+        clearAllBooksTitle: "Hapus Semua Buku?",
+        clearAllBooksDesc: "Semua buku, progres, catatan, sampul, dan konten akan dihapus permanen. Tindakan ini tidak bisa dibatalkan. Lanjutkan?",
+        clearAllBooksSuccessTitle: "Semua Buku Dihapus",
+        clearAllBooksSuccess: "Semua buku berhasil dihapus. Perpustakaan sekarang kosong.",
+
         // Opsi Backup Baru & Status Fallback
         bakModalTitle: "Pilih Jenis Backup", bakModalDesc: "Pilih format backup yang sesuai dengan kebutuhan lu:",
         bakJsonTitle: "JSON (Progres Saja)", bakJsonDesc: "Sangat ringan & cepat. Hanya menyimpan daftar buku, progres, dan catatan. Lu harus upload ulang file bukunya nanti sebelum direstore.",
@@ -180,7 +187,13 @@ const i18n = {
         btnSkip: "Lewati",
         btnAddAnyway: "Tambahkan Saja",
         batchPdfTitle: "Pilih Mode PDF",
-        batchPdfDesc: "Pilih mode membaca untuk PDF yang baru diunggah:"
+        batchPdfDesc: "Pilih mode membaca untuk PDF yang baru diunggah:",
+        btnStartProcess: "Mulai Proses",
+        bookmarkSearchPlaceholder: "Cari bookmark...",
+        importDoneTitle: "Selesai Import",
+        importSuccessCount: "{n} buku berhasil diimpor.",
+        importFailedCount: "{n} gagal:",
+        folderNoFiles: "Tidak ada file PDF, EPUB, TXT, atau MD di folder ini."
     },
     en: {
         libEmpty: "Library is Empty.", searchBooks: "Search books...", loadingDocs: "Reading Document...", 
@@ -241,6 +254,13 @@ const i18n = {
         clearCoversDesc: "All book covers will be permanently deleted to save memory. Book text and reading progress are 100% safe. Continue?",
         clearCoversSuccess: "All covers successfully cleared! The app is now lighter.",
 
+        // Fitur Hapus Semua Buku
+        btnClearAllBooks: "Clear All Books (Full Reset)",
+        clearAllBooksTitle: "Clear All Books?",
+        clearAllBooksDesc: "All books, progress, notes, covers, and content will be permanently deleted. This action cannot be undone. Continue?",
+        clearAllBooksSuccessTitle: "All Books Cleared",
+        clearAllBooksSuccess: "All books have been deleted. Your library is now empty.",
+
         // Opsi Backup Baru & Status Fallback
         bakModalTitle: "Select Backup Type", bakModalDesc: "Choose the backup format you need:",
         bakJsonTitle: "JSON (Progress Only)", bakJsonDesc: "Very lightweight. Saves only your book list, progress, and notes. You must re-upload the original books later.",
@@ -286,7 +306,13 @@ const i18n = {
         btnSkip: "Skip",
         btnAddAnyway: "Add Anyway",
         batchPdfTitle: "Select PDF Mode",
-        batchPdfDesc: "Choose reading mode for the newly uploaded PDFs:"
+        batchPdfDesc: "Choose reading mode for the newly uploaded PDFs:",
+        btnStartProcess: "Start Processing",
+        bookmarkSearchPlaceholder: "Search bookmarks...",
+        importDoneTitle: "Import Complete",
+        importSuccessCount: "{n} books imported successfully.",
+        importFailedCount: "{n} failed:",
+        folderNoFiles: "No PDF, EPUB, TXT, or MD files found in this folder."
     },
     es: {
         libEmpty: "La biblioteca está vacía.", searchBooks: "Buscar libros...", loadingDocs: "Leyendo documento...", 
@@ -347,6 +373,13 @@ const i18n = {
         clearCoversDesc: "Todas las portadas se eliminan permanentemente para ahorrar memoria. El texto y progreso están 100% seguros. ¿Continuar?",
         clearCoversSuccess: "¡Portadas borradas! La aplicación ahora es más ligera.",
 
+        // Fitur Hapus Semua Buku
+        btnClearAllBooks: "Borrar Todos los Libros (Reinicio Total)",
+        clearAllBooksTitle: "¿Borrar Todos los Libros?",
+        clearAllBooksDesc: "Todos los libros, progreso, notas, portadas y contenido se eliminarán permanentemente. Esta acción no se puede deshacer. ¿Continuar?",
+        clearAllBooksSuccessTitle: "Todos los Libros Borrados",
+        clearAllBooksSuccess: "Todos los libros han sido eliminados. Tu biblioteca está vacía.",
+
         // Opsi Backup Baru & Status Fallback
         bakModalTitle: "Tipo de copia", bakModalDesc: "Elige el formato de copia de seguridad:",
         bakJsonTitle: "JSON (Solo progreso)", bakJsonDesc: "Muy ligero. Guarda solo la lista, progreso y notas. Debes volver a subir los libros originales después.",
@@ -392,6 +425,12 @@ const i18n = {
         btnSkip: "Saltar",
         btnAddAnyway: "Añadir de Todos Modos",
         batchPdfTitle: "Seleccionar Modo PDF",
-        batchPdfDesc: "Elige el modo de lectura para los PDFs recién subidos:"
+        batchPdfDesc: "Elige el modo de lectura para los PDFs recién subidos:",
+        btnStartProcess: "Iniciar Proceso",
+        bookmarkSearchPlaceholder: "Buscar marcadores...",
+        importDoneTitle: "Importación Completa",
+        importSuccessCount: "{n} libros importados con éxito.",
+        importFailedCount: "{n} fallidos:",
+        folderNoFiles: "No se encontraron archivos PDF, EPUB, TXT o MD en esta carpeta."
     }
 };
