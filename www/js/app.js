@@ -417,8 +417,17 @@ function updateBottomNavUI(activeId) {
 
 // 3. HARDWARE BACK BUTTON & HISTORY ROUTING
 window.addEventListener('popstate', (e) => {
-    if (window._archiveFmtClose) { window._archiveFmtClose(); return; }
-    else if (window._archiveDlCancel) { window._archiveDlCancel(); return; }
+    const fmtOverlay = document.getElementById('archive-fmt-overlay');
+    const dlOverlay  = document.getElementById('archive-dl-overlay');
+    if (fmtOverlay && fmtOverlay.style.display !== 'none' && fmtOverlay.innerHTML !== '') {
+        fmtOverlay.style.opacity = '0';
+        setTimeout(() => { fmtOverlay.innerHTML = ''; fmtOverlay.style.display = 'none'; }, 220);
+        return;
+    }
+    else if (dlOverlay && dlOverlay.style.display !== 'none' && dlOverlay.innerHTML !== '') {
+        if (archiveAbortController) archiveAbortController.abort();
+        return;
+    }
     else if (!document.getElementById('raw-backup-modal').classList.contains('opacity-0')) { _closeModalAction('raw-backup-modal', 'raw-backup-sheet', true, true); }
     else if (!document.getElementById('raw-restore-modal').classList.contains('opacity-0')) { _closeModalAction('raw-restore-modal', 'raw-restore-sheet', true, true); }
     else if (!document.getElementById('custom-dialog').classList.contains('opacity-0')) { window.closeDialog(true); }
@@ -3249,18 +3258,13 @@ function _showArchiveFormatPicker(epubFile, pdfFile, epubSizeMb, pdfSizeMb, onCh
         if (sheet) sheet.style.transform = 'scale(1)';
     });
 
+    // Push history HANYA untuk back gesture/hardware — tombol di dalam tidak menyentuh history sama sekali
+    history.pushState({ state: 'archive-fmt' }, '', '#archive-fmt');
+
     const _close = () => {
-        window._archiveFmtClose = null;
-        history.back();
         overlay.style.opacity = '0';
         setTimeout(() => { overlay.innerHTML = ''; overlay.style.display = 'none'; }, 220);
     };
-
-    // Expose ke window agar popstate bisa memanggilnya (back gesture/hardware)
-    window._archiveFmtClose = () => { _close(); onChoose(null); };
-
-    // Push history agar back gesture/tombol hardware Android bisa menutup overlay ini
-    history.pushState({ state: 'archive-fmt' }, '', '#archive-fmt');
 
     document.getElementById('archive-fmt-epub').onclick   = () => { _close(); onChoose({ file: epubFile, type: 'epub' }); };
     document.getElementById('archive-fmt-pdf').onclick    = () => { _close(); onChoose({ file: pdfFile,  type: 'pdf'  }); };
@@ -3305,11 +3309,7 @@ window.archiveDownload = async function(identifier, title) {
         document.getElementById('archive-dl-cancel').onclick = () => {
             if (archiveAbortController) archiveAbortController.abort();
         };
-        // Expose ke window agar popstate bisa memanggilnya (back gesture/hardware)
-        window._archiveDlCancel = () => {
-            if (archiveAbortController) archiveAbortController.abort();
-        };
-        // Push history agar back gesture/tombol hardware Android bisa menutup overlay ini
+        // Push history HANYA untuk back gesture/hardware — tombol Cancel tidak menyentuh history
         history.pushState({ state: 'archive-dl' }, '', '#archive-dl');
         requestAnimationFrame(() => { ov.style.opacity = '1'; });
     };
@@ -3322,7 +3322,6 @@ window.archiveDownload = async function(identifier, title) {
         if (!ov) return;
         ov.style.opacity = '0';
         setTimeout(() => { ov.innerHTML = ''; ov.style.display = 'none'; }, 220);
-        window._archiveDlCancel = null;
     };
 
     _showDlOverlay(txt.meta);
