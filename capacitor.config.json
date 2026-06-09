@@ -8,7 +8,7 @@
       "overlaysWebView": true
     },
     "CapacitorHttp": {
-      "enabled": false
+      "enabled": true
     }
   }
 }
