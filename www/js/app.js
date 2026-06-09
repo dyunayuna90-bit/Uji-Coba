@@ -3443,57 +3443,52 @@ window.archiveDownload = async function(identifier, title) {
 
         let file;
 
-        if (totalBytes === 0) {
-            _updateDlMsg(txt.downloading + '...');
-            const arrayBuffer = await fileRes.arrayBuffer();
-            if (!arrayBuffer || arrayBuffer.byteLength === 0) throw new Error('File kosong atau gagal didownload.');
-            file = new File([arrayBuffer], fileName, { type: mimeType });
-        } else {
-            // SELALU PAKAI STREAM, BAHKAN KALAU TOTAL SIZE GAK KETAHUAN
-            const reader = fileRes.body.getReader();
-            let receivedBytes = 0;
-            const chunks = [];
-            let lastUpdate = 0; // Timer untuk throttle UI
+        // Langkah Download pakai STREAM Murni
+        const reader = fileRes.body.getReader();
+        let receivedBytes = 0;
+        const chunks = [];
+        let lastUpdate = 0; // Timer untuk throttle UI
 
-            while (true) {
-                const { done, value } = await reader.read();
-                if (done) break;
-                chunks.push(value);
-                receivedBytes += value.length;
-                const now = Date.now();
-                // THROTTLE: Update UI maksimal tiap 150ms biar HP gak ngelag/freeze
-                if (now - lastUpdate > 150) {
-                    const receivedMB = (receivedBytes / 1024 / 1024).toFixed(1);
-                    if (totalBytes > 0) {
-                        const totalMB = (totalBytes / 1024 / 1024).toFixed(1);
-                        let pct = Math.round((receivedBytes / totalBytes) * 100);
-                        if (pct > 100) pct = 100;
-                        _updateDlMsg(`${txt.downloading} ${chosenType.toUpperCase()}...\n${receivedMB} MB / ${totalMB} MB (${pct}%)`);
-                    } else {
-                        _updateDlMsg(`${txt.downloading} ${chosenType.toUpperCase()}...\n${receivedMB} MB terunduh...`);
-                    }
-                    lastUpdate = now;
+        while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            chunks.push(value);
+            receivedBytes += value.length;
+            const now = Date.now();
+            
+            // THROTTLE: Update UI maksimal tiap 150ms biar HP gak ngelag/freeze
+            if (now - lastUpdate > 150) {
+                const receivedMB = (receivedBytes / 1024 / 1024).toFixed(1);
+                if (totalBytes > 0) {
+                    const totalMB = (totalBytes / 1024 / 1024).toFixed(1);
+                    let pct = Math.round((receivedBytes / totalBytes) * 100);
+                    if (pct > 100) pct = 100;
+                    _updateDlMsg(`${txt.downloading} ${chosenType.toUpperCase()}...\n${receivedMB} MB / ${totalMB} MB (${pct}%)`);
+                } else {
+                    // Kalau totalBytes 0, persentase ga ditampilin, tapi MB-nya tetep jalan!
+                    _updateDlMsg(`${txt.downloading} ${chosenType.toUpperCase()}...\n${receivedMB} MB terunduh...`);
                 }
+                lastUpdate = now;
             }
-
-            // Paksa update ke 100% pas loop selesai
-            if (totalBytes > 0) {
-                const receivedMB = (receivedBytes / 1024 / 1024).toFixed(1);
-                const totalMB = (totalBytes / 1024 / 1024).toFixed(1);
-                _updateDlMsg(`${txt.downloading} ${chosenType.toUpperCase()}...\n${receivedMB} MB / ${totalMB} MB (100%)`);
-            } else {
-                const receivedMB = (receivedBytes / 1024 / 1024).toFixed(1);
-                _updateDlMsg(`${txt.downloading} ${chosenType.toUpperCase()}...\n${receivedMB} MB Selesai.`);
-            }
-
-            _updateDlMsg(txt.merging);
-
-            const combinedArray = new Uint8Array(receivedBytes);
-            let position = 0;
-            for (const chunk of chunks) { combinedArray.set(chunk, position); position += chunk.length; }
-
-            file = new File([combinedArray.buffer], fileName, { type: mimeType });
         }
+
+        // Paksa update ke 100% pas loop selesai
+        if (totalBytes > 0) {
+            const receivedMB = (receivedBytes / 1024 / 1024).toFixed(1);
+            const totalMB = (totalBytes / 1024 / 1024).toFixed(1);
+            _updateDlMsg(`${txt.downloading} ${chosenType.toUpperCase()}...\n${receivedMB} MB / ${totalMB} MB (100%)`);
+        } else {
+            const receivedMB = (receivedBytes / 1024 / 1024).toFixed(1);
+            _updateDlMsg(`${txt.downloading} ${chosenType.toUpperCase()}...\n${receivedMB} MB Selesai.`);
+        }
+
+        _updateDlMsg(txt.merging);
+
+        const combinedArray = new Uint8Array(receivedBytes);
+        let position = 0;
+        for (const chunk of chunks) { combinedArray.set(chunk, position); position += chunk.length; }
+
+        file = new File([combinedArray.buffer], fileName, { type: mimeType });
 
         _hideDlOverlay();
         _archiveDownloading = false;
