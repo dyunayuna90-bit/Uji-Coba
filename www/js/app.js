@@ -3199,16 +3199,24 @@ window.archiveDownload = async function(identifier, title) {
         const fileName = `${cleanTitle}.${chosenType}`;
         const mimeType = chosenType === 'epub' ? 'application/epub+zip' : 'application/pdf';
         const file = new File([arrayBuffer], fileName, { type: mimeType });
+
         window.closeDialog();
         _archiveDownloading = false;
-        setTimeout(() => {
+
+        // Panggil langsung — lebih reliable daripada inject via file input
+        setTimeout(async () => {
             try {
-                const dt = new DataTransfer();
-                dt.items.add(file);
-                const fileInput = document.getElementById('doc-upload');
-                if (!fileInput) throw new Error('File input tidak ditemukan');
-                fileInput.files = dt.files;
-                fileInput.dispatchEvent(new Event('change', { bubbles: true }));
+                if (typeof window._processFilesFromArchive === 'function') {
+                    await window._processFilesFromArchive([file]);
+                } else {
+                    // Fallback: inject via file input
+                    const dt = new DataTransfer();
+                    dt.items.add(file);
+                    const fileInput = document.getElementById('doc-upload');
+                    if (!fileInput) throw new Error('File input tidak ditemukan');
+                    fileInput.files = dt.files;
+                    fileInput.dispatchEvent(new Event('change', { bubbles: true }));
+                }
             } catch (injectErr) {
                 showDialog('Error', 'File berhasil diunduh tapi gagal diproses: ' + injectErr.message, 'alert-circle', [{ text: 'Tutup', primary: true }]);
             }

@@ -109,6 +109,11 @@ let _importRunning = false;
 let _importTotalQueued = 0;
 let _importDoneCount = 0;
 
+// Expose ke window agar bisa dipanggil dari app.js (archive download)
+window._processFilesFromArchive = async function(files) {
+    return processMultipleFiles(files);
+};
+
 async function processMultipleFiles(files) {
     const lang = typeof wikiLang !== 'undefined' ? wikiLang : 'id';
     const d = typeof i18n !== 'undefined' ? (i18n[lang] || i18n['id']) : {};
