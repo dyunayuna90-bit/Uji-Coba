@@ -28,7 +28,10 @@ document.addEventListener("DOMContentLoaded", () => {
                 return ['pdf', 'epub', 'txt', 'md'].includes(ext);
             });
             if (!files.length) {
-                showDialog("Info", "Tidak ada file PDF, EPUB, TXT, atau MD di folder ini.", "info", [{text: "Oke", primary: true}]);
+                const langNow = typeof wikiLang !== 'undefined' ? wikiLang : 'id';
+                const dNow = typeof i18n !== 'undefined' ? (i18n[langNow] || i18n['id']) : {};
+                const noFilesMsg = dNow.folderNoFiles || "Tidak ada file PDF, EPUB, TXT, atau MD di folder ini.";
+                showDialog("Info", noFilesMsg, "info", [{text: dNow.btnClose || "Oke", primary: true}]);
                 return;
             }
             await processMultipleFiles(files);
@@ -82,7 +85,7 @@ document.addEventListener("DOMContentLoaded", () => {
                         
                         preview = preview.replace(regex, '<mark class="bg-m3-primary text-m3-onPrimary rounded px-0.5">$1</mark>');
                         
-                        let contextStr = "Chapter / Section";
+                        let contextStr = typeof wikiLang !== 'undefined' ? (wikiLang === 'id' ? "Bab / Seksi" : (wikiLang === 'es' ? "Capítulo / Sección" : "Chapter / Section")) : "Chapter / Section";
                         for(let j=i; j>=0; j--){
                             if(book.nodes[j].tag === 'h1' || book.nodes[j].tag === 'h2') {
                                 contextStr = book.nodes[j].text.length > 25 ? book.nodes[j].text.substring(0,25)+'...' : book.nodes[j].text;
@@ -276,7 +279,7 @@ async function processMultipleFiles(files) {
                 "settings",
                 [
                     { text: d.cancel || "Batal", primary: false, action: () => { isResolved = true; window.closeDialog(); resolve('CANCEL'); } },
-                    { text: "Mulai Proses", primary: true, action: () => { 
+                    { text: d.btnStartProcess || "Mulai Proses", primary: true, action: () => { 
                         fileModes.forEach((m, idx) => {
                             if (m.type === 'pdf-choice') {
                                 const sel = document.getElementById(`mode-select-${idx}`);
@@ -380,12 +383,16 @@ async function processMultipleFiles(files) {
     DOM.loadBar.style.width = '100%';
     if(DOM.loadPct) DOM.loadPct.textContent = '100%';
     setTimeout(() => { DOM.load.classList.add('hidden'); }, 900);
-    if (DOM.loadTxt) DOM.loadTxt.textContent = 'Reading Document...';
+    if (DOM.loadTxt) DOM.loadTxt.textContent = d.loadingDocs || 'Reading Document...';
 
     if (grandTotal > 1 || failed.length > 0) {
-        let summary = `${imported} buku berhasil diimpor.`;
-        if (failed.length > 0) summary += `\n${failed.length} gagal: ${failed.join(', ')}`;
-        showDialog("Selesai Import", summary, "check-circle", [{ text: "Oke", primary: true }]);
+        const importedStr = d.importSuccessCount ? d.importSuccessCount.replace('{n}', imported) : `${imported} buku berhasil diimpor.`;
+        let summary = importedStr;
+        if (failed.length > 0) {
+            const failedStr = d.importFailedCount ? d.importFailedCount.replace('{n}', failed.length) : `${failed.length} gagal:`;
+            summary += `\n${failedStr} ${failed.join(', ')}`;
+        }
+        showDialog(d.importDoneTitle || "Selesai Import", summary, "check-circle", [{ text: d.btnClose || "Oke", primary: true }]);
     }
 }
 
