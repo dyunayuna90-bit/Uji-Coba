@@ -233,3 +233,6 @@ body.hide-book-titles .book-badge {
     padding: 2px 8px;
 }
 
+
+/* Archive download overlay spinner */
+@keyframes spin { to { transform: rotate(360deg); } }
