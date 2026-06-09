@@ -155,8 +155,15 @@ async function processMultipleFiles(files) {
             if (!em.found) {
                 // Belum ada → proses
                 nonPdfFiles.push(f);
+            } else {
+                // Sudah ada → tampilkan toast duplikat (tidak diam-diam!)
+                const bookTitle = f.name.replace(/\.[^/.]+$/, "");
+                const toastMsg = (d.toastBookDuplicate || 'Buku "{title}" udah ada di rak sebelumnya.')
+                    .replace('{title}', bookTitle.length > 30 ? bookTitle.substring(0, 30) + '…' : bookTitle);
+                if (typeof window.showPersistentToast === 'function') {
+                    window.showPersistentToast(toastMsg, 'duplicate', 3500);
+                }
             }
-            // Sudah ada → diam-diam skip, tidak ada duplikasi
         }
     }
 
@@ -416,7 +423,20 @@ async function processMultipleFiles(files) {
     else window.scrollTo({ top: 0, behavior: 'smooth' });
     
     // Filter out files yang di-skip karena sudah ada di kedua mode
+    const skippedModes = fileModes.filter(m => m._skipEntry && m.title);
     const validModes = fileModes.filter(m => !m._skipEntry);
+
+    // Toast untuk setiap PDF yang di-skip karena sudah ada di rak
+    if (skippedModes.length > 0 && typeof window.showPersistentToast === 'function') {
+        skippedModes.forEach(m => {
+            const bookTitle = m.title || '';
+            const shortTitle = bookTitle.length > 30 ? bookTitle.substring(0, 30) + '…' : bookTitle;
+            const toastMsg = (d.toastBookDuplicate || 'Buku "{title}" udah ada di rak sebelumnya.')
+                .replace('{title}', shortTitle);
+            window.showPersistentToast(toastMsg, 'duplicate', 3500);
+        });
+    }
+
     for (const m of validModes) { _importQueue.push(m); }
     _importTotalQueued += validModes.length;
     
@@ -485,7 +505,28 @@ async function processMultipleFiles(files) {
     setTimeout(() => { DOM.load.classList.add('hidden'); }, 900);
     if (DOM.loadTxt) DOM.loadTxt.textContent = d.loadingDocs || 'Reading Document...';
 
-    if (grandTotal > 1 || failed.length > 0) {
+    // Tampilkan hasil akhir
+    // → grandTotal == 1 (single book, tipikal dari Archive): pakai toast supaya tidak ganggu UX
+    // → grandTotal > 1 atau ada failure pada batch: pakai dialog seperti semula
+    if (grandTotal === 1) {
+        // Single book: toast ringkas
+        if (typeof window.showPersistentToast === 'function') {
+            if (imported === 1) {
+                const successMsg = d.toastBookAdded || 'Buku berhasil ditambah! 📚';
+                window.showPersistentToast(successMsg, 'success', 3500);
+            } else {
+                // imported == 0, artinya gagal semua
+                const failMsg = d.toastBookFailed || 'Gagal diproses, file mungkin rusak.';
+                window.showPersistentToast(failMsg, 'error', 4000);
+            }
+        } else {
+            // Fallback ke dialog kalau showPersistentToast belum ada
+            if (failed.length > 0) {
+                showDialog(d.importDoneTitle || "Selesai Import", d.toastBookFailed || 'Gagal diproses.', "alert-circle", [{ text: d.btnClose || "Oke", primary: true }]);
+            }
+        }
+    } else if (grandTotal > 1 || failed.length > 0) {
+        // Batch / ada yang gagal: dialog seperti biasa
         const importedStr = d.importSuccessCount ? d.importSuccessCount.replace('{n}', imported) : `${imported} buku berhasil diimpor.`;
         let summary = importedStr;
         if (failed.length > 0) {

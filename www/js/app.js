@@ -3343,11 +3343,12 @@ window.archiveDownload = async function(identifier, title) {
         _hideDlOverlay();
         _archiveDownloading = false;
 
-        // Step 3: proses ke library — tutup search & scroll ke atas dulu
-        setTimeout(async () => {
-            if (typeof window.closeSearch === 'function') window.closeSearch(false);
-            const libScroll = document.getElementById('library-content-scroll');
-            if (libScroll) libScroll.scrollTo({ top: 0, behavior: 'smooth' });
+        // Step 3: Tutup search dulu, tunggu animasi tutup selesai, BARU proses ke library
+        // Pakai delay 480ms agar animasi closeSearch (back) tuntas sebelum import mulai —
+        // ini mencegah toast tertutup oleh efek back dari closeSearch.
+        const _doProcess = async () => {
+            const lang = typeof wikiLang !== 'undefined' ? wikiLang : 'id';
+            const d = typeof i18n !== 'undefined' ? (i18n[lang] || i18n['id']) : {};
             try {
                 if (typeof window._processFilesFromArchive === 'function') {
                     await window._processFilesFromArchive([file]);
@@ -3356,8 +3357,23 @@ window.archiveDownload = async function(identifier, title) {
                 }
             } catch (procErr) {
                 console.error('archiveDownload process error:', procErr);
-                showDialog('Gagal Memproses', procErr.message, 'alert-circle', [{ text: 'Tutup', primary: true }]);
+                const failMsg = d.toastBookFailed || 'Gagal diproses, file mungkin rusak.';
+                if (typeof window.showPersistentToast === 'function') {
+                    window.showPersistentToast(failMsg, 'error', 4000);
+                } else {
+                    showDialog('Gagal Memproses', procErr.message, 'alert-circle', [{ text: 'Tutup', primary: true }]);
+                }
             }
+        };
+
+        // Tutup search panel, lalu tunda proses agar animasi back selesai dulu
+        setTimeout(async () => {
+            if (typeof window.closeSearch === 'function') window.closeSearch(false);
+            const libScroll = document.getElementById('library-content-scroll');
+            if (libScroll) libScroll.scrollTo({ top: 0, behavior: 'smooth' });
+            // Tunggu animasi close search (≈400ms) sebelum import & toast
+            await new Promise(r => setTimeout(r, 480));
+            await _doProcess();
         }, 400);
 
     } catch (err) {
@@ -3380,6 +3396,76 @@ function _esc(str) {
     if (!str) return '';
     return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
+
+// ─── PERSISTENT TOAST ────────────────────────────────────────────────────────
+// Toast yang kebal dari history.back() / efek penutupan search.
+// Pakai z-index 99999 (di atas semua overlay) dan TIDAK menyentuh history stack.
+// type: 'success' | 'duplicate' | 'error'
+let _toastQueue = [];
+let _toastActive = false;
+
+window.showPersistentToast = function(message, type = 'success', duration = 3500) {
+    _toastQueue.push({ message, type, duration });
+    if (!_toastActive) _processToastQueue();
+};
+
+function _processToastQueue() {
+    if (_toastQueue.length === 0) { _toastActive = false; return; }
+    _toastActive = true;
+    const { message, type, duration } = _toastQueue.shift();
+
+    // Warna berdasarkan tipe
+    const colorMap = {
+        success:   { bg: 'var(--md-sys-color-primary)',          fg: 'var(--md-sys-color-on-primary)' },
+        duplicate: { bg: 'var(--md-sys-color-secondary-container)', fg: 'var(--md-sys-color-on-secondary-container)' },
+        error:     { bg: '#C0392B',                               fg: '#FFFFFF' }
+    };
+    const color = colorMap[type] || colorMap['success'];
+
+    // Buat atau reuse elemen toast
+    let toast = document.getElementById('_persistent-toast');
+    if (!toast) {
+        toast = document.createElement('div');
+        toast.id = '_persistent-toast';
+        toast.style.cssText = [
+            'position:fixed',
+            'bottom:88px',
+            'left:50%',
+            'transform:translateX(-50%) translateY(20px)',
+            'z-index:99999',
+            'max-width:88vw',
+            'min-width:200px',
+            'padding:12px 18px',
+            'border-radius:16px',
+            'font-size:0.78rem',
+            'font-weight:700',
+            'line-height:1.45',
+            'text-align:center',
+            'pointer-events:none',
+            'opacity:0',
+            'transition:opacity 0.22s ease, transform 0.22s cubic-bezier(0.34,1.3,0.64,1)',
+            'box-shadow:0 4px 24px rgba(0,0,0,0.22)',
+            'word-break:break-word'
+        ].join(';');
+        document.body.appendChild(toast);
+    }
+
+    toast.style.background = color.bg;
+    toast.style.color = color.fg;
+    toast.textContent = message;
+
+    // Paksa reflow sebelum animasi masuk
+    void toast.offsetHeight;
+    toast.style.opacity = '1';
+    toast.style.transform = 'translateX(-50%) translateY(0)';
+
+    setTimeout(() => {
+        toast.style.opacity = '0';
+        toast.style.transform = 'translateX(-50%) translateY(20px)';
+        setTimeout(() => _processToastQueue(), 260);
+    }, duration);
+}
+// ─────────────────────────────────────────────────────────────────────────────
 
 // 14. PWA & CAPACITOR SETUP
 if ('serviceWorker' in navigator) {

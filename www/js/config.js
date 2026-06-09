@@ -225,7 +225,12 @@ const i18n = {
         archiveFilterPdf: "PDF",
         archiveFilterEpub: "EPUB",
         archiveResultCount: "{n} hasil ditemukan",
-        archiveSectionTitle: "Temukan & Unduh Buku"
+        archiveSectionTitle: "Temukan & Unduh Buku",
+
+        // --- ARCHIVE DOWNLOAD RESULT TOASTS ---
+        toastBookAdded: "Buku berhasil ditambah! 📚",
+        toastBookDuplicate: "Buku \"{title}\" udah ada di rak sebelumnya.",
+        toastBookFailed: "Gagal diproses, file mungkin rusak."
     },
     en: {
         libEmpty: "Library is Empty.", searchBooks: "Search books...", loadingDocs: "Reading Document...", 
@@ -376,7 +381,12 @@ const i18n = {
         archiveFilterPdf: "PDF",
         archiveFilterEpub: "EPUB",
         archiveResultCount: "{n} results found",
-        archiveSectionTitle: "Discover & Download Books"
+        archiveSectionTitle: "Discover & Download Books",
+
+        // --- ARCHIVE DOWNLOAD RESULT TOASTS ---
+        toastBookAdded: "Book added successfully! 📚",
+        toastBookDuplicate: "Book \"{title}\" is already in your shelf.",
+        toastBookFailed: "Processing failed, file may be corrupted."
     },
     es: {
         libEmpty: "La biblioteca está vacía.", searchBooks: "Buscar libros...", loadingDocs: "Leyendo documento...", 
@@ -527,6 +537,11 @@ const i18n = {
         archiveFilterPdf: "PDF",
         archiveFilterEpub: "EPUB",
         archiveResultCount: "{n} resultados encontrados",
-        archiveSectionTitle: "Descubrir y Descargar Libros"
+        archiveSectionTitle: "Descubrir y Descargar Libros",
+
+        // --- ARCHIVE DOWNLOAD RESULT TOASTS ---
+        toastBookAdded: "¡Libro añadido con éxito! 📚",
+        toastBookDuplicate: "El libro \"{title}\" ya está en tu estante.",
+        toastBookFailed: "Error al procesar, el archivo puede estar dañado."
     }
 };
