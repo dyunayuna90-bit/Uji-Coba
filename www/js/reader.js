@@ -112,69 +112,86 @@ let _importDoneCount = 0;
 async function processMultipleFiles(files) {
     const lang = typeof wikiLang !== 'undefined' ? wikiLang : 'id';
     const d = typeof i18n !== 'undefined' ? (i18n[lang] || i18n['id']) : {};
-    
-    // Tahap 1: Cek Duplikat Buku di Library
-    let duplicates = [];
-    let newFiles = [];
-    
-    for(let f of files) {
-        const bookId = btoa(unescape(encodeURIComponent(f.name))).replace(/[^a-zA-Z0-9]/g, '').substring(0, 32);
-        const existingIndex = typeof library !== 'undefined' ? library.findIndex(b => b.id === bookId) : -1;
-        
-        if(existingIndex > -1) {
-            duplicates.push({file: f, id: bookId, title: f.name.replace(/\.[^/.]+$/, "")});
+
+    // Helper: ambil ID asli buku dari nama file (sama dengan yang dipakai saat import)
+    function _getBookId(file) {
+        return btoa(unescape(encodeURIComponent(file.name))).replace(/[^a-zA-Z0-9]/g, '').substring(0, 32);
+    }
+
+    // Helper: cek mode yang sudah ada di library untuk ID buku tertentu
+    function _getExistingModes(bookId) {
+        const lib = typeof library !== 'undefined' ? library : [];
+        const existing = lib.filter(b => b.id === bookId);
+        const hasScroll = existing.some(b => b.type === 'pdf' && (b.pdfMode || 'scroll') !== 'canvas');
+        const hasCanvas = existing.some(b => b.type === 'pdf' && b.pdfMode === 'canvas');
+        const hasNonPdf = existing.some(b => b.type !== 'pdf');
+        return { hasScroll, hasCanvas, both: hasScroll && hasCanvas, hasNonPdf, found: existing.length > 0 };
+    }
+
+    // Tahap 1: Pisahkan file PDF dari non-PDF, dan cek duplikat
+    let pdfFiles       = [];
+    let nonPdfFiles    = [];   // non-PDF yang BELUM ada di library → langsung proses
+    let dupBothPdf     = [];   // PDF yang sudah ada di KEDUA mode (scroll & canvas) → tolak total
+    // non-PDF yang sudah ada di library → langsung di-skip diam-diam, tanpa dialog
+
+    for (let f of files) {
+        const ext = f.name.split('.').pop().toLowerCase();
+        if (ext === 'pdf') {
+            const bookId = _getBookId(f);
+            const em = _getExistingModes(bookId);
+            if (em.both) {
+                dupBothPdf.push({ file: f, id: bookId, title: f.name.replace(/\.[^/.]+$/, "") });
+            } else {
+                pdfFiles.push(f);
+            }
         } else {
-            newFiles.push(f);
+            const bookId = _getBookId(f);
+            const em = _getExistingModes(bookId);
+            if (!em.found) {
+                // Belum ada → proses
+                nonPdfFiles.push(f);
+            }
+            // Sudah ada → diam-diam skip, tidak ada duplikasi
         }
     }
-    
-    let filesToProcess = [...newFiles];
-    
-    // Tahap 2: Modal Konfirmasi Duplikat
-    if(duplicates.length > 0) {
-        let dupListHtml = `<div class="max-h-40 overflow-y-auto mt-2 mb-2 bg-m3-surfaceVariant/30 rounded-xl p-2 text-left">`;
-        duplicates.forEach(dup => {
-            dupListHtml += `<div class="text-xs text-m3-onSurface opacity-80 mb-1 truncate whitespace-nowrap overflow-hidden text-ellipsis">- ${dup.title}</div>`;
+
+    // Tahap 1b: Tampilkan notif untuk PDF yang sudah ada di kedua rak → tidak bisa ditambahkan
+    if (dupBothPdf.length > 0) {
+        let dupBothListHtml = `<div class="max-h-40 overflow-y-auto mt-2 mb-2 bg-m3-surfaceVariant/30 rounded-xl p-2 text-left">`;
+        dupBothPdf.forEach(dup => {
+            dupBothListHtml += `<div class="text-xs text-m3-onSurface opacity-80 mb-1 truncate">📚 ${dup.title}</div>`;
         });
-        dupListHtml += `</div>`;
-        
-        const action = await new Promise((resolve) => {
+        dupBothListHtml += `</div>`;
+
+        const hasSomethingElse = pdfFiles.length > 0 || nonPdfFiles.length > 0;
+
+        await new Promise((resolve) => {
             let isResolved = false;
-            // Interval pengaman: jika user swipe kebawah untuk tutup modal, anggap Batal!
             const checkHidden = setInterval(() => {
                 if (document.getElementById('custom-dialog').classList.contains('hidden')) {
                     clearInterval(checkHidden);
-                    if (!isResolved) resolve('CANCEL');
+                    if (!isResolved) resolve();
                 }
             }, 300);
-
             window.showDialog(
-                d.uploadDuplicateTitle || "Buku Sudah Ada",
-                (d.uploadDuplicateDesc || "Buku berikut sudah ada di rakmu. Tambahkan lagi (sebagai file baru) atau lewati saja?") + dupListHtml,
-                "copy",
+                d.pdfBothModesTitle || "Buku Sudah Ada di Rak",
+                (d.pdfBothModesDesc || "Buku berikut sudah ada di kedua rak (Scroll & Canvas). Tidak dapat ditambahkan lagi.") + dupBothListHtml,
+                "book-x",
                 [
-                    { text: d.btnSkip || "Lewati", primary: false, action: () => { isResolved = true; window.closeDialog(); resolve('SKIP'); } },
-                    { text: d.btnAddAnyway || "Tambahkan Saja", primary: true, action: () => { isResolved = true; window.closeDialog(); resolve('ADD'); } }
+                    { text: d.btnClose || "Oke", primary: true, action: () => { isResolved = true; window.closeDialog(); resolve(); } }
                 ]
             );
         });
-        
-        if (action === 'CANCEL') return;
-        if (action === 'ADD') {
-            duplicates.forEach(dup => {
-                dup.file._isDuplicate = true; // Tandai agar ID di-generate unik nantinya
-                filesToProcess.push(dup.file);
-            });
-        }
-        
-        // Jeda bentar agar animasi tutup dialog selesai, tampilkan spinner
-        if (typeof window.showGlobalLoading === 'function') {
-            window.showGlobalLoading(d.loadingDocs || 'Menganalisa dokumen...');
-        }
-        await new Promise(r => setTimeout(r, 350));
-        if (typeof window.hideGlobalLoading === 'function') window.hideGlobalLoading();
+
+        if (!hasSomethingElse) return;
     }
-    
+
+    // Tahap 2: Gabungkan non-PDF baru + PDF ke antrian
+    let filesToProcess = [...nonPdfFiles];
+
+    // Gabungkan PDF ke dalam filesToProcess (PDF akan lewat mode-selection sendiri)
+    for (let f of pdfFiles) filesToProcess.push(f);
+
     if (filesToProcess.length === 0) return;
     
     // Tahap 3: Pre-flight scan (Mendeteksi file PDF)
@@ -229,34 +246,85 @@ async function processMultipleFiles(files) {
         DOM.load.classList.add('hidden');
         if (typeof window.hideGlobalLoading === 'function') window.hideGlobalLoading();
         
-        // Tahap 4: Modal Batch Options (Mode Pemilihan Canvas/Scroll)
+        // Tahap 4: Modal Batch Options — tandai setiap PDF dengan info mode yang sudah ada di library
+        fileModes.forEach(m => {
+            if (m.ext === 'pdf' && !m.file._isDuplicate) {
+                const bookId = _getBookId(m.file);
+                m._bookId = bookId;
+                m._existingModes = _getExistingModes(bookId);
+            }
+        });
+
         let batchHtml = `<div class="max-h-[50vh] overflow-y-auto mt-2 mb-2 p-1 text-left flex flex-col gap-3">`;
         const strScroll = d.pdfModeBtnScroll || "Mode Scroll (Teks)";
         const strCanvas = d.pdfModeBtnCanvas || "Mode Canvas (Asli)";
+        const strAlreadyInLib = d.alreadyInLib || "Buku sudah ada di rak";
+        const strScrollWillDelete = d.pdfScrollWillDelete || "Scroll → Canvas (⚠️ versi Scroll terhapus)";
+        const strCanvasWillDelete = d.pdfCanvasWillDelete || "Canvas → Scroll (⚠️ versi Canvas terhapus)";
         
         fileModes.forEach((m, idx) => {
             const shortTitle = m.title.length > 30 ? m.title.substring(0, 30) + '...' : m.title;
             let controlHtml = '';
+            let rowOpacity = '';
+            let dismissBtn = '';
             
+            const em = m._existingModes;
+
             if (m.type === 'auto') {
                 controlHtml = `<span class="text-[10px] bg-m3-surfaceVariant text-m3-onSurfaceVariant px-2 py-1 rounded-md font-bold opacity-70">Otomatis (${m.ext.toUpperCase()})</span>`;
             } else if (m.type === 'pdf-canvas-forced') {
-                controlHtml = `<span class="text-[10px] bg-m3-secondaryContainer text-m3-onSecondaryContainer px-2 py-1 rounded-md font-bold">Canvas (Pindaian)</span>`;
+                if (em && em.hasCanvas) {
+                    // Canvas forced tapi sudah ada di canvas → skip otomatis
+                    m._skipEntry = true;
+                    rowOpacity = 'opacity-40';
+                    controlHtml = `<span class="text-[10px] bg-m3-surfaceVariant text-m3-onSurfaceVariant px-2 py-1 rounded-md font-bold">${strAlreadyInLib}</span>`;
+                } else {
+                    controlHtml = `<span class="text-[10px] bg-m3-secondaryContainer text-m3-onSecondaryContainer px-2 py-1 rounded-md font-bold">Canvas (Pindaian)</span>`;
+                }
             } else if (m.type === 'pdf-choice') {
-                controlHtml = `
-                    <select id="mode-select-${idx}" class="text-xs bg-m3-primaryContainer text-m3-onPrimaryContainer px-2 py-1 rounded-md font-bold border-none outline-none">
-                        <option value="scroll">${strScroll}</option>
-                        <option value="canvas">${strCanvas}</option>
-                    </select>
-                `;
+                if (em && em.both) {
+                    // Sudah ada di kedua mode → abaikan (tidak seharusnya sampai sini tapi sebagai fallback)
+                    m._skipEntry = true;
+                    rowOpacity = 'opacity-40';
+                    controlHtml = `<span class="text-[10px] bg-m3-surfaceVariant text-m3-onSurfaceVariant px-2 py-1 rounded-md font-bold">${strAlreadyInLib}</span>`;
+                } else if (em && em.hasCanvas) {
+                    // Sudah ada di canvas → kunci ke scroll saja, peringatkan canvas akan terhapus
+                    m._lockedMode = 'scroll';
+                    controlHtml = `
+                        <span class="text-[10px] bg-red-500/15 text-red-600 dark:text-red-400 px-2 py-1 rounded-md font-bold flex items-center gap-1 leading-tight">
+                            <i data-lucide="alert-triangle" class="w-3 h-3 shrink-0"></i> ${strCanvasWillDelete}
+                        </span>
+                    `;
+                    dismissBtn = `<button type="button" data-dismiss-idx="${idx}" class="batch-dismiss-btn ml-2 w-6 h-6 rounded-full flex items-center justify-center bg-m3-surfaceVariant text-m3-onSurfaceVariant hover:bg-red-500/20 hover:text-red-500 transition-colors shrink-0" title="${d.batchDismiss || 'Buang dari daftar'}"><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>`;
+                } else if (em && em.hasScroll) {
+                    // Sudah ada di scroll → kunci ke canvas saja, peringatkan scroll akan terhapus
+                    m._lockedMode = 'canvas';
+                    controlHtml = `
+                        <span class="text-[10px] bg-red-500/15 text-red-600 dark:text-red-400 px-2 py-1 rounded-md font-bold flex items-center gap-1 leading-tight">
+                            <i data-lucide="alert-triangle" class="w-3 h-3 shrink-0"></i> ${strScrollWillDelete}
+                        </span>
+                    `;
+                    dismissBtn = `<button type="button" data-dismiss-idx="${idx}" class="batch-dismiss-btn ml-2 w-6 h-6 rounded-full flex items-center justify-center bg-m3-surfaceVariant text-m3-onSurfaceVariant hover:bg-red-500/20 hover:text-red-500 transition-colors shrink-0" title="${d.batchDismiss || 'Buang dari daftar'}"><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>`;
+                } else {
+                    // Bebas pilih
+                    controlHtml = `
+                        <select id="mode-select-${idx}" class="text-xs bg-m3-primaryContainer text-m3-onPrimaryContainer px-2 py-1 rounded-md font-bold border-none outline-none">
+                            <option value="scroll">${strScroll}</option>
+                            <option value="canvas">${strCanvas}</option>
+                        </select>
+                    `;
+                }
             }
             
             batchHtml += `
-                <div class="flex flex-col border-b border-m3-surfaceVariant/50 pb-2">
+                <div id="batch-row-${idx}" class="flex flex-col border-b border-m3-surfaceVariant/50 pb-2 ${rowOpacity}">
                     <span class="text-xs font-bold text-m3-onSurface mb-1 truncate">${shortTitle}</span>
                     <div class="flex justify-between items-center">
                         <span class="text-[10px] opacity-60 uppercase">${m.ext}</span>
-                        ${controlHtml}
+                        <div class="flex items-center">
+                            ${controlHtml}
+                            ${dismissBtn}
+                        </div>
                     </div>
                 </div>
             `;
@@ -281,7 +349,11 @@ async function processMultipleFiles(files) {
                     { text: d.cancel || "Batal", primary: false, action: () => { isResolved = true; window.closeDialog(); resolve('CANCEL'); } },
                     { text: d.btnStartProcess || "Mulai Proses", primary: true, action: () => { 
                         fileModes.forEach((m, idx) => {
-                            if (m.type === 'pdf-choice') {
+                            if (m._skipEntry) {
+                                m.finalMode = null; // akan di-skip
+                            } else if (m._lockedMode) {
+                                m.finalMode = m._lockedMode;
+                            } else if (m.type === 'pdf-choice') {
                                 const sel = document.getElementById(`mode-select-${idx}`);
                                 if (sel) m.finalMode = sel.value;
                             } else if (m.type === 'pdf-canvas-forced') {
@@ -292,6 +364,27 @@ async function processMultipleFiles(files) {
                     } }
                 ]
             );
+            // Pasang event dismiss setelah DOM dialog render
+            setTimeout(() => {
+                document.querySelectorAll('.batch-dismiss-btn').forEach(btn => {
+                    btn.addEventListener('click', () => {
+                        const idx = parseInt(btn.dataset.dismissIdx);
+                        if (!isNaN(idx) && fileModes[idx]) {
+                            fileModes[idx]._skipEntry = true;
+                            delete fileModes[idx]._lockedMode;
+                            const row = document.getElementById(`batch-row-${idx}`);
+                            if (row) {
+                                row.style.transition = 'opacity 0.2s, max-height 0.25s';
+                                row.style.overflow = 'hidden';
+                                row.style.opacity = '0';
+                                row.style.maxHeight = row.offsetHeight + 'px';
+                                setTimeout(() => { row.style.maxHeight = '0'; row.style.paddingBottom = '0'; }, 10);
+                                setTimeout(() => row.remove(), 260);
+                            }
+                        }
+                    });
+                });
+            }, 80);
         });
         
         if (batchAction === 'CANCEL') return;
@@ -317,8 +410,10 @@ async function processMultipleFiles(files) {
     if (libScroll) libScroll.scrollTo({ top: 0, behavior: 'smooth' });
     else window.scrollTo({ top: 0, behavior: 'smooth' });
     
-    for (const m of fileModes) { _importQueue.push(m); }
-    _importTotalQueued += fileModes.length;
+    // Filter out files yang di-skip karena sudah ada di kedua mode
+    const validModes = fileModes.filter(m => !m._skipEntry);
+    for (const m of validModes) { _importQueue.push(m); }
+    _importTotalQueued += validModes.length;
     
     if (_importRunning) {
         if (DOM.loadTxt) {

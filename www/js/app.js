@@ -98,7 +98,14 @@ document.addEventListener("DOMContentLoaded", () => {
     applyLanguage();
     applyTypo();
     applyThemeToDOM();
-    loadLibrary();
+    loadLibrary().finally(() => {
+        // Sembunyikan splash screen setelah library siap
+        const splash = document.getElementById('splash-screen');
+        if (splash) {
+            splash.style.opacity = '0';
+            setTimeout(() => { splash.style.display = 'none'; }, 500);
+        }
+    });
     setupSwipeToDismiss(); // Nyalain Gestur Aman
 
     if (!localStorage.getItem('first_time_seen_v5')) {
@@ -113,6 +120,9 @@ document.addEventListener("DOMContentLoaded", () => {
     // Update versi app di layar pengaturan
     const verDisplay = document.getElementById('app-version-display');
     if (verDisplay && window.APP_VERSION) verDisplay.textContent = `v${window.APP_VERSION}`;
+
+    // Inisialisasi Archive Search
+    _initArchiveSearch();
 });
 
 // Update UI Statistik
@@ -142,7 +152,202 @@ window.updateStatistics = function() {
     if(valReading) valReading.textContent = readingBooks;
     if(valCompleted) valCompleted.textContent = completedBooks;
     if(valNotes) valNotes.textContent = totalNotes;
+
+    // Catat aktivitas hari ini (1 "unit" = setiap kali updateStatistics dipanggil saat membaca)
+    recordReadingActivity();
 };
+
+// Simpan & ambil data aktivitas membaca harian
+function recordReadingActivity() {
+    try {
+        const today = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+        const raw = localStorage.getItem('reading_activity_v1');
+        const act = raw ? JSON.parse(raw) : {};
+        act[today] = (act[today] || 0) + 1;
+        // Hapus data lebih dari 30 hari
+        const keys = Object.keys(act).sort();
+        if (keys.length > 30) keys.slice(0, keys.length - 30).forEach(k => delete act[k]);
+        localStorage.setItem('reading_activity_v1', JSON.stringify(act));
+    } catch(e) {}
+}
+
+function getReadingActivity(days = 7) {
+    try {
+        const raw = localStorage.getItem('reading_activity_v1');
+        const act = raw ? JSON.parse(raw) : {};
+        // Map bahasa app ke locale BCP-47
+        const localeMap = { id: 'id-ID', en: 'en-US', es: 'es-ES' };
+        const lang = typeof wikiLang !== 'undefined' ? wikiLang : 'id';
+        const locale = localeMap[lang] || 'id-ID';
+        const result = [];
+        for (let i = days - 1; i >= 0; i--) {
+            const d = new Date();
+            d.setDate(d.getDate() - i);
+            const key = d.toISOString().slice(0, 10);
+            // Label: nama hari pendek + tanggal, sesuai bahasa aktif
+            const label = d.toLocaleDateString(locale, { weekday: 'short', day: 'numeric' });
+            result.push({ label, value: act[key] || 0 });
+        }
+        return result;
+    } catch(e) { return []; }
+}
+
+let _statChartOpen = false;
+window.toggleStatChart = function() {
+    _statChartOpen = !_statChartOpen;
+    const area = document.getElementById('stat-chart-area');
+    const icon = document.getElementById('stat-expand-icon');
+    const label = document.getElementById('str-stat-expand');
+    const lang = typeof wikiLang !== 'undefined' ? wikiLang : 'id';
+    const d = typeof i18n !== 'undefined' ? (i18n[lang] || i18n['id']) : {};
+
+    if (_statChartOpen) {
+        // Render chart dulu sebelum animasi biar scrollHeight bisa diukur dengan akurat
+        renderStatChart();
+
+        // Ukur tinggi asli konten, lalu animasi dari 0 ke nilai exact
+        area.style.transition = 'none';
+        area.style.maxHeight = 'none';
+        area.style.opacity  = '1';
+        const fullH = area.scrollHeight;
+        area.style.maxHeight = '0px';
+        area.style.opacity  = '0';
+
+        // Force reflow agar browser commit titik awal sebelum transisi dimulai
+        void area.offsetHeight;
+
+        area.style.transition = 'max-height 420ms cubic-bezier(0.4,0,0.2,1), opacity 320ms ease';
+        area.style.maxHeight  = fullH + 'px';
+        area.style.opacity    = '1';
+
+        // Setelah animasi selesai, lepas max-height fixed supaya konten bisa bebas resize
+        const onEnd = (ev) => {
+            if (ev.propertyName !== 'max-height') return;
+            area.style.maxHeight = 'none';
+            area.removeEventListener('transitionend', onEnd);
+        };
+        area.addEventListener('transitionend', onEnd);
+
+        if (icon) { icon.setAttribute('data-lucide', 'chevron-up'); if(window.lucide) window.lucide.createIcons({nodes: [icon]}); }
+        if (label) label.textContent = d.statCollapse || 'Tutup Grafik';
+    } else {
+        // Collapse: ukur tinggi saat ini, animasi ke 0
+        const curH = area.scrollHeight;
+        area.style.transition = 'none';
+        area.style.maxHeight  = curH + 'px';
+        void area.offsetHeight;
+
+        area.style.transition = 'max-height 380ms cubic-bezier(0.4,0,0.2,1), opacity 260ms ease';
+        area.style.maxHeight  = '0px';
+        area.style.opacity    = '0';
+
+        if (icon) { icon.setAttribute('data-lucide', 'bar-chart-2'); if(window.lucide) window.lucide.createIcons({nodes: [icon]}); }
+        if (label) label.textContent = d.statExpand || 'Lihat Grafik';
+    }
+};
+
+let _statChartInstance = null;
+function renderStatChart() {
+    const canvas = document.getElementById('stat-chart-canvas');
+    const emptyEl = document.getElementById('stat-chart-empty');
+    if (!canvas) return;
+
+    const data = getReadingActivity(7);
+    const hasData = data.some(d => d.value > 0);
+
+    if (!hasData) {
+        canvas.classList.add('hidden');
+        if (emptyEl) emptyEl.classList.remove('hidden');
+        return;
+    }
+    canvas.classList.remove('hidden');
+    if (emptyEl) emptyEl.classList.add('hidden');
+
+    // Ambil warna dari CSS variable
+    const style = getComputedStyle(document.documentElement);
+    const primary = style.getPropertyValue('--md-sys-color-primary').trim() || '#6750A4';
+    const onSecCont = style.getPropertyValue('--md-sys-color-on-secondary-container').trim() || '#1C1B1F';
+
+    // Destroy chart lama kalau ada
+    if (_statChartInstance) { try { _statChartInstance.destroy(); } catch(e) {} _statChartInstance = null; }
+
+    const ctx = canvas.getContext('2d');
+    const labels = data.map(d => d.label);
+    const values = data.map(d => d.value);
+    const maxVal = Math.max(...values, 1);
+
+    // Gambar chart manual (tanpa library) — simple line chart M3 style
+    const W = canvas.parentElement.clientWidth || 300;
+    const H = 120;
+    const dpr = window.devicePixelRatio || 1;
+    canvas.width = W * dpr;
+    canvas.height = H * dpr;
+    canvas.style.width = W + 'px';
+    canvas.style.height = H + 'px';
+    ctx.scale(dpr, dpr);
+
+    const pad = { top: 16, right: 12, bottom: 28, left: 12 };
+    const cW = W - pad.left - pad.right;
+    const cH = H - pad.top - pad.bottom;
+    const n = data.length;
+    const stepX = cW / Math.max(n - 1, 1);
+
+    const toX = (i) => pad.left + i * stepX;
+    const toY = (v) => pad.top + cH - (v / maxVal) * cH;
+
+    // Gradient fill
+    const grad = ctx.createLinearGradient(0, pad.top, 0, pad.top + cH);
+    grad.addColorStop(0, primary + '55');
+    grad.addColorStop(1, primary + '00');
+
+    ctx.beginPath();
+    ctx.moveTo(toX(0), toY(values[0]));
+    for (let i = 1; i < n; i++) {
+        const cpx = (toX(i - 1) + toX(i)) / 2;
+        ctx.bezierCurveTo(cpx, toY(values[i - 1]), cpx, toY(values[i]), toX(i), toY(values[i]));
+    }
+    ctx.lineTo(toX(n - 1), pad.top + cH);
+    ctx.lineTo(toX(0), pad.top + cH);
+    ctx.closePath();
+    ctx.fillStyle = grad;
+    ctx.fill();
+
+    // Line
+    ctx.beginPath();
+    ctx.moveTo(toX(0), toY(values[0]));
+    for (let i = 1; i < n; i++) {
+        const cpx = (toX(i - 1) + toX(i)) / 2;
+        ctx.bezierCurveTo(cpx, toY(values[i - 1]), cpx, toY(values[i]), toX(i), toY(values[i]));
+    }
+    ctx.strokeStyle = primary;
+    ctx.lineWidth = 2.5;
+    ctx.lineJoin = 'round';
+    ctx.lineCap = 'round';
+    ctx.stroke();
+
+    // Dots
+    for (let i = 0; i < n; i++) {
+        ctx.beginPath();
+        ctx.arc(toX(i), toY(values[i]), values[i] > 0 ? 4 : 2.5, 0, Math.PI * 2);
+        ctx.fillStyle = values[i] > 0 ? primary : primary + '60';
+        ctx.fill();
+        if (values[i] > 0) {
+            ctx.strokeStyle = '#ffffff88';
+            ctx.lineWidth = 1.5;
+            ctx.stroke();
+        }
+    }
+
+    // X labels
+    ctx.fillStyle = onSecCont;
+    ctx.globalAlpha = 0.5;
+    ctx.font = `bold ${9 * (W > 250 ? 1 : 0.85)}px system-ui, sans-serif`;
+    ctx.textAlign = 'center';
+    for (let i = 0; i < n; i++) {
+        ctx.fillText(labels[i], toX(i), H - 6);
+    }
+    ctx.globalAlpha = 1;
+}
 
 // 2. SCROLL & NAVIGATION LISTENERS
 function setupScrollListeners() {
@@ -202,8 +407,8 @@ window.addEventListener('popstate', (e) => {
     else if (!document.getElementById('bookmark-modal').classList.contains('opacity-0')) { _closeModalAction('bookmark-modal', 'bookmark-sheet', true, true); }
     else if (!document.getElementById('b-opt-modal').classList.contains('opacity-0')) { _closeModalAction('b-opt-modal', 'b-opt-sheet', false, true); }
     else if (!document.getElementById('edit-modal').classList.contains('opacity-0')) { _closeModalAction('edit-modal', 'edit-sheet', true, true); }
-    else if (!document.getElementById('global-settings-modal').classList.contains('opacity-0')) { _closeModalAction('global-settings-modal', 'global-settings-sheet', false, true); }
     else if (!document.getElementById('welcome-modal').classList.contains('opacity-0')) { closeWelcome(true); }
+    else if (!document.getElementById('global-settings-modal').classList.contains('opacity-0')) { _closeModalAction('global-settings-modal', 'global-settings-sheet', false, true); }
     else if (!document.getElementById('backup-type-modal').classList.contains('opacity-0')) { _closeModalAction('backup-type-modal', 'backup-type-sheet', true, true); }
     else if (!document.getElementById('pdf-mode-modal').classList.contains('opacity-0')) { _closeModalAction('pdf-mode-modal', 'pdf-mode-sheet', true, true); }
     else if (isBatchDeleteMode) { window.toggleBatchDelete(true); }
@@ -303,10 +508,16 @@ function applyLanguage() {
     setElementText('str-wel-title', d.welcomeTitle); setElementText('str-wel-desc', d.welcomeDesc);
     setElementText('str-wel-backup', d.welBackup); 
     if(document.getElementById('str-wel-backup-desc')) document.getElementById('str-wel-backup-desc').innerHTML = d.welBackupDesc;
+    setElementText('str-wel-canvas', d.welCanvas);
+    if(document.getElementById('str-wel-canvas-desc')) document.getElementById('str-wel-canvas-desc').innerHTML = d.welCanvasDesc;
     setElementText('str-wel-format', d.welFormat); 
     if(document.getElementById('str-wel-format-desc')) document.getElementById('str-wel-format-desc').innerHTML = d.welFormatDesc;
     setElementText('str-wel-privacy', d.welPrivacy); setElementText('str-wel-privacy-desc', d.welPrivacyDesc);
     setElementText('str-wel-btn', d.welBtn);
+    setElementText('str-stat-expand', d.statExpand || 'Lihat Grafik');
+    setElementText('str-stat-chart-title', d.statChartTitle || 'Aktivitas Membaca');
+    if(document.getElementById('str-stat-chart-days')) document.getElementById('str-stat-chart-days').textContent = '7 ' + (d.statChartDays || 'hari terakhir');
+    if(document.getElementById('stat-chart-empty')) document.getElementById('stat-chart-empty').textContent = d.statChartEmpty || 'Belum ada data aktivitas membaca.';
     
     setElementText('str-set-main-title', d.setMainTitle); setElementText('str-set-palette', d.setPalette);
     setElementText('str-set-lang', d.setLang); setElementText('str-set-info', d.setInfo);
@@ -392,6 +603,19 @@ function applyLanguage() {
 
     // TOC canvas warning
     setElementText('str-toc-canvas-warning', d.tocCanvasWarning || 'Untuk mode canvas, daftar isi tidak tersedia.');
+
+    // Archive Search i18n
+    setElementText('str-archive-section-title', d.archiveSectionTitle || 'Temukan & Unduh Buku');
+    setElementText('str-archive-loading', d.archiveSearchLoading || 'Mencari di arsip...');
+    setElementText('str-archive-empty', d.archiveSearchEmpty || 'Tidak ada hasil. Coba kata kunci lain.');
+    const archiveInput = document.getElementById('archive-search-input');
+    if (archiveInput) archiveInput.placeholder = d.archiveSearchPlaceholder || 'Cari judul, penulis...';
+    const archiveFilterAll = document.getElementById('archive-filter-all');
+    if (archiveFilterAll) archiveFilterAll.textContent = d.archiveFilterAll || 'Semua';
+    const archiveFilterPdf = document.getElementById('archive-filter-pdf');
+    if (archiveFilterPdf) archiveFilterPdf.textContent = d.archiveFilterPdf || 'PDF';
+    const archiveFilterEpub = document.getElementById('archive-filter-epub');
+    if (archiveFilterEpub) archiveFilterEpub.textContent = d.archiveFilterEpub || 'EPUB';
 }
 
 window.setWikiLang = function(lang) {
@@ -843,7 +1067,10 @@ window.importDataFile = async function(event) {
 
                             const existingIndex = mergedLibrary.findIndex(lib => lib.id === b.id);
                             if (existingIndex > -1) {
+                                // Pertahankan pdfMode lokal — jangan timpa dengan mode dari backup
+                                const existingPdfMode = mergedLibrary[existingIndex].pdfMode;
                                 mergedLibrary[existingIndex] = { ...mergedLibrary[existingIndex], ...b };
+                                if (existingPdfMode) mergedLibrary[existingIndex].pdfMode = existingPdfMode;
                             } else {
                                 mergedLibrary.push(b);
                             }
@@ -895,73 +1122,93 @@ async function executeRestoreLogic(jsonString) {
         const isValid = parsedData.every(b => b.id && b.title);
         if (!isValid) throw new Error("Data backup rusak atau tidak kompatibel.");
 
-        const existingIds = new Set(library.map(b => b.id));
-        const matchCount = parsedData.filter(b => existingIds.has(b.id)).length;
-        const newCount = parsedData.length - matchCount;
+        // Set berisi id buku yang user minta skip (abaikan)
+        const skippedIds = new Set();
 
-        const confirmMsg = wikiLang === 'id'
-            ? `Ditemukan ${matchCount} buku yang cocok (progress & catatan akan dipulihkan) dan ${newCount} buku baru (perlu import ulang file aslinya). Lanjut?`
-            : `Found ${matchCount} matching books (progress & notes restored) and ${newCount} new books (re-import original files). Continue?`;
+        // ── definisikan dulu sebelum dipanggil ──
 
-        showDialog(
-            wikiLang === 'id' ? "Konfirmasi Restore JSON" : "Confirm JSON Restore",
-            confirmMsg,
-            "alert-triangle",
-            [
-                { text: wikiLang === 'id' ? "Batal" : "Cancel", primary: false },
-                { text: wikiLang === 'id' ? "Lanjut" : "Continue", primary: true, action: async () => {
-                    window.closeDialog();
+        const _doRestore = async () => {
+            window.closeDialog();
 
-                    let mergedLibrary = [...library];
+            const existingIds = new Set(library.map(b => b.id));
+            const toRestore   = parsedData.filter(b => !skippedIds.has(b.id));
+            const matchCount  = toRestore.filter(b => existingIds.has(b.id)).length;
+            const newCount    = toRestore.length - matchCount;
 
-                    for (let b of parsedData) {
-                        if (b.nodes && b.nodes.length > 0) {
-                            await localforage.setItem('content_' + b.id, b.nodes);
-                        }
+            let mergedLibrary = [...library];
 
-                        let meta = {...b};
-                        delete meta.nodes;
-                        delete meta.coverBase64;
+            for (let b of toRestore) {
+                if (b.nodes && b.nodes.length > 0) {
+                    await localforage.setItem('content_' + b.id, b.nodes);
+                }
 
-                        const existingIndex = mergedLibrary.findIndex(lib => lib.id === b.id);
-                        if (existingIndex > -1) {
-                            mergedLibrary[existingIndex] = {
-                                ...mergedLibrary[existingIndex],
-                                progressPct: meta.progressPct,
-                                lastReadId: meta.lastReadId,
-                                annotations: meta.annotations || [],
-                                isPinned: meta.isPinned,
-                                title: meta.title,
-                                pdfMode: meta.pdfMode || 'scroll'
-                            };
-                        } else {
-                            mergedLibrary.push(meta);
-                        }
-                    }
+                let meta = {...b};
+                delete meta.nodes;
+                delete meta.coverBase64;
 
-                    await localforage.setItem('pdf_epub_master', mergedLibrary);
-                    library = mergedLibrary;
-                    renderLibrary(DOM.globalSearch.value);
+                const existingIndex = mergedLibrary.findIndex(lib => lib.id === b.id);
+                if (existingIndex > -1) {
+                    // Jangan paksa ganti pdfMode — pertahankan mode yang sudah ada di library
+                    mergedLibrary[existingIndex] = {
+                        ...mergedLibrary[existingIndex],
+                        progressPct: meta.progressPct,
+                        lastReadId: meta.lastReadId,
+                        annotations: meta.annotations || [],
+                        isPinned: meta.isPinned,
+                        title: meta.title
+                        // pdfMode TIDAK diubah — tetap ikut library lokal
+                    };
+                } else {
+                    mergedLibrary.push(meta);
+                }
+            }
 
-                    if (!document.getElementById('raw-restore-modal').classList.contains('hidden')) history.back();
-                    setTimeout(() => {
-                        if (!document.getElementById('global-settings-modal').classList.contains('hidden')) history.back();
-                    }, 300);
+            await localforage.setItem('pdf_epub_master', mergedLibrary);
+            library = mergedLibrary;
+            renderLibrary(DOM.globalSearch.value);
 
-                    setTimeout(() => {
-                        const successMsg = wikiLang === 'id'
-                            ? `Restore selesai! ${matchCount} buku langsung bisa dibaca, ${newCount} buku perlu import ulang file aslinya.`
-                            : `Restore done! ${matchCount} books ready to read, ${newCount} books need original files re-imported.`;
-                        showDialog(
-                            wikiLang === 'id' ? "Restore Berhasil!" : "Restore Success!",
-                            successMsg,
-                            "check-circle",
-                            [{ text: "Oke", primary: true }]
-                        );
-                    }, 700);
-                }}
-            ]
-        );
+            if (!document.getElementById('raw-restore-modal').classList.contains('hidden')) history.back();
+            setTimeout(() => {
+                if (!document.getElementById('global-settings-modal').classList.contains('hidden')) history.back();
+            }, 300);
+
+            setTimeout(() => {
+                const successMsg = wikiLang === 'id'
+                    ? `Restore selesai! ${matchCount} buku langsung bisa dibaca, ${newCount} buku perlu import ulang file aslinya.`
+                    : `Restore done! ${matchCount} books ready to read, ${newCount} books need original files re-imported.`;
+                showDialog(
+                    wikiLang === 'id' ? "Restore Berhasil!" : "Restore Success!",
+                    successMsg,
+                    "check-circle",
+                    [{ text: "Oke", primary: true }]
+                );
+            }, 700);
+        };
+
+        const _showMainConfirm = () => {
+            const existingIds = new Set(library.map(b => b.id));
+            const toRestore   = parsedData.filter(b => !skippedIds.has(b.id));
+            const matchCount  = toRestore.filter(b => existingIds.has(b.id)).length;
+            const newCount    = toRestore.length - matchCount;
+
+            const confirmMsg = wikiLang === 'id'
+                ? `Ditemukan ${matchCount} buku yang cocok (progress & catatan akan dipulihkan) dan ${newCount} buku baru (perlu import ulang file aslinya). Lanjut?`
+                : `Found ${matchCount} matching books (progress & notes restored) and ${newCount} new books (re-import original files). Continue?`;
+
+            showDialog(
+                wikiLang === 'id' ? "Konfirmasi Restore JSON" : "Confirm JSON Restore",
+                confirmMsg,
+                "alert-triangle",
+                [
+                    { text: wikiLang === 'id' ? "Batal" : "Cancel", primary: false },
+                    { text: wikiLang === 'id' ? "Lanjut" : "Continue", primary: true, action: _doRestore }
+                ]
+            );
+        };
+
+        // Tampilkan dialog konfirmasi utama
+        _showMainConfirm();
+
     } catch (err) {
         console.error("Restore failed:", err);
         showDialog("Error", (wikiLang === 'id' ? "Gagal memulihkan: " : "Failed to restore: ") + err.message, "alert-circle", [{ text: "Tutup", primary: true }]);
@@ -1597,6 +1844,7 @@ window.openBook = async function(book) {
     if (isCanvas) {
         DOM.readContent.classList.add('hidden');
         if (DOM.canvasContainer) DOM.canvasContainer.classList.remove('hidden');
+        if (DOM.canvasContainer) DOM.canvasContainer.style.paddingTop = '56px'; // reset saat buka buku
         if (DOM.canvasWarning) DOM.canvasWarning.classList.remove('hidden');
         if (canvasCtrl) canvasCtrl.classList.remove('hidden');
 
@@ -1727,9 +1975,12 @@ async function renderCanvasPage(pageNum) {
         const wrapper    = document.getElementById('canvas-wrapper');
         if (!canvas || !wrapper || !vpEl) { isRenderingCanvas = false; return; }
 
-        const pixelRatio = window.devicePixelRatio || 1;
-        const cW         = vpEl.clientWidth;
-        const cH         = vpEl.clientHeight;
+        const pixelRatio  = window.devicePixelRatio || 1;
+        // Render pada resolusi tinggi agar tetap tajam saat di-zoom
+        // renderScale = 3× baseline, dikali devicePixelRatio — capped 6× agar tidak OOM
+        const renderScale = Math.min(pixelRatio * 3, 6);
+        const cW          = vpEl.clientWidth;
+        const cH          = vpEl.clientHeight;
 
         // Fit lebar canvas = lebar container
         const nat     = page.getViewport({ scale: 1 });
@@ -1737,8 +1988,9 @@ async function renderCanvasPage(pageNum) {
         const dW      = Math.floor(fit.width);
         const dH      = Math.floor(fit.height);
 
-        canvas.width        = dW * pixelRatio;
-        canvas.height       = dH * pixelRatio;
+        // Canvas internal resolution = display size × renderScale (HD)
+        canvas.width        = dW * renderScale;
+        canvas.height       = dH * renderScale;
         canvas.style.width  = dW + 'px';
         canvas.style.height = dH + 'px';
         wrapper.style.width  = dW + 'px';
@@ -1750,10 +2002,14 @@ async function renderCanvasPage(pageNum) {
         wrapper._cW = cW;
         wrapper._cH = cH;
 
+        const ctx = canvas.getContext('2d');
+        ctx.imageSmoothingEnabled    = true;
+        ctx.imageSmoothingQuality    = 'high';
+
         await page.render({
-            canvasContext: canvas.getContext('2d'),
+            canvasContext: ctx,
             viewport: fit,
-            transform: [pixelRatio, 0, 0, pixelRatio, 0, 0]
+            transform: [renderScale, 0, 0, renderScale, 0, 0]
         }).promise;
 
         const lbl = document.getElementById('canvas-page-num');
@@ -1790,18 +2046,47 @@ function _resetCanvasTransform() {
     if (w) { w.style.transition = 'none'; w.style.transform = 'translate(0px,0px) scale(1)'; }
 }
 
-window.showJumpToPageDialog = function() {
-    const d     = i18n[wikiLang] || i18n['id'];
-    const total = currentPdfDoc ? currentPdfDoc.numPages : 1;
-    const pStr  = prompt(`${d.txtPageGo || 'Pergi ke halaman'} (1-${total}):`, currentCanvasPage);
-    if (pStr) {
-        const p = parseInt(pStr);
-        if (p >= 1 && p <= total) { currentCanvasPage = p; _resetCanvasTransform(); renderCanvasPage(p); }
+window.toggleJumpBar = function() {
+    const bar = document.getElementById('canvas-jump-bar');
+    const input = document.getElementById('canvas-jump-input');
+    if (!bar) return;
+    if (bar.classList.contains('hidden')) {
+        bar.classList.remove('hidden');
+        if (input) { input.value = ''; input.focus(); }
+    } else {
+        window.hideJumpBar();
     }
+};
+
+window.hideJumpBar = function() {
+    const bar = document.getElementById('canvas-jump-bar');
+    if (bar) bar.classList.add('hidden');
+};
+
+window.executeJumpToPage = function() {
+    const input = document.getElementById('canvas-jump-input');
+    if (!input || !currentPdfDoc) return;
+    const p = parseInt(input.value);
+    const total = currentPdfDoc.numPages;
+    if (p >= 1 && p <= total) {
+        currentCanvasPage = p;
+        _resetCanvasTransform();
+        renderCanvasPage(p);
+        window.hideJumpBar();
+    }
+};
+
+window.showJumpToPageDialog = function() {
+    window.toggleJumpBar();
 };
 
 // --- GESTURE CANVAS ---
 function setupCanvasPinchZoom() { /* stub */ }
+
+// State double-tap
+let _canvasLastTapTime = 0;
+let _canvasLastTapX    = 0;
+let _canvasLastTapY    = 0;
 
 function initCanvasGestures() {
     const vp = document.getElementById('canvas-zoom-viewport');
@@ -1816,134 +2101,233 @@ function initCanvasGestures() {
     const wrapper = document.getElementById('canvas-wrapper');
     if (!wrapper) return;
 
-    // transform-origin: center center — di-set dari HTML, pastikan tidak berubah
     wrapper.style.transformOrigin = 'center center';
     wrapper.style.willChange      = 'transform';
     wrapper.style.transition      = 'none';
     _resetCanvasTransform();
 
+    // State internal gesture — semua di sini, tidak pakai variabel global yang bisa
+    // terpolusi antar-gesture
+    let isPinching    = false;
+    let pinchStartDist  = 0;
+    let pinchStartScale = 1;
+    // Titik focal cubit di koordinat KONTEN (bukan layar) — pre-transform
+    // Ini yang membuat zoom tidak meloncat: focal point di konten harus diam.
+    let pinchFocalContentX = 0;
+    let pinchFocalContentY = 0;
+    // Translate saat pinch dimulai
+    let pinchStartTX = 0;
+    let pinchStartTY = 0;
+
+    let isPanning   = false;
+    let panStartX   = 0;
+    let panStartY   = 0;
+
+    let tapStartX   = 0;
+    let tapStartY   = 0;
+    let tapStartTime = 0;
+
+    // Helper: konversi koordinat layar → koordinat konten wrapper (tanpa transform)
+    // Dengan transform-origin center: titik layar P dalam konten =
+    //   (P - naturalCenter - translate) / scale
+    // naturalCenter = pusat wrapper di layar TANPA translate (= center viewport karena flex center)
+    function screenToContent(sx, sy) {
+        const rect = newVP.getBoundingClientRect();
+        const natCX = rect.left + rect.width  / 2;
+        const natCY = rect.top  + rect.height / 2;
+        return {
+            cx: (sx - natCX - canvasTranslateX) / currentCanvasScale,
+            cy: (sy - natCY - canvasTranslateY) / currentCanvasScale
+        };
+    }
+
+    // Helper: terapkan zoom ke titik focal konten (fx, fy) dengan scale baru
+    function zoomToContentPoint(newScale, fx, fy, startTX, startTY, startScale) {
+        // Saat scale berubah dari startScale → newScale,
+        // focal point konten (fx, fy) harus tetap di posisi layar yang sama.
+        // Posisi layar focal = natCenter + tx + fx * scale
+        // Agar sama: startTX + fx*startScale = newTX + fx*newScale
+        // → newTX = startTX + fx*(startScale - newScale)
+        canvasTranslateX = startTX + fx * (startScale - newScale);
+        canvasTranslateY = startTY + fy * (startScale - newScale);
+        currentCanvasScale = newScale;
+    }
+
     // ── touchstart ──
     newVP.addEventListener('touchstart', (e) => {
         if (e.touches.length === 2) {
-            canvasIsPinching     = true;
-            canvasTouchStartDist = Math.hypot(
+            // Masuk mode pinch — batalkan semua state pan/tap
+            isPinching = true;
+            isPanning  = false;
+
+            pinchStartDist  = Math.hypot(
                 e.touches[0].clientX - e.touches[1].clientX,
                 e.touches[0].clientY - e.touches[1].clientY
             );
-            canvasTouchStartScale = currentCanvasScale;
+            pinchStartScale = currentCanvasScale;
+            pinchStartTX    = canvasTranslateX;
+            pinchStartTY    = canvasTranslateY;
 
-            // Tengah cubit dalam koordinat layar
+            // Titik focal di tengah dua jari, dikonversi ke koordinat konten
             const midX = (e.touches[0].clientX + e.touches[1].clientX) / 2;
             const midY = (e.touches[0].clientY + e.touches[1].clientY) / 2;
+            const fc   = screenToContent(midX, midY);
+            pinchFocalContentX = fc.cx;
+            pinchFocalContentY = fc.cy;
 
-            // Posisi wrapper di layar saat ini (setelah transform)
-            const rect = wrapper.getBoundingClientRect();
+        } else if (e.touches.length === 1 && !isPinching) {
+            tapStartX    = e.touches[0].clientX;
+            tapStartY    = e.touches[0].clientY;
+            tapStartTime = Date.now();
 
-            // Titik cubit dalam koordinat wrapper (pre-scale, dari center)
-            // rect.left + rect.width/2 = center wrapper di layar
-            wrapper._pinchMidX = midX - (rect.left + rect.width  / 2);
-            wrapper._pinchMidY = midY - (rect.top  + rect.height / 2);
-            wrapper._pinchTX   = canvasTranslateX;
-            wrapper._pinchTY   = canvasTranslateY;
-
-        } else if (e.touches.length === 1) {
-            canvasTapStartX    = e.touches[0].clientX;
-            canvasTapStartY    = e.touches[0].clientY;
-            canvasTapStartTime = Date.now();
             if (currentCanvasScale > 1.01) {
-                canvasPanStartX = e.touches[0].clientX - canvasTranslateX;
-                canvasPanStartY = e.touches[0].clientY - canvasTranslateY;
+                isPanning = true;
+                panStartX = e.touches[0].clientX - canvasTranslateX;
+                panStartY = e.touches[0].clientY - canvasTranslateY;
             }
         }
     }, { passive: true });
 
     // ── touchmove ──
     newVP.addEventListener('touchmove', (e) => {
-        if (canvasIsPinching && e.touches.length === 2) {
+        if (isPinching && e.touches.length === 2) {
             e.preventDefault();
+
             const dist     = Math.hypot(
                 e.touches[0].clientX - e.touches[1].clientX,
                 e.touches[0].clientY - e.touches[1].clientY
             );
-            const newScale = Math.max(1.0, Math.min(4.0,
-                canvasTouchStartScale * (dist / canvasTouchStartDist)
-            ));
+            const rawScale = pinchStartScale * (dist / pinchStartDist);
+            const newScale = Math.max(1.0, Math.min(5.0, rawScale));
 
             if (newScale <= 1.0) {
                 currentCanvasScale = 1.0;
                 canvasTranslateX   = 0;
                 canvasTranslateY   = 0;
             } else {
-                // Tengah cubit sekarang di layar
-                const midX = (e.touches[0].clientX + e.touches[1].clientX) / 2;
-                const midY = (e.touches[0].clientY + e.touches[1].clientY) / 2;
-
-                // Posisi center wrapper saat scale = newScale
-                // Center alami wrapper = rect center saat translate=0, scale=1
-                // Dengan translate (TX,TY) dan scale S: center di layar = naturalCenter + TX
-                // (karena transform-origin center, translate langsung geser center)
-                // Titik cubit di konten (pre-scale) = _pinchMidX / startScale  (offset dari center)
-                // Kita mau: midX_screen = centerWrapper_screen + _pinchMidX_content * newScale
-                // centerWrapper_screen = naturalCenterX + TX
-                // TX = midX - naturalCenterX - _pinchMidX_content * newScale
-                
-                // naturalCenter dari rect saat start (simpan di touchstart)
-                const scaleFactor = newScale / canvasTouchStartScale;
-                canvasTranslateX = wrapper._pinchTX + wrapper._pinchMidX * (1 - scaleFactor) + (midX - (e.touches[0].clientX + e.touches[1].clientX) / 2 * 0);
-                canvasTranslateY = wrapper._pinchTY + wrapper._pinchMidY * (1 - scaleFactor);
-
-                // Lebih simpel dan proven: rumus standard pinch-zoom
-                canvasTranslateX = wrapper._pinchTX - wrapper._pinchMidX * (scaleFactor - 1);
-                canvasTranslateY = wrapper._pinchTY - wrapper._pinchMidY * (scaleFactor - 1);
-                currentCanvasScale = newScale;
+                // Zoom ke focal point konten — tidak pakai mid layar sekarang
+                // karena mid bisa bergeser saat jari bergerak lateral.
+                // Focal point KONTEN tetap konstan sejak touchstart.
+                zoomToContentPoint(newScale,
+                    pinchFocalContentX, pinchFocalContentY,
+                    pinchStartTX, pinchStartTY, pinchStartScale);
             }
             _applyCanvasTransform(wrapper);
 
-        } else if (e.touches.length === 1 && currentCanvasScale > 1.01) {
+        } else if (e.touches.length === 1 && isPanning) {
             e.preventDefault();
-            canvasTranslateX = e.touches[0].clientX - canvasPanStartX;
-            canvasTranslateY = e.touches[0].clientY - canvasPanStartY;
+            canvasTranslateX = e.touches[0].clientX - panStartX;
+            canvasTranslateY = e.touches[0].clientY - panStartY;
             _applyCanvasTransform(wrapper);
         }
     }, { passive: false });
 
+    // Timer untuk menunda navigasi halaman — dibatalkan jika tap kedua datang
+    let _navTimer = null;
+
     // ── touchend ──
     newVP.addEventListener('touchend', (e) => {
-        if (e.touches.length < 2) canvasIsPinching = false;
+        // Jari ke-2 terangkat → akhiri pinch, perbarui anchor pan agar tidak loncat
+        if (e.touches.length === 1 && isPinching) {
+            isPinching = false;
+            if (currentCanvasScale > 1.01) {
+                isPanning = true;
+                panStartX = e.touches[0].clientX - canvasTranslateX;
+                panStartY = e.touches[0].clientY - canvasTranslateY;
+            }
+            return;
+        }
+
         if (e.touches.length === 0) {
+            isPinching = false;
+            isPanning  = false;
+
+            // Snap balik ke scale 1 jika terlalu kecil
             if (currentCanvasScale <= 1.01) {
                 currentCanvasScale = 1.0;
                 canvasTranslateX   = 0;
                 canvasTranslateY   = 0;
-                wrapper.style.transition = 'transform 0.18s ease';
+                wrapper.style.transition = 'transform 0.2s cubic-bezier(0.2,0,0,1)';
                 _applyCanvasTransform(wrapper);
-                setTimeout(() => { wrapper.style.transition = 'none'; }, 200);
-
-                const dt   = Date.now() - canvasTapStartTime;
-                const ex   = e.changedTouches[0].clientX;
-                const ey   = e.changedTouches[0].clientY;
-                const dist = Math.hypot(ex - canvasTapStartX, ey - canvasTapStartY);
-                if (dt < 300 && dist < 15) {
-                    const sw = window.innerWidth;
-                    if      (ex < sw * 0.30) window.prevCanvasPage();
-                    else if (ex > sw * 0.70) window.nextCanvasPage();
-                }
+                setTimeout(() => { wrapper.style.transition = 'none'; }, 220);
             } else {
                 _applyCanvasTransform(wrapper);
+            }
+
+            const dt    = Date.now() - tapStartTime;
+            const ex    = e.changedTouches[0].clientX;
+            const ey    = e.changedTouches[0].clientY;
+            const moved = Math.hypot(ex - tapStartX, ey - tapStartY);
+
+            // Bukan tap yang valid (geser terlalu jauh atau terlalu lama tekan)
+            if (dt >= 300 || moved >= 18) return;
+
+            const now          = Date.now();
+            const dtDoubleTap  = now - _canvasLastTapTime;
+            const doubleMoved  = Math.hypot(ex - _canvasLastTapX, ey - _canvasLastTapY);
+
+            if (dtDoubleTap < 320 && doubleMoved < 40) {
+                // ── DOUBLE TAP — batalkan timer navigasi yang mungkin sedang pending ──
+                clearTimeout(_navTimer);
+                _navTimer = null;
+                _canvasLastTapTime = 0; // reset agar tidak triple-tap
+
+                if (currentCanvasScale > 1.01) {
+                    // Zoom OUT ke 1× dengan animasi
+                    wrapper.style.transition = 'transform 0.3s cubic-bezier(0.2,0,0,1)';
+                    currentCanvasScale = 1.0;
+                    canvasTranslateX   = 0;
+                    canvasTranslateY   = 0;
+                    _applyCanvasTransform(wrapper);
+                    setTimeout(() => { wrapper.style.transition = 'none'; }, 320);
+                } else {
+                    // Zoom IN 2.5× ke titik yang di-tap
+                    const fc = screenToContent(ex, ey);
+                    wrapper.style.transition = 'transform 0.3s cubic-bezier(0.2,0,0,1)';
+                    zoomToContentPoint(2.5, fc.cx, fc.cy,
+                        canvasTranslateX, canvasTranslateY, currentCanvasScale);
+                    _applyCanvasTransform(wrapper);
+                    setTimeout(() => { wrapper.style.transition = 'none'; }, 320);
+                }
+            } else {
+                // ── SINGLE TAP — catat dulu, tunda navigasi sampai window double-tap berakhir ──
+                _canvasLastTapTime = now;
+                _canvasLastTapX    = ex;
+                _canvasLastTapY    = ey;
+
+                // Navigasi halaman hanya saat scale = 1
+                // Ditunda 320ms agar double-tap bisa membatalkannya
+                if (currentCanvasScale <= 1.01) {
+                    const sw      = window.innerWidth;
+                    const isLeft  = ex < sw * 0.30;
+                    const isRight = ex > sw * 0.70;
+                    if (isLeft || isRight) {
+                        clearTimeout(_navTimer);
+                        _navTimer = setTimeout(() => {
+                            _navTimer = null;
+                            // Cek ulang: pastikan belum di-zoom oleh double-tap yang datang
+                            if (currentCanvasScale <= 1.01) {
+                                if (isLeft)  window.prevCanvasPage();
+                                if (isRight) window.nextCanvasPage();
+                            }
+                        }, 320);
+                    }
+                }
             }
         }
     }, { passive: true });
 }
 
-// Clamp & apply transform. Dengan transform-origin center, translate 0,0 = wrapper di tengah.
-// Saat scale S: wrapper melebar ke semua arah. Batas pan = separuh overflow di tiap sisi.
+// Clamp & apply transform.
+// transform-origin: center center → translate 0,0 = wrapper pas di tengah viewport.
+// Saat scale S: wrapper melebar. Maksimum pan = separuh overflow tiap sisi.
 function _applyCanvasTransform(wrapper) {
-    if (wrapper._W && currentCanvasScale > 1.01) {
-        const extraW = (wrapper._W * currentCanvasScale - wrapper._cW) / 2;
-        const extraH = (wrapper._H * currentCanvasScale - wrapper._cH) / 2;
-        // extraW/H = seberapa jauh wrapper bisa dipan ke satu arah
-        const maxTX  = Math.max(0, extraW);
-        const maxTY  = Math.max(0, extraH);
+    if (wrapper._W && wrapper._cW) {
+        const scaledW = wrapper._W * currentCanvasScale;
+        const scaledH = wrapper._H * currentCanvasScale;
+        // Berapa piksel wrapper menonjol keluar viewport di tiap sisi (bisa 0 jika belum zoom)
+        const maxTX = Math.max(0, (scaledW - wrapper._cW) / 2);
+        const maxTY = Math.max(0, (scaledH - wrapper._cH) / 2);
         canvasTranslateX = Math.max(-maxTX, Math.min(maxTX, canvasTranslateX));
         canvasTranslateY = Math.max(-maxTY, Math.min(maxTY, canvasTranslateY));
     }
@@ -1972,6 +2356,7 @@ window._closeReaderAction = function(isFromHistory = false) {
     }
 
     renderLibrary(DOM.globalSearch.value); activeBookId = null;
+    window.hideJumpBar();
     window.getSelection().removeAllRanges();
     const menu = document.getElementById('selection-menu');
     if(menu) { menu.classList.add('opacity-0', 'scale-75'); setTimeout(() => menu.classList.add('hidden'), 200); }
@@ -2031,6 +2416,7 @@ window.toggleFullscreenReading = function(isFromHistory = false) {
     const progContainer = document.getElementById('progress-container');
     const floatHeader   = document.getElementById('reader-floating-header');
     const canvasCtrl    = document.getElementById('canvas-page-controller');
+    const canvasContainer = document.getElementById('canvas-container');
     
     if (bottomBar.classList.contains('hidden')) {
         // Keluar immersive
@@ -2039,6 +2425,8 @@ window.toggleFullscreenReading = function(isFromHistory = false) {
         progContainer.classList.remove('hidden');
         floatHeader.classList.remove('-translate-y-[150%]', 'opacity-0');
         floatHeader.classList.add('translate-y-0', 'opacity-100');
+        // Kembalikan padding canvas ke normal (ada floating header)
+        if (canvasContainer) canvasContainer.style.paddingTop = '56px';
         // Tampilkan kembali capsule canvas jika sedang di canvas mode
         if (canvasCtrl && !document.getElementById('canvas-container').classList.contains('hidden')) {
             canvasCtrl.classList.remove('hidden');
@@ -2049,8 +2437,11 @@ window.toggleFullscreenReading = function(isFromHistory = false) {
         floatHeader.classList.add('-translate-y-[150%]', 'opacity-0');
         floatHeader.classList.remove('translate-y-0', 'opacity-100');
         progContainer.classList.add('hidden');
+        // Di immersive, hapus padding atas canvas agar PDF mulai dari atas layar
+        if (canvasContainer) canvasContainer.style.paddingTop = '0px';
         // Sembunyikan capsule canvas saat immersive
         if (canvasCtrl) canvasCtrl.classList.add('hidden');
+        window.hideJumpBar(); // sembunyikan jump bar saat immersive
         updateBottomNavUI(null);
         if (activePanel) { _closeSidePanelsAction(); }
     }
@@ -2686,3 +3077,341 @@ document.addEventListener("DOMContentLoaded", () => {
         }
     }, 500);
 });
+
+// ============================================================
+// 14. ARCHIVE.ORG SEARCH & DOWNLOAD
+// ============================================================
+
+// State
+let _archiveFilter = 'all';         // 'all' | 'pdf' | 'epub'
+let _archiveLastResults = [];       // hasil terakhir dari API
+let _archiveDownloading = false;
+
+// Inisialisasi listener search bar Archive
+function _initArchiveSearch() {
+    const input = document.getElementById('archive-search-input');
+    if (!input) return;
+    // Enter key sudah di-handle via onkeydown di HTML, tapi tambahkan juga via JS
+    input.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') window.searchArchive();
+    });
+}
+
+// Set filter tipe file
+window.setArchiveFilter = function(filter) {
+    _archiveFilter = filter;
+    const btns = {
+        all: document.getElementById('archive-filter-all'),
+        pdf: document.getElementById('archive-filter-pdf'),
+        epub: document.getElementById('archive-filter-epub')
+    };
+    Object.entries(btns).forEach(([key, btn]) => {
+        if (!btn) return;
+        if (key === filter) {
+            btn.classList.add('bg-m3-primary', 'text-m3-onPrimary');
+            btn.classList.remove('bg-m3-surfaceVariant', 'text-m3-onSurfaceVariant');
+        } else {
+            btn.classList.remove('bg-m3-primary', 'text-m3-onPrimary');
+            btn.classList.add('bg-m3-surfaceVariant', 'text-m3-onSurfaceVariant');
+        }
+    });
+    // Re-render hasil dengan filter baru
+    if (_archiveLastResults.length > 0) {
+        _renderArchiveResults(_archiveLastResults);
+    }
+};
+
+// Main search function
+window.searchArchive = async function() {
+    const input = document.getElementById('archive-search-input');
+    const query = input ? input.value.trim() : '';
+    if (!query) return;
+
+    const d = i18n[wikiLang] || i18n['id'];
+
+    // Sembunyikan stat section saat search aktif (konsisten dengan global search)
+    const statSection = document.getElementById('statistics-section');
+    if (statSection) {
+        statSection.style.height = '0px';
+        statSection.style.opacity = '0';
+        statSection.style.marginBottom = '0px';
+        statSection.style.overflow = 'hidden';
+    }
+
+    // Tampilkan loading
+    _archiveSetState('loading');
+
+    try {
+        // Bangun query Archive.org Advanced Search
+        // mediatype: texts, format: pdf atau epub, sort: downloads desc
+        let mediaFilter = '';
+        if (_archiveFilter === 'pdf') mediaFilter = ' AND format:PDF';
+        else if (_archiveFilter === 'epub') mediaFilter = ' AND format:EPUB';
+        else mediaFilter = ' AND (format:PDF OR format:EPUB)';
+
+        const apiQuery = `(title:(${encodeURIComponent(query)}) OR creator:(${encodeURIComponent(query)}) OR subject:(${encodeURIComponent(query)})) AND mediatype:texts${mediaFilter}`;
+        const url = `https://archive.org/advancedsearch.php?q=${apiQuery}&fl[]=identifier,title,creator,subject,description,mediatype,downloads,format&sort[]=downloads+desc&rows=20&page=1&output=json`;
+
+        const res = await fetch(url);
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        const data = await res.json();
+
+        const docs = data.response?.docs || [];
+        _archiveLastResults = docs;
+        _renderArchiveResults(docs);
+
+    } catch (err) {
+        console.error('Archive search error:', err);
+        _archiveSetState('error', d.archiveSearchError || 'Gagal mencari. Cek koneksi internet lu.');
+    }
+};
+
+// Render daftar hasil ke UI
+function _renderArchiveResults(docs) {
+    const d = i18n[wikiLang] || i18n['id'];
+    const container = document.getElementById('archive-cards-container');
+    const countEl = document.getElementById('archive-result-count');
+
+    // Filter lokal berdasarkan format
+    let filtered = docs;
+    if (_archiveFilter !== 'all') {
+        filtered = docs.filter(doc => {
+            if (!doc.format) return false;
+            const fmts = Array.isArray(doc.format) ? doc.format : [doc.format];
+            if (_archiveFilter === 'pdf') return fmts.some(f => f.toLowerCase().includes('pdf'));
+            if (_archiveFilter === 'epub') return fmts.some(f => f.toLowerCase().includes('epub'));
+            return true;
+        });
+    }
+
+    if (filtered.length === 0) {
+        _archiveSetState('empty');
+        if (countEl) countEl.classList.add('hidden');
+        return;
+    }
+
+    // Update count
+    if (countEl) {
+        countEl.textContent = (d.archiveResultCount || '{n} hasil ditemukan').replace('{n}', filtered.length);
+        countEl.classList.remove('hidden');
+    }
+
+    // Render kartu
+    container.innerHTML = '';
+    filtered.forEach(doc => {
+        const card = _createArchiveCard(doc, d);
+        container.appendChild(card);
+    });
+
+    _archiveSetState('results');
+    if (window.lucide) window.lucide.createIcons({ nodes: Array.from(container.querySelectorAll('[data-lucide]')) });
+}
+
+// Buat satu kartu buku Archive.org
+function _createArchiveCard(doc, d) {
+    const card = document.createElement('div');
+    card.className = 'bg-m3-surfaceVariant rounded-[24px] p-4 flex gap-3 items-start';
+
+    const title = doc.title || 'Untitled';
+    const creator = Array.isArray(doc.creator) ? doc.creator.join(', ') : (doc.creator || '');
+    const identifier = doc.identifier;
+    const downloads = doc.downloads ? parseInt(doc.downloads).toLocaleString() : '—';
+
+    // Deteksi format yang tersedia
+    const fmts = doc.format ? (Array.isArray(doc.format) ? doc.format : [doc.format]) : [];
+    const hasPdf = fmts.some(f => f.toLowerCase().includes('pdf'));
+    const hasEpub = fmts.some(f => f.toLowerCase().includes('epub'));
+
+    // Badge tipe
+    let badgeHtml = '';
+    if (hasPdf) badgeHtml += `<span class="inline-block text-[9px] font-black px-2 py-0.5 bg-m3-primary/20 text-m3-primary rounded-full uppercase tracking-wider mr-1">PDF</span>`;
+    if (hasEpub) badgeHtml += `<span class="inline-block text-[9px] font-black px-2 py-0.5 bg-m3-tertiaryContainer text-m3-onTertiaryContainer rounded-full uppercase tracking-wider">EPUB</span>`;
+
+    card.innerHTML = `
+        <div class="w-10 h-14 shrink-0 rounded-xl bg-m3-primary/10 flex items-center justify-center overflow-hidden">
+            <img
+                src="https://archive.org/services/img/${identifier}"
+                alt=""
+                class="w-full h-full object-cover rounded-xl"
+                onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';"
+                loading="lazy"
+            >
+            <div style="display:none" class="w-full h-full items-center justify-center">
+                <i data-lucide="book" class="w-5 h-5 text-m3-primary opacity-60"></i>
+            </div>
+        </div>
+        <div class="flex-1 min-w-0">
+            <h3 class="text-sm font-bold text-m3-onSurfaceVariant leading-tight line-clamp-2 mb-1">${_escHtml(title)}</h3>
+            ${creator ? `<p class="text-[10px] text-m3-onSurfaceVariant opacity-60 font-medium mb-1.5 truncate">${_escHtml(creator)}</p>` : ''}
+            <div class="flex items-center gap-1 mb-2 flex-wrap">
+                ${badgeHtml}
+                <span class="text-[9px] opacity-40 font-bold ml-1">↓ ${downloads}</span>
+            </div>
+            <div class="flex gap-2">
+                <button
+                    class="flex-1 flex items-center justify-center gap-1.5 py-2 px-3 bg-m3-primary text-m3-onPrimary rounded-full text-xs font-bold btn-morph"
+                    onclick="window.downloadArchiveBook('${_escHtml(identifier)}', '${_escHtml(title.replace(/'/g,'&apos;'))}')"
+                >
+                    <i data-lucide="download" class="w-3.5 h-3.5 shrink-0"></i>
+                    <span>${d.archiveDownloadBtn || 'Unduh & Baca'}</span>
+                </button>
+                <a
+                    href="https://archive.org/details/${identifier}"
+                    target="_blank"
+                    rel="noopener"
+                    class="w-9 h-9 flex items-center justify-center bg-m3-surfaceVariant text-m3-onSurfaceVariant rounded-full btn-morph border border-m3-onSurfaceVariant/20"
+                    title="Buka di Archive.org"
+                >
+                    <i data-lucide="external-link" class="w-3.5 h-3.5"></i>
+                </a>
+            </div>
+        </div>
+    `;
+    return card;
+}
+
+// Download buku dari Archive.org lalu proses ke library
+window.downloadArchiveBook = async function(identifier, title) {
+    if (_archiveDownloading) return;
+    _archiveDownloading = true;
+
+    const d = i18n[wikiLang] || i18n['id'];
+
+    // Tampilkan dialog loading
+    showDialog(
+        d.archiveDownloading || 'Mengunduh buku...',
+        `<div class="flex flex-col items-center justify-center gap-4 py-4">
+            <div class="w-8 h-8 border-4 border-m3-primary border-t-transparent rounded-full animate-spin"></div>
+            <p class="text-xs font-bold text-center opacity-70">${_escHtml(title)}</p>
+        </div>`,
+        'download',
+        []
+    );
+
+    try {
+        // Ambil metadata file dari Archive.org
+        const metaUrl = `https://archive.org/metadata/${identifier}`;
+        const metaRes = await fetch(metaUrl);
+        if (!metaRes.ok) throw new Error('Metadata tidak tersedia');
+        const meta = await metaRes.json();
+
+        const files = meta.files || [];
+
+        // Prioritas: EPUB dulu, lalu PDF
+        let targetFile = null;
+        let fileType = null;
+
+        const epubFile = files.find(f => f.name && f.name.toLowerCase().endsWith('.epub'));
+        const pdfFile = files.find(f => f.name && f.name.toLowerCase().endsWith('.pdf') && !f.name.toLowerCase().includes('_text'));
+
+        // Pilih berdasarkan filter aktif
+        if (_archiveFilter === 'epub' && epubFile) {
+            targetFile = epubFile;
+            fileType = 'epub';
+        } else if (_archiveFilter === 'pdf' && pdfFile) {
+            targetFile = pdfFile;
+            fileType = 'pdf';
+        } else if (epubFile) {
+            targetFile = epubFile;
+            fileType = 'epub';
+        } else if (pdfFile) {
+            targetFile = pdfFile;
+            fileType = 'pdf';
+        }
+
+        if (!targetFile) {
+            window.closeDialog();
+            _archiveDownloading = false;
+            setTimeout(() => {
+                showDialog('Info', d.archiveNoFile || 'Buku ini tidak punya file PDF atau EPUB yang bisa diunduh.', 'info', [{ text: d.btnClose || 'Oke', primary: true }]);
+            }, 300);
+            return;
+        }
+
+        const fileUrl = `https://archive.org/download/${identifier}/${encodeURIComponent(targetFile.name)}`;
+
+        // Download file
+        const fileRes = await fetch(fileUrl);
+        if (!fileRes.ok) throw new Error('Download gagal: HTTP ' + fileRes.status);
+
+        const arrayBuffer = await fileRes.arrayBuffer();
+        const blob = new Blob([arrayBuffer], { type: fileType === 'epub' ? 'application/epub+zip' : 'application/pdf' });
+
+        // Buat objek File dari blob
+        const fileName = `${title.replace(/[^a-zA-Z0-9\s]/g, '').trim().substring(0, 40)}.${fileType}`;
+        const file = new File([blob], fileName, { type: blob.type });
+
+        window.closeDialog();
+        _archiveDownloading = false;
+
+        // Tutup dialog lalu proses file via sistem upload yang sudah ada
+        // (dengan sedikit delay agar animasi dialog selesai dulu)
+        setTimeout(async () => {
+            // Gunakan processMultipleFiles yang sudah ada di reader.js
+            if (typeof processMultipleFiles === 'function') {
+                await processMultipleFiles([file]);
+            } else {
+                // Fallback: inject ke file input
+                const dt = new DataTransfer();
+                dt.items.add(file);
+                const fileInput = document.getElementById('doc-upload');
+                if (fileInput) {
+                    fileInput.files = dt.files;
+                    fileInput.dispatchEvent(new Event('change', { bubbles: true }));
+                }
+            }
+        }, 400);
+
+    } catch (err) {
+        console.error('Archive download error:', err);
+        window.closeDialog();
+        _archiveDownloading = false;
+        setTimeout(() => {
+            showDialog('Error', (d.archiveDownloadError || 'Gagal mengunduh.') + '\n\n' + err.message, 'alert-circle', [{ text: d.btnClose || 'Oke', primary: true }]);
+        }, 300);
+    }
+};
+
+// Helper: atur tampilan state di archive section
+function _archiveSetState(state, errorMsg) {
+    const placeholder = document.getElementById('archive-placeholder');
+    const loading = document.getElementById('archive-loading');
+    const empty = document.getElementById('archive-empty');
+    const cards = document.getElementById('archive-cards-container');
+    const countEl = document.getElementById('archive-result-count');
+
+    // Sembunyikan semua
+    [placeholder, loading, empty, cards].forEach(el => { if (el) el.classList.add('hidden'); });
+
+    if (state === 'loading') {
+        if (loading) loading.classList.remove('hidden');
+        if (countEl) countEl.classList.add('hidden');
+    } else if (state === 'empty') {
+        if (empty) empty.classList.remove('hidden');
+        const d = i18n[wikiLang] || i18n['id'];
+        const emptyTxt = document.getElementById('str-archive-empty');
+        if (emptyTxt) emptyTxt.textContent = d.archiveSearchEmpty || 'Tidak ada hasil. Coba kata kunci lain.';
+    } else if (state === 'results') {
+        if (cards) cards.classList.remove('hidden');
+    } else if (state === 'error') {
+        if (empty) {
+            empty.classList.remove('hidden');
+            const emptyTxt = document.getElementById('str-archive-empty');
+            if (emptyTxt) emptyTxt.textContent = errorMsg || 'Error.';
+        }
+    } else {
+        // default/placeholder
+        if (placeholder) placeholder.classList.remove('hidden');
+        if (countEl) countEl.classList.add('hidden');
+    }
+}
+
+// Helper: escape HTML sederhana untuk prevent XSS di innerHTML
+function _escHtml(str) {
+    if (!str) return '';
+    return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+}
