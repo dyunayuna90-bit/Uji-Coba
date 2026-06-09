@@ -3179,22 +3179,50 @@ window.archiveDownload = async function(identifier, title) {
         showDialog('Offline', 'Tidak ada koneksi internet.', 'wifi-off', [{ text: 'Oke', primary: true }]);
         return;
     }
+
+    const _updateDialog = (msg) => {
+        const el = document.getElementById('dialog-message');
+        if (el) el.innerHTML = `<div class="flex flex-col items-center gap-3 py-4"><div class="w-8 h-8 border-4 border-m3-primary border-t-transparent rounded-full animate-spin"></div><p class="text-xs font-bold text-center opacity-70 leading-relaxed max-w-[220px]">${_esc(msg)}</p></div>`;
+    };
+
     showDialog('Mengunduh buku...', `<div class="flex flex-col items-center gap-3 py-4"><div class="w-8 h-8 border-4 border-m3-primary border-t-transparent rounded-full animate-spin"></div><p class="text-xs font-bold text-center opacity-70 leading-relaxed max-w-[220px]">${_esc(title)}</p></div>`, 'download', []);
+
     try {
+        // Step 1: ambil metadata
+        _updateDialog('Mengambil metadata...');
         const metaRes = await fetch(`https://archive.org/metadata/${identifier}`, { signal: AbortSignal.timeout(15000) });
-        if (!metaRes.ok) throw new Error('Metadata tidak tersedia (HTTP ' + metaRes.status + ')');
+        if (!metaRes.ok) throw new Error('Metadata gagal (HTTP ' + metaRes.status + ')');
         const meta = await metaRes.json();
         const files = meta.files || [];
+
         const epubCandidates = files.filter(f => f.name && f.name.toLowerCase().endsWith('.epub'));
-        const pdfCandidates = files.filter(f => { if (!f.name) return false; const n = f.name.toLowerCase(); return n.endsWith('.pdf') && !n.includes('_text') && !n.includes('_djvu'); });
+        const pdfCandidates = files.filter(f => {
+            if (!f.name) return false;
+            const n = f.name.toLowerCase();
+            return n.endsWith('.pdf') && !n.includes('_text') && !n.includes('_djvu');
+        });
+
         let chosen = null, chosenType = null;
         if (epubCandidates.length > 0) { chosen = epubCandidates[0]; chosenType = 'epub'; }
-        else if (pdfCandidates.length > 0) { chosen = pdfCandidates.sort((a,b) => parseInt(a.size||0)-parseInt(b.size||0))[0]; chosenType = 'pdf'; }
-        if (!chosen) throw new Error('Tidak ada file PDF atau EPUB yang tersedia.');
+        else if (pdfCandidates.length > 0) {
+            chosen = pdfCandidates.sort((a,b) => parseInt(a.size||0) - parseInt(b.size||0))[0];
+            chosenType = 'pdf';
+        }
+        if (!chosen) throw new Error('Tidak ada file PDF atau EPUB yang tersedia untuk buku ini.');
+
+        // Step 2: download file
+        const sizeMb = chosen.size ? (parseInt(chosen.size) / 1024 / 1024).toFixed(1) + ' MB' : '?';
+        _updateDialog(`Mengunduh ${chosenType.toUpperCase()} (${sizeMb})...`);
+
         const fileUrl = `https://archive.org/download/${identifier}/${encodeURIComponent(chosen.name)}`;
-        const fileRes = await fetch(fileUrl, { signal: AbortSignal.timeout(120000) });
+        const fileRes = await fetch(fileUrl, { signal: AbortSignal.timeout(180000) });
         if (!fileRes.ok) throw new Error('Gagal mengunduh file (HTTP ' + fileRes.status + ')');
+
+        _updateDialog('Memproses file...');
         const arrayBuffer = await fileRes.arrayBuffer();
+
+        if (!arrayBuffer || arrayBuffer.byteLength === 0) throw new Error('File kosong atau gagal didownload.');
+
         const cleanTitle = title.replace(/[<>:"/\\|?*]/g, '').trim().substring(0, 60) || identifier;
         const fileName = `${cleanTitle}.${chosenType}`;
         const mimeType = chosenType === 'epub' ? 'application/epub+zip' : 'application/pdf';
@@ -3203,28 +3231,32 @@ window.archiveDownload = async function(identifier, title) {
         window.closeDialog();
         _archiveDownloading = false;
 
-        // Panggil langsung — lebih reliable daripada inject via file input
+        // Step 3: langsung proses ke library (tanpa file input — works di Capacitor)
         setTimeout(async () => {
             try {
                 if (typeof window._processFilesFromArchive === 'function') {
                     await window._processFilesFromArchive([file]);
                 } else {
-                    // Fallback: inject via file input
-                    const dt = new DataTransfer();
-                    dt.items.add(file);
-                    const fileInput = document.getElementById('doc-upload');
-                    if (!fileInput) throw new Error('File input tidak ditemukan');
-                    fileInput.files = dt.files;
-                    fileInput.dispatchEvent(new Event('change', { bubbles: true }));
+                    throw new Error('Engine pemroses belum siap. Coba restart aplikasi.');
                 }
-            } catch (injectErr) {
-                showDialog('Error', 'File berhasil diunduh tapi gagal diproses: ' + injectErr.message, 'alert-circle', [{ text: 'Tutup', primary: true }]);
+            } catch (procErr) {
+                console.error('archiveDownload process error:', procErr);
+                showDialog('Gagal Memproses', procErr.message, 'alert-circle', [{ text: 'Tutup', primary: true }]);
             }
-        }, 350);
+        }, 400);
+
     } catch (err) {
+        console.error('archiveDownload error:', err);
         window.closeDialog();
         _archiveDownloading = false;
-        setTimeout(() => { showDialog('Gagal Mengunduh', err.message || 'Terjadi kesalahan saat mengunduh.', 'alert-circle', [{ text: 'Oke', primary: true }]); }, 300);
+        setTimeout(() => {
+            showDialog(
+                'Gagal Mengunduh',
+                err.message || 'Terjadi kesalahan. Pastikan koneksi internet stabil.',
+                'alert-circle',
+                [{ text: 'Oke', primary: true }]
+            );
+        }, 300);
     }
 };
 
