@@ -27,6 +27,11 @@ let _archiveLastQuery = '';
 let _archiveSearchTimeout = null;
 let _archiveDownloading = false;
 
+// --- GUTENDEX STATE ---
+let _gutendexMode = false;
+let _gutendexLastQuery = '';
+let _gutendexSearchTimeout = null;
+
 // --- CANVAS MODE STATE ---
 let currentPdfDoc = null;
 let currentCanvasPage = 1;
@@ -205,28 +210,32 @@ window.toggleStatChart = function() {
     const d = typeof i18n !== 'undefined' ? (i18n[lang] || i18n['id']) : {};
 
     if (_statChartOpen) {
-        // Render chart dulu sebelum animasi biar scrollHeight bisa diukur dengan akurat
+        // Render chart di luar DOM dulu agar scrollHeight akurat
         renderStatChart();
 
-        // Ukur tinggi asli konten, lalu animasi dari 0 ke nilai exact
+        // Measure
         area.style.transition = 'none';
-        area.style.maxHeight = 'none';
-        area.style.opacity  = '1';
-        const fullH = area.scrollHeight;
-        area.style.maxHeight = '0px';
-        area.style.opacity  = '0';
+        area.style.overflow = 'hidden';
+        area.style.height = '0px';
+        area.style.opacity = '0';
+        area.style.willChange = 'height, opacity';
+        area.style.display = 'block';
 
-        // Force reflow agar browser commit titik awal sebelum transisi dimulai
+        // Force reflow
         void area.offsetHeight;
 
-        area.style.transition = 'max-height 420ms cubic-bezier(0.4,0,0.2,1), opacity 320ms ease';
-        area.style.maxHeight  = fullH + 'px';
-        area.style.opacity    = '1';
+        const fullH = area.scrollHeight;
 
-        // Setelah animasi selesai, lepas max-height fixed supaya konten bisa bebas resize
+        // Animate — gunakan height bukan max-height agar browser bisa optimize
+        area.style.transition = 'height 320ms cubic-bezier(0.4,0,0.2,1), opacity 260ms ease';
+        area.style.height  = fullH + 'px';
+        area.style.opacity = '1';
+
         const onEnd = (ev) => {
-            if (ev.propertyName !== 'max-height') return;
-            area.style.maxHeight = 'none';
+            if (ev.propertyName !== 'height') return;
+            area.style.height = 'auto';
+            area.style.overflow = '';
+            area.style.willChange = 'auto';
             area.removeEventListener('transitionend', onEnd);
         };
         area.addEventListener('transitionend', onEnd);
@@ -234,15 +243,24 @@ window.toggleStatChart = function() {
         if (icon) { icon.setAttribute('data-lucide', 'chevron-up'); if(window.lucide) window.lucide.createIcons({nodes: [icon]}); }
         if (label) label.textContent = d.statCollapse || 'Tutup Grafik';
     } else {
-        // Collapse: ukur tinggi saat ini, animasi ke 0
+        // Collapse
         const curH = area.scrollHeight;
         area.style.transition = 'none';
-        area.style.maxHeight  = curH + 'px';
+        area.style.overflow = 'hidden';
+        area.style.height  = curH + 'px';
+        area.style.willChange = 'height, opacity';
         void area.offsetHeight;
 
-        area.style.transition = 'max-height 380ms cubic-bezier(0.4,0,0.2,1), opacity 260ms ease';
-        area.style.maxHeight  = '0px';
-        area.style.opacity    = '0';
+        area.style.transition = 'height 280ms cubic-bezier(0.4,0,0.2,1), opacity 220ms ease';
+        area.style.height  = '0px';
+        area.style.opacity = '0';
+
+        const onEnd2 = (ev) => {
+            if (ev.propertyName !== 'height') return;
+            area.style.willChange = 'auto';
+            area.removeEventListener('transitionend', onEnd2);
+        };
+        area.addEventListener('transitionend', onEnd2);
 
         if (icon) { icon.setAttribute('data-lucide', 'bar-chart-2'); if(window.lucide) window.lucide.createIcons({nodes: [icon]}); }
         if (label) label.textContent = d.statExpand || 'Lihat Grafik';
@@ -484,6 +502,8 @@ function setupSearchListeners() {
             }
             if (_archiveMode) {
                 _archiveOnInput(e.target.value);
+            } else if (_gutendexMode) {
+                _gutendexOnInput(e.target.value);
             } else {
                 renderLibrary(e.target.value);
             }
@@ -519,10 +539,14 @@ window.closeSearch = function(fromHistory = false) {
         // Reset archive mode
         _archiveMode = false;
         _archiveLastQuery = '';
+        _gutendexMode = false;
+        _gutendexLastQuery = '';
         const modeRow = document.getElementById('search-mode-row');
         const archivePanel = document.getElementById('archive-results-panel');
+        const gutendexPanel = document.getElementById('gutendex-results-panel');
         if (modeRow) modeRow.classList.add('hidden');
         if (archivePanel) archivePanel.classList.add('hidden');
+        if (gutendexPanel) gutendexPanel.classList.add('hidden');
         _hideRacksForSearch(false);
         _syncSearchModeUI();
 
@@ -2002,27 +2026,32 @@ window.openBook = async function(book) {
 async function renderCanvasPage(pageNum) {
     if (!currentPdfDoc || isRenderingCanvas) return;
     isRenderingCanvas = true;
+
+    const canvas  = document.getElementById('pdf-canvas');
+    const wrapper = document.getElementById('canvas-wrapper');
+
+    // Fade out canvas saat ganti halaman — langsung terasa responsif
+    if (canvas) {
+        canvas.style.transition = 'opacity 80ms ease';
+        canvas.style.opacity = '0.15';
+    }
+
     try {
-        const page       = await currentPdfDoc.getPage(pageNum);
-        const vpEl       = document.getElementById('canvas-zoom-viewport');
-        const canvas     = document.getElementById('pdf-canvas');
-        const wrapper    = document.getElementById('canvas-wrapper');
+        const page = await currentPdfDoc.getPage(pageNum);
+        const vpEl = document.getElementById('canvas-zoom-viewport');
         if (!canvas || !wrapper || !vpEl) { isRenderingCanvas = false; return; }
 
-        const pixelRatio  = window.devicePixelRatio || 1;
-        // Render pada resolusi tinggi agar tetap tajam saat di-zoom
-        // renderScale = 3× baseline, dikali devicePixelRatio — capped 6× agar tidak OOM
-        const renderScale = Math.min(pixelRatio * 3, 6);
-        const cW          = vpEl.clientWidth;
-        const cH          = vpEl.clientHeight;
+        const pixelRatio = window.devicePixelRatio || 1;
+        // Turunkan renderScale: 2× dpr, capped 3× — cukup HD di zoom tapi jauh lebih ringan
+        const renderScale = Math.min(pixelRatio * 2, 3);
+        const cW = vpEl.clientWidth;
+        const cH = vpEl.clientHeight;
 
-        // Fit lebar canvas = lebar container
-        const nat     = page.getViewport({ scale: 1 });
-        const fit     = page.getViewport({ scale: cW / nat.width });
-        const dW      = Math.floor(fit.width);
-        const dH      = Math.floor(fit.height);
+        const nat = page.getViewport({ scale: 1 });
+        const fit = page.getViewport({ scale: cW / nat.width });
+        const dW  = Math.floor(fit.width);
+        const dH  = Math.floor(fit.height);
 
-        // Canvas internal resolution = display size × renderScale (HD)
         canvas.width        = dW * renderScale;
         canvas.height       = dH * renderScale;
         canvas.style.width  = dW + 'px';
@@ -2030,21 +2059,24 @@ async function renderCanvasPage(pageNum) {
         wrapper.style.width  = dW + 'px';
         wrapper.style.height = dH + 'px';
 
-        // Simpan ukuran untuk clamp — tidak perlu offX/offY karena flex yang centering
         wrapper._W  = dW;
         wrapper._H  = dH;
         wrapper._cW = cW;
         wrapper._cH = cH;
 
         const ctx = canvas.getContext('2d');
-        ctx.imageSmoothingEnabled    = true;
-        ctx.imageSmoothingQuality    = 'high';
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = 'high';
 
         await page.render({
             canvasContext: ctx,
             viewport: fit,
             transform: [renderScale, 0, 0, renderScale, 0, 0]
         }).promise;
+
+        // Fade in setelah render selesai — konten sudah siap, baru tampilkan
+        canvas.style.transition = 'opacity 120ms ease';
+        canvas.style.opacity = '1';
 
         const lbl = document.getElementById('canvas-page-num');
         if (lbl) lbl.textContent = pageNum;
@@ -2054,21 +2086,25 @@ async function renderCanvasPage(pageNum) {
         updateBookProgress(activeBookId, pageNum, pct);
         renderBookmarkPanel();
 
-    } catch (e) { console.error('renderCanvasPage:', e); }
-    finally     { isRenderingCanvas = false; }
+    } catch (e) {
+        console.error('renderCanvasPage:', e);
+        if (canvas) canvas.style.opacity = '1';
+    } finally {
+        isRenderingCanvas = false;
+    }
 }
 
-window.nextCanvasPage = async function() {
-    if (!currentPdfDoc || currentCanvasPage >= currentPdfDoc.numPages) return;
+window.nextCanvasPage = function() {
+    if (!currentPdfDoc || currentCanvasPage >= currentPdfDoc.numPages || isRenderingCanvas) return;
     currentCanvasPage++;
     _resetCanvasTransform();
-    await renderCanvasPage(currentCanvasPage);
+    renderCanvasPage(currentCanvasPage); // fire & forget — tidak pakai await agar tap langsung direspon
 };
-window.prevCanvasPage = async function() {
-    if (!currentPdfDoc || currentCanvasPage <= 1) return;
+window.prevCanvasPage = function() {
+    if (!currentPdfDoc || currentCanvasPage <= 1 || isRenderingCanvas) return;
     currentCanvasPage--;
     _resetCanvasTransform();
-    await renderCanvasPage(currentCanvasPage);
+    renderCanvasPage(currentCanvasPage);
 };
 
 function _resetCanvasTransform() {
@@ -2344,7 +2380,7 @@ function initCanvasGestures() {
                                 if (isLeft)  window.prevCanvasPage();
                                 if (isRight) window.nextCanvasPage();
                             }
-                        }, 320);
+                        }, 180);
                     }
                 }
             }
@@ -3087,33 +3123,48 @@ function _syncOfflineBadge() {
 }
 
 function _syncSearchModeUI() {
-    const btnLocal = document.getElementById('search-mode-local');
+    const btnLocal   = document.getElementById('search-mode-local');
     const btnArchive = document.getElementById('search-mode-archive');
-    if (!btnLocal || !btnArchive) return;
-    if (_archiveMode) {
-        btnLocal.className = btnLocal.className.replace('bg-m3-primary text-m3-onPrimary', 'bg-m3-surfaceVariant text-m3-onSurfaceVariant');
-        btnArchive.className = btnArchive.className.replace('bg-m3-surfaceVariant text-m3-onSurfaceVariant', 'bg-m3-primary text-m3-onPrimary');
-    } else {
-        btnLocal.className = btnLocal.className.replace('bg-m3-surfaceVariant text-m3-onSurfaceVariant', 'bg-m3-primary text-m3-onPrimary');
-        btnArchive.className = btnArchive.className.replace('bg-m3-primary text-m3-onPrimary', 'bg-m3-surfaceVariant text-m3-onSurfaceVariant');
+    const btnGuten   = document.getElementById('search-mode-gutendex');
+    const activeClass   = 'bg-m3-primary text-m3-onPrimary';
+    const inactiveClass = 'bg-m3-surfaceVariant text-m3-onSurfaceVariant';
+    const btns = [btnLocal, btnArchive, btnGuten].filter(Boolean);
+    btns.forEach(b => {
+        b.className = b.className.replace(activeClass, inactiveClass);
+    });
+    if (_gutendexMode && btnGuten) {
+        btnGuten.className = btnGuten.className.replace(inactiveClass, activeClass);
+    } else if (_archiveMode && btnArchive) {
+        btnArchive.className = btnArchive.className.replace(inactiveClass, activeClass);
+    } else if (btnLocal) {
+        btnLocal.className = btnLocal.className.replace(inactiveClass, activeClass);
     }
 }
 
 window.setSearchMode = function(mode) {
-    _archiveMode = (mode === 'archive');
+    _archiveMode   = (mode === 'archive');
+    _gutendexMode  = (mode === 'gutendex');
     _syncSearchModeUI();
-    const archivePanel = document.getElementById('archive-results-panel');
+
+    const archivePanel  = document.getElementById('archive-results-panel');
+    const gutendexPanel = document.getElementById('gutendex-results-panel');
     const query = DOM.globalSearch ? DOM.globalSearch.value.trim() : '';
+
     if (_archiveMode) {
-        if (archivePanel) archivePanel.classList.remove('hidden');
+        if (archivePanel)  archivePanel.classList.remove('hidden');
+        if (gutendexPanel) gutendexPanel.classList.add('hidden');
         _hideRacksForSearch(true);
-        if (query.length >= 2) {
-            _archiveSearch(query);
-        } else {
-            _archiveShowState('empty');
-        }
+        if (query.length >= 2) _archiveSearch(query);
+        else _archiveShowState('empty');
+    } else if (_gutendexMode) {
+        if (archivePanel)  archivePanel.classList.add('hidden');
+        if (gutendexPanel) gutendexPanel.classList.remove('hidden');
+        _hideRacksForSearch(true);
+        if (query.length >= 2) _gutendexSearch(query);
+        else _gutendexShowState('empty');
     } else {
-        if (archivePanel) archivePanel.classList.add('hidden');
+        if (archivePanel)  archivePanel.classList.add('hidden');
+        if (gutendexPanel) gutendexPanel.classList.add('hidden');
         _hideRacksForSearch(false);
         renderLibrary(query);
     }
@@ -3130,6 +3181,19 @@ function _archiveOnInput(query) {
         return;
     }
     _archiveSearchTimeout = setTimeout(() => { _archiveSearch(query.trim()); }, 600);
+}
+
+function _gutendexOnInput(query) {
+    clearTimeout(_gutendexSearchTimeout);
+    const panel = document.getElementById('gutendex-results-panel');
+    if (!panel) return;
+    panel.classList.remove('hidden');
+    _hideRacksForSearch(true);
+    if (query.trim().length < 2) {
+        _gutendexShowState('empty');
+        return;
+    }
+    _gutendexSearchTimeout = setTimeout(() => { _gutendexSearch(query.trim()); }, 600);
 }
 
 async function _archiveSearch(query) {
@@ -3392,7 +3456,148 @@ window.archiveDownload = async function(identifier, title) {
     }
 };
 
-function _esc(str) {
+// ─── GUTENDEX (Project Gutenberg) INTEGRATION ────────────────────────────────
+async function _gutendexSearch(query) {
+    if (!navigator.onLine) { _gutendexShowState('offline'); return; }
+    if (query === _gutendexLastQuery) return;
+    _gutendexLastQuery = query;
+    _gutendexShowState('loading');
+    try {
+        const url = `https://gutendex.com/books/?search=${encodeURIComponent(query)}&languages=en,id`;
+        const res = await fetch(url, { signal: AbortSignal.timeout(12000) });
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        const data = await res.json();
+        const books = data.results || [];
+        if (books.length === 0) { _gutendexShowState('empty'); return; }
+        _gutendexRenderCards(books);
+    } catch (e) {
+        if (e.name === 'AbortError') _gutendexShowState('error', 'Request timeout. Coba lagi.');
+        else _gutendexShowState('error', e.message || 'Gagal mencari.');
+    }
+}
+
+function _gutendexRenderCards(books) {
+    const container = document.getElementById('gutendex-cards');
+    if (!container) return;
+    container.innerHTML = '';
+    books.slice(0, 12).forEach(book => {
+        const title   = book.title || 'Untitled';
+        const authors = book.authors && book.authors.length > 0
+            ? book.authors.map(a => a.name).join(', ')
+            : '';
+        const coverUrl = book.formats && book.formats['image/jpeg']
+            ? book.formats['image/jpeg']
+            : null;
+        // Cari EPUB dulu, fallback ke teks biasa
+        const epubUrl = book.formats && (
+            book.formats['application/epub+zip'] ||
+            book.formats['application/epub+zip; charset=utf-8'] ||
+            Object.keys(book.formats).find(k => k.includes('epub'))
+        );
+        const hasEpub = !!epubUrl;
+        const badge = hasEpub ? 'EPUB' : 'TXT';
+
+        const card = document.createElement('div');
+        card.className = 'flex items-start gap-3 bg-m3-surfaceVariant rounded-[20px] p-3';
+        card.innerHTML = `
+            ${coverUrl
+                ? `<img src="${_esc(coverUrl)}" alt="" class="w-9 h-12 object-cover rounded-xl shrink-0 bg-m3-surface" onerror="this.style.display='none'" loading="lazy">`
+                : `<div class="w-9 h-12 rounded-xl shrink-0 bg-m3-surface flex items-center justify-center"><i data-lucide="book-open" class="w-4 h-4 opacity-30"></i></div>`
+            }
+            <div class="flex-1 min-w-0">
+                <p class="text-xs font-bold text-m3-onSurfaceVariant leading-snug line-clamp-2 mb-0.5">${_esc(title)}</p>
+                ${authors ? `<p class="text-[10px] text-m3-onSurfaceVariant opacity-55 truncate mb-1">${_esc(authors)}</p>` : ''}
+                <div class="flex items-center gap-1.5">
+                    <span class="text-[9px] font-black bg-green-500/15 text-green-700 dark:text-green-400 px-1.5 py-0.5 rounded-full">Gutenberg</span>
+                    <span class="text-[9px] font-black bg-m3-primary/15 text-m3-primary px-1.5 py-0.5 rounded-full">${badge}</span>
+                </div>
+            </div>
+            <button class="shrink-0 w-9 h-9 rounded-full bg-m3-primary text-m3-onPrimary flex items-center justify-center btn-morph shadow-sm" onclick="window.gutendexDownload(${book.id}, '${_esc(title.replace(/'/g, "\\'").replace(/"/g, '&quot;'))}')">
+                <i data-lucide="download" class="w-4 h-4 pointer-events-none"></i>
+            </button>
+        `;
+        container.appendChild(card);
+    });
+    if (window.lucide) window.lucide.createIcons({ nodes: Array.from(container.querySelectorAll('[data-lucide]')) });
+    _gutendexShowState('cards');
+}
+
+function _gutendexShowState(state, errMsg) {
+    ['gutendex-state-loading','gutendex-state-offline','gutendex-state-empty','gutendex-state-error','gutendex-cards'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.classList.add('hidden');
+    });
+    const map = { loading:'gutendex-state-loading', offline:'gutendex-state-offline', empty:'gutendex-state-empty', error:'gutendex-state-error', cards:'gutendex-cards' };
+    const target = map[state];
+    if (target) { const el = document.getElementById(target); if (el) el.classList.remove('hidden'); }
+    if (state === 'error' && errMsg) { const el = document.getElementById('gutendex-error-text'); if (el) el.textContent = errMsg; }
+}
+
+window.gutendexDownload = async function(bookId, title) {
+    if (!navigator.onLine) {
+        showDialog('Offline', 'Tidak ada koneksi internet.', 'wifi-off', [{ text: 'Oke', primary: true }]);
+        return;
+    }
+    _showDlOverlay('Mengambil info buku...');
+    try {
+        const res = await fetch(`https://gutendex.com/books/${bookId}`, { signal: AbortSignal.timeout(10000) });
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        const book = await res.json();
+        const formats = book.formats || {};
+
+        // Prioritas: epub+zip → epub biasa
+        const epubKey = Object.keys(formats).find(k => k.includes('epub'));
+        const epubUrl = epubKey ? formats[epubKey] : null;
+
+        if (!epubUrl) {
+            _hideDlOverlay();
+            showDialog('Tidak Ada EPUB', 'Buku ini tidak punya file EPUB. Hanya tersedia dalam format lain yang tidak didukung.', 'alert-circle', [{ text: 'Oke', primary: true }]);
+            return;
+        }
+
+        const sizeMb = '—';
+        _updateDlMsg(`Mengunduh EPUB...`);
+
+        const fileRes = await fetch(epubUrl, { signal: AbortSignal.timeout(120000) });
+        if (!fileRes.ok) throw new Error('Gagal download file (HTTP ' + fileRes.status + ')');
+
+        _updateDlMsg('Memproses file...');
+        const arrayBuffer = await fileRes.arrayBuffer();
+        if (!arrayBuffer || arrayBuffer.byteLength === 0) throw new Error('File kosong atau gagal didownload.');
+
+        const cleanTitle = title.replace(/[<>:"/\\|?*]/g, '').trim().substring(0, 60) || `book_${bookId}`;
+        const fileName   = `${cleanTitle}.epub`;
+        const file       = new File([arrayBuffer], fileName, { type: 'application/epub+zip' });
+
+        _hideDlOverlay();
+
+        setTimeout(async () => {
+            if (typeof window.closeSearch === 'function') window.closeSearch(false);
+            const libScroll = document.getElementById('library-content-scroll');
+            if (libScroll) libScroll.scrollTo({ top: 0, behavior: 'smooth' });
+            await new Promise(r => setTimeout(r, 480));
+            try {
+                if (typeof window._processFilesFromArchive === 'function') {
+                    await window._processFilesFromArchive([file]);
+                } else {
+                    throw new Error('Engine pemroses belum siap.');
+                }
+            } catch (procErr) {
+                if (typeof window.showPersistentToast === 'function') {
+                    window.showPersistentToast('Gagal diproses, file mungkin rusak.', 'error', 4000);
+                }
+            }
+        }, 400);
+
+    } catch (err) {
+        const ov = document.getElementById('archive-dl-overlay');
+        if (ov) { ov.style.opacity = '0'; setTimeout(() => { ov.innerHTML = ''; ov.style.display = 'none'; }, 220); }
+        setTimeout(() => {
+            showDialog('Gagal Mengunduh', err.message || 'Terjadi kesalahan. Pastikan koneksi internet stabil.', 'alert-circle', [{ text: 'Oke', primary: true }]);
+        }, 300);
+    }
+};
+// ─────────────────────────────────────────────────────────────────────────────
     if (!str) return '';
     return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
