@@ -320,6 +320,7 @@ function applyLanguage() {
     
     setElementText('str-btn-update', d.btnUpdate);
     setElementText('str-btn-clear-covers', d.btnClearCovers);
+    setElementText('str-btn-clear-books', d.btnClearAllBooks || 'Hapus Semua Buku');
 
     setElementText('str-nav-back', d.navBack); setElementText('str-nav-toc', d.navToc);
     setElementText('str-nav-text', d.navText); setElementText('str-nav-full', d.navFull);
@@ -374,6 +375,8 @@ function applyLanguage() {
 
     if(DOM.globalSearch) DOM.globalSearch.placeholder = d.searchBooks;
     if(DOM.searchInput) DOM.searchInput.placeholder = d.searchPlaceholder;
+    const bmSearchInput = document.getElementById('bookmark-search-input');
+    if (bmSearchInput) bmSearchInput.placeholder = d.bookmarkSearchPlaceholder || 'Cari bookmark...';
     if(DOM.count) DOM.count.textContent = `${(library.length)} ${d.booksCount}`;
     
     const themeLabel = document.getElementById('theme-label-text');
@@ -588,6 +591,46 @@ window.clearAllCoversConfirm = function() {
                 
                 setTimeout(() => {
                     showDialog("Sukses", d.clearCoversSuccess || "Semua sampul berhasil dihapus! Aplikasi sekarang jauh lebih ringan.", "check-circle", [{ text: "Mantap", primary: true }]);
+                }, 400);
+            }}
+        ]
+    );
+};
+
+// Fix 8: Hapus Semua Buku
+window.clearAllBooksConfirm = function() {
+    const d = typeof i18n !== 'undefined' ? (i18n[wikiLang] || i18n['id']) : {};
+    if (!library || library.length === 0) {
+        showDialog("Info", d.libEmpty || "Perpustakaan kosong.", "info", [{ text: d.btnClose || "Oke", primary: true }]);
+        return;
+    }
+
+    showDialog(
+        d.clearAllBooksTitle || "Hapus Semua Buku?",
+        d.clearAllBooksDesc || "Semua buku, progres, catatan, sampul, dan konten akan dihapus permanen. Tindakan ini tidak bisa dibatalkan. Lanjutkan?",
+        "trash-2",
+        [
+            { text: d.cancel || "Batal", primary: false },
+            { text: d.delete || "Hapus", primary: true, action: async () => {
+                window.closeDialog();
+
+                for (let book of library) {
+                    await localforage.removeItem('content_' + book.id);
+                    await localforage.removeItem('rawpdf_' + book.id);
+                    await localforage.removeItem('cover_' + book.id);
+                }
+                library = [];
+                await localforage.setItem('pdf_epub_master', library);
+
+                renderLibrary(DOM.globalSearch ? DOM.globalSearch.value : "");
+
+                setTimeout(() => {
+                    showDialog(
+                        d.clearAllBooksSuccessTitle || "Semua Buku Dihapus",
+                        d.clearAllBooksSuccess || "Semua buku berhasil dihapus. Perpustakaan sekarang kosong.",
+                        "check-circle",
+                        [{ text: d.btnClose || "Oke", primary: true }]
+                    );
                 }, 400);
             }}
         ]
@@ -1390,6 +1433,13 @@ function applyThemeToDOM() {
         if (!isDark) { tl.classList.add('bg-m3-primary', 'text-m3-onPrimary'); tl.classList.remove('text-m3-onSurfaceVariant'); }
         else if (isDark && !isAmoled) { td.classList.add('bg-m3-primary', 'text-m3-onPrimary'); td.classList.remove('text-m3-onSurfaceVariant'); }
         else if (isDark && isAmoled) { ta.classList.add('bg-m3-primary', 'text-m3-onPrimary'); ta.classList.remove('text-m3-onSurfaceVariant'); }
+        
+        // Grey out AMOLED button saat light mode — AMOLED butuh dark mode
+        if (!isDark) {
+            ta.classList.add('amoled-unavailable');
+        } else {
+            ta.classList.remove('amoled-unavailable');
+        }
     }
 
     if(window.lucide) window.lucide.createIcons();
@@ -1466,7 +1516,11 @@ function _syncHideTitlesUI() {
 window.setReaderTheme = function(mode) {
     if (mode === 'light') { isDark = false; isAmoled = false; }
     else if (mode === 'dark') { isDark = true; isAmoled = false; }
-    else if (mode === 'amoled') { isDark = true; isAmoled = true; }
+    else if (mode === 'amoled') { 
+        // AMOLED hanya bisa aktif saat dark mode — paksa dark dulu
+        isDark = true; 
+        isAmoled = true; 
+    }
     applyThemeToDOM();
 };
 
@@ -1947,7 +2001,14 @@ window.togglePanel = function(panelEl, name, btnId) {
         pushAppHistory(`panel-${name}`); 
     }
     panelEl.classList.remove('translate-x-full', 'opacity-0'); 
-    const overlay = document.getElementById('side-panel-overlay'); if(overlay) overlay.classList.remove('hidden');
+    const overlay = document.getElementById('side-panel-overlay'); 
+    if(overlay) {
+        overlay.classList.remove('hidden');
+        // Fix 6: Klik di luar side panel (di overlay) untuk nutup panel
+        overlay.onclick = (e) => {
+            if (e.target === overlay) { history.back(); }
+        };
+    }
     activePanel = name; 
     updateBottomNavUI(btnId);
 
@@ -2294,7 +2355,7 @@ window.saveBookmarkAnnotation = function() {
             const totalNodes = book.nodes.length;
             const pct = Math.round(((currentSelection.nodeIdx + 1) / totalNodes) * 100);
 
-            let closestChapterName = wikiLang === 'id' ? "Bagian Buku" : "Book Section";
+            let closestChapterName = wikiLang === 'id' ? "Bagian Buku" : (wikiLang === 'es' ? "Sección del libro" : "Book Section");
             for (let i = currentSelection.nodeIdx; i >= 0; i--) {
                 if (book.nodes[i].tag === 'h1' || book.nodes[i].tag === 'h2') {
                     closestChapterName = book.nodes[i].text;
@@ -2310,7 +2371,7 @@ window.saveBookmarkAnnotation = function() {
                 endOff: currentSelection.endOff,
                 text: currentSelection.text, 
                 color: activeNoteColor, 
-                title: titleVal || (wikiLang === 'id' ? "Bookmark Baru" : "New Bookmark"), 
+                title: titleVal || (wikiLang === 'id' ? "Bookmark Baru" : (wikiLang === 'es' ? "Nuevo Marcador" : "New Bookmark")), 
                 note: noteVal,
                 meta: `${chapterPreview} — ${pct}%`
             };
@@ -2453,7 +2514,8 @@ function _renderBookmarkList(annotations) {
                 </div>
             ` : '';
             
-            let metaText = bm.meta || 'Chapter';
+            const d_bm = i18n[wikiLang] || i18n['id'];
+            let metaText = bm.meta || (wikiLang === 'id' ? 'Bab' : (wikiLang === 'es' ? 'Capítulo' : 'Chapter'));
             if (metaText.length > 15) metaText = metaText.substring(0, 15) + '...';
 
             btn.innerHTML = `
