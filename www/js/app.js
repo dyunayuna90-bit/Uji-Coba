@@ -21,6 +21,12 @@ let wikiLang = localStorage.getItem('wiki_lang') || 'en';
 // State baru untuk menyembunyikan judul buku dari rak
 let isTitlesHidden = localStorage.getItem('hide_book_titles') === 'true';
 
+// --- ARCHIVE.ORG STATE ---
+let _archiveMode = false;
+let _archiveLastQuery = '';
+let _archiveSearchTimeout = null;
+let _archiveDownloading = false;
+
 // --- CANVAS MODE STATE ---
 let currentPdfDoc = null;
 let currentCanvasPage = 1;
@@ -40,9 +46,6 @@ let canvasTapStartY = 0;
 let canvasTapStartTime = 0;
 
 const DOM = {};
-
-let typoPrefs;
-try { typoPrefs = JSON.parse(localStorage.getItem('typo_prefs')) || { size: '1.2rem', align: 'left', font: 'Lora' }; } catch(e) { typoPrefs = { size: '1.2rem', align: 'left', font: 'Lora' }; }
 
 document.addEventListener("DOMContentLoaded", () => {
     // Terapkan state sembunyi judul kalau aktif dari localStorage
@@ -94,30 +97,21 @@ document.addEventListener("DOMContentLoaded", () => {
         canvasWarning: document.getElementById('canvas-warning-info')
     });
 
-    const _hideSplash = () => {
+    setupScrollListeners();
+    setupSearchListeners();
+    setupCanvasPinchZoom();
+    syncWikiLangUI();
+    applyLanguage();
+    applyTypo();
+    applyThemeToDOM();
+    loadLibrary().finally(() => {
+        // Sembunyikan splash screen setelah library siap
         const splash = document.getElementById('splash-screen');
-        if (splash && splash.style.display !== 'none') {
+        if (splash) {
             splash.style.opacity = '0';
             setTimeout(() => { splash.style.display = 'none'; }, 500);
         }
-    };
-
-    // Safety net mutlak — splash hilang max 4 detik apapun yang terjadi
-    const _splashSafetyTimer = setTimeout(_hideSplash, 4000);
-
-    try { setupScrollListeners(); } catch(e) { console.error('setupScrollListeners:', e); }
-    try { setupSearchListeners(); } catch(e) { console.error('setupSearchListeners:', e); }
-    try { setupCanvasPinchZoom(); } catch(e) { console.error('setupCanvasPinchZoom:', e); }
-    try { syncWikiLangUI(); } catch(e) { console.error('syncWikiLangUI:', e); }
-    try { applyLanguage(); } catch(e) { console.error('applyLanguage:', e); }
-    try { applyTypo(); } catch(e) { console.error('applyTypo:', e); }
-    try { applyThemeToDOM(); } catch(e) { console.error('applyThemeToDOM:', e); }
-
-    loadLibrary().finally(() => {
-        clearTimeout(_splashSafetyTimer);
-        _hideSplash();
     });
-
     setupSwipeToDismiss(); // Nyalain Gestur Aman
 
     if (!localStorage.getItem('first_time_seen_v5')) {
@@ -409,7 +403,6 @@ function updateBottomNavUI(activeId) {
 
 // 3. HARDWARE BACK BUTTON & HISTORY ROUTING
 window.addEventListener('popstate', (e) => {
-    try {
     if (!document.getElementById('raw-backup-modal').classList.contains('opacity-0')) { _closeModalAction('raw-backup-modal', 'raw-backup-sheet', true, true); }
     else if (!document.getElementById('raw-restore-modal').classList.contains('opacity-0')) { _closeModalAction('raw-restore-modal', 'raw-restore-sheet', true, true); }
     else if (!document.getElementById('custom-dialog').classList.contains('opacity-0')) { window.closeDialog(true); }
@@ -423,10 +416,9 @@ window.addEventListener('popstate', (e) => {
     else if (!document.getElementById('pdf-mode-modal').classList.contains('opacity-0')) { _closeModalAction('pdf-mode-modal', 'pdf-mode-sheet', true, true); }
     else if (isBatchDeleteMode) { window.toggleBatchDelete(true); }
     else if (activePanel) { _closeSidePanelsAction(true); } 
-    else if (document.getElementById('search-area') && document.getElementById('search-area').classList.contains('search-active')) { closeSearch(true); }
+    else if (document.getElementById('search-area').classList.contains('search-active')) { closeSearch(true); }
     else if (document.getElementById('reader-bottom-bar') && document.getElementById('reader-bottom-bar').classList.contains('hidden')) { window.toggleFullscreenReading(true); }
     else if (DOM.readView && !DOM.readView.classList.contains('translate-y-full')) { _closeReaderAction(true); }
-    } catch(e) { console.error('popstate error:', e); }
 });
 
 function pushAppHistory(stateName) { history.pushState({ state: stateName }, '', `#${stateName}`); }
@@ -438,7 +430,6 @@ function setupSearchListeners() {
     
     document.addEventListener('click', (e) => {
         if (searchArea && searchArea.classList.contains('search-active') && !searchArea.contains(e.target)) {
-            // Jangan tutup kalau klik di archive-results-panel atau search-mode-row
             const modeRow = document.getElementById('search-mode-row');
             const archivePanel = document.getElementById('archive-results-panel');
             if ((modeRow && modeRow.contains(e.target)) || (archivePanel && archivePanel.contains(e.target))) return;
@@ -452,14 +443,11 @@ function setupSearchListeners() {
                 searchArea.classList.add('search-active');
                 if (window.location.hash !== '#search') pushAppHistory('search');
             }
-            // Tampilkan mode row
             const modeRow = document.getElementById('search-mode-row');
             if (modeRow) modeRow.classList.remove('hidden');
-            // Sync offline badge
             _syncOfflineBadge();
         });
         DOM.globalSearch.addEventListener('input', (e) => {
-            // Auto-hide statistik saat search
             const statSection = document.getElementById('statistics-section');
             if(statSection) {
                 if(e.target.value.trim().length > 0) {
@@ -472,7 +460,6 @@ function setupSearchListeners() {
                     statSection.style.marginBottom = '';
                 }
             }
-            // Tindakan berdasarkan mode aktif
             if (_archiveMode) {
                 _archiveOnInput(e.target.value);
             } else {
@@ -489,7 +476,6 @@ function setupSearchListeners() {
         });
     }
 
-    // Listener online/offline
     window.addEventListener('online', _syncOfflineBadge);
     window.addEventListener('offline', _syncOfflineBadge);
 }
@@ -508,7 +494,7 @@ window.closeSearch = function(fromHistory = false) {
              statSection.style.marginBottom = '';
         }
 
-        // Reset archive mode dan sembunyikan panel
+        // Reset archive mode
         _archiveMode = false;
         _archiveLastQuery = '';
         const modeRow = document.getElementById('search-mode-row');
@@ -1270,11 +1256,7 @@ async function loadLibrary() {
         }
 
         renderLibrary(); 
-    } catch (e) { 
-        console.error('loadLibrary error:', e);
-        // Tetap render library kosong agar splash tidak stuck
-        try { renderLibrary(); } catch(e2) {}
-    } 
+    } catch (e) { console.error(e); } 
 }
 
 function renderLibrary(filterText = "") {
@@ -1800,6 +1782,7 @@ window.setReaderTheme = function(mode) {
     applyThemeToDOM();
 };
 
+let typoPrefs = JSON.parse(localStorage.getItem('typo_prefs')) || { size: '1.2rem', align: 'left', font: 'Lora' };
 function applyTypo() {
     document.documentElement.style.setProperty('--reader-size', typoPrefs.size);
     document.documentElement.style.setProperty('--reader-align', typoPrefs.align);
@@ -3071,7 +3054,178 @@ function setupSwipeToDismiss() {
     });
 }
 
-// 13. PWA & CAPACITOR SETUP
+// 13. ARCHIVE.ORG INTEGRATION
+function _syncOfflineBadge() {
+    const badge = document.getElementById('offline-badge');
+    if (badge) {
+        if (!navigator.onLine) badge.classList.remove('hidden');
+        else badge.classList.add('hidden');
+    }
+}
+
+function _syncSearchModeUI() {
+    const btnLocal = document.getElementById('search-mode-local');
+    const btnArchive = document.getElementById('search-mode-archive');
+    if (!btnLocal || !btnArchive) return;
+    if (_archiveMode) {
+        btnLocal.className = btnLocal.className.replace('bg-m3-primary text-m3-onPrimary', 'bg-m3-surfaceVariant text-m3-onSurfaceVariant');
+        btnArchive.className = btnArchive.className.replace('bg-m3-surfaceVariant text-m3-onSurfaceVariant', 'bg-m3-primary text-m3-onPrimary');
+    } else {
+        btnLocal.className = btnLocal.className.replace('bg-m3-surfaceVariant text-m3-onSurfaceVariant', 'bg-m3-primary text-m3-onPrimary');
+        btnArchive.className = btnArchive.className.replace('bg-m3-primary text-m3-onPrimary', 'bg-m3-surfaceVariant text-m3-onSurfaceVariant');
+    }
+}
+
+window.setSearchMode = function(mode) {
+    _archiveMode = (mode === 'archive');
+    _syncSearchModeUI();
+    const archivePanel = document.getElementById('archive-results-panel');
+    const query = DOM.globalSearch ? DOM.globalSearch.value.trim() : '';
+    if (_archiveMode) {
+        if (archivePanel) archivePanel.classList.remove('hidden');
+        if (query.length >= 2) {
+            _archiveSearch(query);
+        } else {
+            _archiveShowState('empty');
+        }
+    } else {
+        if (archivePanel) archivePanel.classList.add('hidden');
+        renderLibrary(query);
+    }
+};
+
+function _archiveOnInput(query) {
+    clearTimeout(_archiveSearchTimeout);
+    const archivePanel = document.getElementById('archive-results-panel');
+    if (!archivePanel) return;
+    archivePanel.classList.remove('hidden');
+    if (query.trim().length < 2) {
+        _archiveShowState('empty');
+        return;
+    }
+    _archiveSearchTimeout = setTimeout(() => { _archiveSearch(query.trim()); }, 600);
+}
+
+async function _archiveSearch(query) {
+    if (!navigator.onLine) { _archiveShowState('offline'); return; }
+    if (query === _archiveLastQuery) return;
+    _archiveLastQuery = query;
+    _archiveShowState('loading');
+    try {
+        const url = `https://archive.org/advancedsearch.php?q=${encodeURIComponent(query)}+mediatype:texts&fl[]=identifier,title,creator,downloads,format&sort[]=downloads+desc&rows=10&page=1&output=json`;
+        const res = await fetch(url, { signal: AbortSignal.timeout(10000) });
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        const data = await res.json();
+        const docs = (data.response && data.response.docs) || [];
+        if (docs.length === 0) { _archiveShowState('empty'); return; }
+        _archiveRenderCards(docs);
+    } catch (e) {
+        if (e.name === 'AbortError') { _archiveShowState('error', 'Request timeout. Coba lagi.'); }
+        else { _archiveShowState('error', e.message || 'Gagal mencari.'); }
+    }
+}
+
+function _archiveRenderCards(docs) {
+    const container = document.getElementById('archive-cards');
+    if (!container) return;
+    container.innerHTML = '';
+    docs.forEach(doc => {
+        const id = doc.identifier;
+        const title = doc.title || 'Untitled';
+        const creator = Array.isArray(doc.creator) ? doc.creator[0] : (doc.creator || '');
+        const fmts = doc.format ? (Array.isArray(doc.format) ? doc.format : [doc.format]) : [];
+        const hasPdf = fmts.some(f => f.toLowerCase().includes('pdf'));
+        const hasEpub = fmts.some(f => f.toLowerCase().includes('epub'));
+        const badge = hasPdf && hasEpub ? 'PDF + EPUB' : hasPdf ? 'PDF' : hasEpub ? 'EPUB' : '?';
+        const downloads = doc.downloads ? parseInt(doc.downloads).toLocaleString('id') : '—';
+        const card = document.createElement('div');
+        card.className = 'flex items-start gap-3 bg-m3-surfaceVariant rounded-[20px] p-3';
+        card.innerHTML = `
+            <img src="https://archive.org/services/img/${id}" alt="" class="w-9 h-12 object-cover rounded-xl shrink-0 bg-m3-surface" onerror="this.style.display='none'" loading="lazy">
+            <div class="flex-1 min-w-0">
+                <p class="text-xs font-bold text-m3-onSurfaceVariant leading-snug line-clamp-2 mb-0.5">${_esc(title)}</p>
+                ${creator ? `<p class="text-[10px] text-m3-onSurfaceVariant opacity-55 truncate mb-1">${_esc(creator)}</p>` : ''}
+                <div class="flex items-center gap-1.5">
+                    <span class="text-[9px] font-black bg-m3-primary/15 text-m3-primary px-1.5 py-0.5 rounded-full">${badge}</span>
+                    <span class="text-[9px] opacity-40 font-bold">↓${downloads}</span>
+                </div>
+            </div>
+            <button class="shrink-0 w-9 h-9 rounded-full bg-m3-primary text-m3-onPrimary flex items-center justify-center btn-morph shadow-sm" onclick="window.archiveDownload('${_esc(id)}', '${_esc(title.replace(/'/g, "\\'").replace(/"/g, '&quot;'))}')">
+                <i data-lucide="download" class="w-4 h-4 pointer-events-none"></i>
+            </button>
+        `;
+        container.appendChild(card);
+    });
+    if (window.lucide) window.lucide.createIcons({ nodes: Array.from(container.querySelectorAll('[data-lucide]')) });
+    _archiveShowState('cards');
+}
+
+function _archiveShowState(state, errMsg) {
+    ['archive-state-loading','archive-state-offline','archive-state-empty','archive-state-error','archive-cards'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.classList.add('hidden');
+    });
+    const map = { loading:'archive-state-loading', offline:'archive-state-offline', empty:'archive-state-empty', error:'archive-state-error', cards:'archive-cards' };
+    const target = map[state];
+    if (target) { const el = document.getElementById(target); if (el) el.classList.remove('hidden'); }
+    if (state === 'error' && errMsg) { const el = document.getElementById('archive-error-text'); if (el) el.textContent = errMsg; }
+}
+
+window.archiveDownload = async function(identifier, title) {
+    if (_archiveDownloading) return;
+    _archiveDownloading = true;
+    if (!navigator.onLine) {
+        _archiveDownloading = false;
+        showDialog('Offline', 'Tidak ada koneksi internet.', 'wifi-off', [{ text: 'Oke', primary: true }]);
+        return;
+    }
+    showDialog('Mengunduh buku...', `<div class="flex flex-col items-center gap-3 py-4"><div class="w-8 h-8 border-4 border-m3-primary border-t-transparent rounded-full animate-spin"></div><p class="text-xs font-bold text-center opacity-70 leading-relaxed max-w-[220px]">${_esc(title)}</p></div>`, 'download', []);
+    try {
+        const metaRes = await fetch(`https://archive.org/metadata/${identifier}`, { signal: AbortSignal.timeout(15000) });
+        if (!metaRes.ok) throw new Error('Metadata tidak tersedia (HTTP ' + metaRes.status + ')');
+        const meta = await metaRes.json();
+        const files = meta.files || [];
+        const epubCandidates = files.filter(f => f.name && f.name.toLowerCase().endsWith('.epub'));
+        const pdfCandidates = files.filter(f => { if (!f.name) return false; const n = f.name.toLowerCase(); return n.endsWith('.pdf') && !n.includes('_text') && !n.includes('_djvu'); });
+        let chosen = null, chosenType = null;
+        if (epubCandidates.length > 0) { chosen = epubCandidates[0]; chosenType = 'epub'; }
+        else if (pdfCandidates.length > 0) { chosen = pdfCandidates.sort((a,b) => parseInt(a.size||0)-parseInt(b.size||0))[0]; chosenType = 'pdf'; }
+        if (!chosen) throw new Error('Tidak ada file PDF atau EPUB yang tersedia.');
+        const fileUrl = `https://archive.org/download/${identifier}/${encodeURIComponent(chosen.name)}`;
+        const fileRes = await fetch(fileUrl, { signal: AbortSignal.timeout(120000) });
+        if (!fileRes.ok) throw new Error('Gagal mengunduh file (HTTP ' + fileRes.status + ')');
+        const arrayBuffer = await fileRes.arrayBuffer();
+        const cleanTitle = title.replace(/[<>:"/\\|?*]/g, '').trim().substring(0, 60) || identifier;
+        const fileName = `${cleanTitle}.${chosenType}`;
+        const mimeType = chosenType === 'epub' ? 'application/epub+zip' : 'application/pdf';
+        const file = new File([arrayBuffer], fileName, { type: mimeType });
+        window.closeDialog();
+        _archiveDownloading = false;
+        setTimeout(() => {
+            try {
+                const dt = new DataTransfer();
+                dt.items.add(file);
+                const fileInput = document.getElementById('doc-upload');
+                if (!fileInput) throw new Error('File input tidak ditemukan');
+                fileInput.files = dt.files;
+                fileInput.dispatchEvent(new Event('change', { bubbles: true }));
+            } catch (injectErr) {
+                showDialog('Error', 'File berhasil diunduh tapi gagal diproses: ' + injectErr.message, 'alert-circle', [{ text: 'Tutup', primary: true }]);
+            }
+        }, 350);
+    } catch (err) {
+        window.closeDialog();
+        _archiveDownloading = false;
+        setTimeout(() => { showDialog('Gagal Mengunduh', err.message || 'Terjadi kesalahan saat mengunduh.', 'alert-circle', [{ text: 'Oke', primary: true }]); }, 300);
+    }
+};
+
+function _esc(str) {
+    if (!str) return '';
+    return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// 14. PWA & CAPACITOR SETUP
 if ('serviceWorker' in navigator) {
     const swCode = `
     const CACHE_NAME = 'baca-pwa-v6';
@@ -3105,317 +3259,3 @@ document.addEventListener("DOMContentLoaded", () => {
         }
     }, 500);
 });
-
-// ============================================================
-// 14. ARCHIVE.ORG SEARCH — terintegrasi dengan search bar utama
-// ============================================================
-
-let _archiveMode = false;           // true = mode cari Archive.org
-let _archiveLastQuery = '';         // query terakhir yang di-search ke Archive
-let _archiveSearchTimer = null;     // debounce timer
-let _archiveDownloading = false;    // lock agar tidak double-download
-
-// Sync visual offline badge
-function _syncOfflineBadge() {
-    const badge = document.getElementById('offline-badge');
-    if (!badge) return;
-    if (!navigator.onLine) {
-        badge.classList.remove('hidden');
-    } else {
-        badge.classList.add('hidden');
-    }
-}
-
-// Sync tampilan tombol mode (primary vs ghost)
-function _syncSearchModeUI() {
-    const btnLocal = document.getElementById('search-mode-local');
-    const btnArchive = document.getElementById('search-mode-archive');
-    if (!btnLocal || !btnArchive) return;
-
-    if (_archiveMode) {
-        btnLocal.classList.remove('bg-m3-primary', 'text-m3-onPrimary');
-        btnLocal.classList.add('bg-m3-surfaceVariant', 'text-m3-onSurfaceVariant');
-        btnArchive.classList.add('bg-m3-primary', 'text-m3-onPrimary');
-        btnArchive.classList.remove('bg-m3-surfaceVariant', 'text-m3-onSurfaceVariant');
-    } else {
-        btnArchive.classList.remove('bg-m3-primary', 'text-m3-onPrimary');
-        btnArchive.classList.add('bg-m3-surfaceVariant', 'text-m3-onSurfaceVariant');
-        btnLocal.classList.add('bg-m3-primary', 'text-m3-onPrimary');
-        btnLocal.classList.remove('bg-m3-surfaceVariant', 'text-m3-onSurfaceVariant');
-    }
-}
-
-// User klik tombol mode
-window.setSearchMode = function(mode) {
-    _archiveMode = (mode === 'archive');
-    _syncSearchModeUI();
-
-    const archivePanel = document.getElementById('archive-results-panel');
-
-    if (!_archiveMode) {
-        // Kembali ke mode library lokal
-        if (archivePanel) archivePanel.classList.add('hidden');
-        const q = DOM.globalSearch ? DOM.globalSearch.value : '';
-        renderLibrary(q);
-    } else {
-        // Masuk mode Archive.org
-        if (!navigator.onLine) {
-            if (archivePanel) archivePanel.classList.remove('hidden');
-            _archiveShowState('offline');
-            return;
-        }
-        const q = DOM.globalSearch ? DOM.globalSearch.value.trim() : '';
-        if (q.length >= 2) {
-            if (archivePanel) archivePanel.classList.remove('hidden');
-            _archiveDoSearch(q);
-        } else {
-            // Belum ada query, sembunyikan panel (tunggu user ketik)
-            if (archivePanel) archivePanel.classList.add('hidden');
-        }
-    }
-};
-
-// Handler input saat archive mode aktif — debounce 600ms
-function _archiveOnInput(val) {
-    clearTimeout(_archiveSearchTimer);
-    const archivePanel = document.getElementById('archive-results-panel');
-
-    if (!_archiveMode) return;
-
-    if (!navigator.onLine) {
-        if (archivePanel) archivePanel.classList.remove('hidden');
-        _archiveShowState('offline');
-        return;
-    }
-
-    if (!val || val.trim().length < 2) {
-        if (archivePanel) archivePanel.classList.add('hidden');
-        return;
-    }
-
-    if (archivePanel) archivePanel.classList.remove('hidden');
-    _archiveShowState('loading');
-
-    _archiveSearchTimer = setTimeout(() => {
-        _archiveDoSearch(val.trim());
-    }, 600);
-}
-
-// Hit API Archive.org
-async function _archiveDoSearch(query) {
-    if (query === _archiveLastQuery) return; // tidak re-search query sama
-    _archiveLastQuery = query;
-
-    _archiveShowState('loading');
-
-    try {
-        // Archive.org Advanced Search — ambil semua teks (pdf+epub), sort downloads desc
-        const q = encodeURIComponent(`(title:(${query}) OR creator:(${query})) AND mediatype:texts AND (format:PDF OR format:EPUB)`);
-        const url = `https://archive.org/advancedsearch.php?q=${q}&fl[]=identifier,title,creator,downloads,format&sort[]=downloads+desc&rows=15&page=1&output=json`;
-
-        const res = await fetch(url, { signal: AbortSignal.timeout(12000) });
-        if (!res.ok) throw new Error('HTTP ' + res.status);
-        const data = await res.json();
-
-        const docs = data.response?.docs || [];
-        if (docs.length === 0) {
-            _archiveShowState('empty');
-            return;
-        }
-        _archiveRenderCards(docs);
-    } catch (err) {
-        console.error('Archive search error:', err);
-        if (!navigator.onLine) {
-            _archiveShowState('offline');
-        } else {
-            _archiveShowState('error', 'Gagal mencari. Cek koneksi internet.');
-        }
-    }
-}
-
-// Render kartu hasil
-function _archiveRenderCards(docs) {
-    const container = document.getElementById('archive-cards');
-    if (!container) return;
-    container.innerHTML = '';
-
-    docs.forEach(doc => {
-        const id = doc.identifier;
-        const title = doc.title || 'Untitled';
-        const creator = Array.isArray(doc.creator) ? doc.creator[0] : (doc.creator || '');
-        const fmts = doc.format ? (Array.isArray(doc.format) ? doc.format : [doc.format]) : [];
-        const hasPdf = fmts.some(f => f.toLowerCase().includes('pdf'));
-        const hasEpub = fmts.some(f => f.toLowerCase().includes('epub'));
-        const badge = hasPdf && hasEpub ? 'PDF + EPUB' : hasPdf ? 'PDF' : hasEpub ? 'EPUB' : '?';
-        const downloads = doc.downloads ? parseInt(doc.downloads).toLocaleString('id') : '—';
-
-        const card = document.createElement('div');
-        card.className = 'flex items-start gap-3 bg-m3-surfaceVariant rounded-[20px] p-3';
-        card.innerHTML = `
-            <img
-                src="https://archive.org/services/img/${id}"
-                alt=""
-                class="w-9 h-12 object-cover rounded-xl shrink-0 bg-m3-surface"
-                onerror="this.style.display='none'"
-                loading="lazy"
-            >
-            <div class="flex-1 min-w-0">
-                <p class="text-xs font-bold text-m3-onSurfaceVariant leading-snug line-clamp-2 mb-0.5">${_esc(title)}</p>
-                ${creator ? `<p class="text-[10px] text-m3-onSurfaceVariant opacity-55 truncate mb-1">${_esc(creator)}</p>` : ''}
-                <div class="flex items-center gap-1.5">
-                    <span class="text-[9px] font-black bg-m3-primary/15 text-m3-primary px-1.5 py-0.5 rounded-full">${badge}</span>
-                    <span class="text-[9px] opacity-40 font-bold">↓${downloads}</span>
-                </div>
-            </div>
-            <button
-                class="shrink-0 w-9 h-9 rounded-full bg-m3-primary text-m3-onPrimary flex items-center justify-center btn-morph shadow-sm"
-                onclick="window.archiveDownload('${_esc(id)}', '${_esc(title.replace(/'/g, '\\'').replace(/"/g, '&quot;'))}')"
-                title="Unduh & baca"
-            >
-                <i data-lucide="download" class="w-4 h-4 pointer-events-none"></i>
-            </button>
-        `;
-        container.appendChild(card);
-    });
-
-    // Re-render lucide icons di dalam cards baru
-    if (window.lucide) window.lucide.createIcons({ nodes: Array.from(container.querySelectorAll('[data-lucide]')) });
-
-    _archiveShowState('cards');
-}
-
-// Tampilkan state tertentu di panel Archive
-function _archiveShowState(state, errMsg) {
-    const ids = ['archive-state-loading', 'archive-state-offline', 'archive-state-empty', 'archive-state-error', 'archive-cards'];
-    ids.forEach(id => {
-        const el = document.getElementById(id);
-        if (el) el.classList.add('hidden');
-    });
-
-    const target = {
-        loading: 'archive-state-loading',
-        offline: 'archive-state-offline',
-        empty:   'archive-state-empty',
-        error:   'archive-state-error',
-        cards:   'archive-cards'
-    }[state];
-
-    if (target) {
-        const el = document.getElementById(target);
-        if (el) el.classList.remove('hidden');
-    }
-
-    if (state === 'error' && errMsg) {
-        const errEl = document.getElementById('archive-error-text');
-        if (errEl) errEl.textContent = errMsg;
-    }
-}
-
-// Download buku dari Archive.org dan masukkan ke library
-window.archiveDownload = async function(identifier, title) {
-    if (_archiveDownloading) return;
-    _archiveDownloading = true;
-
-    if (!navigator.onLine) {
-        _archiveDownloading = false;
-        showDialog('Offline', 'Tidak ada koneksi internet.', 'wifi-off', [{ text: 'Oke', primary: true }]);
-        return;
-    }
-
-    const d = i18n[wikiLang] || i18n['id'];
-
-    // Tampilkan loading dialog
-    showDialog(
-        'Mengunduh buku...',
-        `<div class="flex flex-col items-center gap-3 py-4">
-            <div class="w-8 h-8 border-4 border-m3-primary border-t-transparent rounded-full animate-spin"></div>
-            <p class="text-xs font-bold text-center opacity-70 leading-relaxed max-w-[220px]">${_esc(title)}</p>
-        </div>`,
-        'download',
-        []
-    );
-
-    try {
-        // 1. Ambil metadata file dari Archive.org
-        const metaRes = await fetch(`https://archive.org/metadata/${identifier}`, { signal: AbortSignal.timeout(15000) });
-        if (!metaRes.ok) throw new Error('Metadata tidak tersedia (HTTP ' + metaRes.status + ')');
-        const meta = await metaRes.json();
-
-        const files = meta.files || [];
-
-        // 2. Pilih file: EPUB dulu, baru PDF (hindari *_text.pdf karena itu versi OCR noise)
-        let chosen = null;
-        let chosenType = null;
-
-        const epubCandidates = files.filter(f => f.name && f.name.toLowerCase().endsWith('.epub'));
-        const pdfCandidates  = files.filter(f => {
-            if (!f.name) return false;
-            const n = f.name.toLowerCase();
-            return n.endsWith('.pdf') && !n.includes('_text') && !n.includes('_djvu');
-        });
-
-        if (epubCandidates.length > 0) {
-            chosen = epubCandidates[0];
-            chosenType = 'epub';
-        } else if (pdfCandidates.length > 0) {
-            // Pilih PDF terkecil jika ada banyak pilihan, supaya lebih cepat
-            chosen = pdfCandidates.sort((a, b) => parseInt(a.size || 0) - parseInt(b.size || 0))[0];
-            chosenType = 'pdf';
-        }
-
-        if (!chosen) {
-            throw new Error('Tidak ada file PDF atau EPUB yang tersedia untuk buku ini.');
-        }
-
-        // 3. Download file
-        const fileUrl = `https://archive.org/download/${identifier}/${encodeURIComponent(chosen.name)}`;
-        const fileRes = await fetch(fileUrl, { signal: AbortSignal.timeout(120000) }); // 2 menit timeout
-        if (!fileRes.ok) throw new Error('Gagal mengunduh file (HTTP ' + fileRes.status + ')');
-
-        const arrayBuffer = await fileRes.arrayBuffer();
-
-        // 4. Bungkus jadi File object dengan nama yang bersih
-        const cleanTitle = title.replace(/[<>:"/\\|?*]/g, '').trim().substring(0, 60) || identifier;
-        const fileName = `${cleanTitle}.${chosenType}`;
-        const mimeType = chosenType === 'epub' ? 'application/epub+zip' : 'application/pdf';
-        const file = new File([arrayBuffer], fileName, { type: mimeType });
-
-        window.closeDialog();
-        _archiveDownloading = false;
-
-        // 5. Inject ke file input doc-upload — ini yang paling reliable untuk trigger
-        //    pipeline reader.js yang sudah ada (processMultipleFiles adalah closure internal
-        //    di reader.js, tidak bisa dipanggil langsung dari sini)
-        setTimeout(() => {
-            try {
-                const dt = new DataTransfer();
-                dt.items.add(file);
-                const fileInput = document.getElementById('doc-upload');
-                if (!fileInput) throw new Error('File input tidak ditemukan');
-                fileInput.files = dt.files;
-                fileInput.dispatchEvent(new Event('change', { bubbles: true }));
-            } catch (injectErr) {
-                console.error('Inject error:', injectErr);
-                showDialog('Error', 'File berhasil diunduh tapi gagal diproses: ' + injectErr.message, 'alert-circle', [{ text: 'Tutup', primary: true }]);
-            }
-        }, 350);
-
-    } catch (err) {
-        console.error('Archive download error:', err);
-        window.closeDialog();
-        _archiveDownloading = false;
-        setTimeout(() => {
-            showDialog('Gagal Mengunduh', err.message || 'Terjadi kesalahan saat mengunduh.', 'alert-circle', [{ text: 'Oke', primary: true }]);
-        }, 300);
-    }
-};
-
-// Helper escape HTML sederhana
-function _esc(str) {
-    if (!str) return '';
-    return String(str)
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;');
-}
