@@ -216,6 +216,11 @@
             <!-- Panel Daftar Isi -->
             <div id="toc-panel" class="side-panel absolute right-0 top-0 bottom-0 w-72 bg-m3-surfaceVariant p-6 transform translate-x-full opacity-0 z-40 overflow-y-auto rounded-l-[32px]">
                 <h3 id="str-toc-title" class="text-lg font-bold mb-6 text-m3-onSurfaceVariant flex items-center gap-2"><i data-lucide="list-tree"></i> Daftar Isi</h3>
+                <!-- Peringatan Canvas Mode -->
+                <div id="toc-canvas-warning" class="hidden mb-4 p-4 rounded-2xl bg-amber-500/10 border border-amber-500/20 flex gap-2.5 items-start">
+                    <i data-lucide="alert-triangle" class="w-5 h-5 shrink-0 mt-0.5 text-amber-500"></i>
+                    <p id="str-toc-canvas-warning" class="text-[10px] font-bold leading-relaxed text-amber-700 dark:text-amber-400">Untuk mode canvas, daftar isi tidak tersedia.</p>
+                </div>
                 <div id="toc-list" class="space-y-2 flex flex-col pb-20"></div>
             </div>
 
@@ -371,6 +376,14 @@
                 <span class="font-bold text-sm tracking-wide opacity-80" id="str-amoled-label">AMOLED (Hitam Pekat)</span>
                 <div class="relative w-16 h-8 rounded-full transition-colors" id="amoled-switch-bg">
                     <div id="amoled-switch-knob" class="absolute top-[2px] left-[2px] w-6 h-6 rounded-full bg-m3-onSurface transition-transform duration-300 ease-out"></div>
+                </div>
+            </div>
+
+            <!-- Toggle Sembunyikan Judul Buku -->
+            <div id="hide-titles-toggle-container" class="flex items-center justify-between mb-6 bg-m3-surfaceVariant p-2 pl-5 rounded-full cursor-pointer btn-morph" onclick="toggleHideTitles()">
+                <span class="font-bold text-sm tracking-wide opacity-80" id="str-hide-titles-label">Sembunyikan Judul Buku</span>
+                <div class="relative w-16 h-8 rounded-full transition-colors bg-m3-onSurfaceVariant/20" id="hide-titles-switch-bg">
+                    <div id="hide-titles-switch-knob" class="absolute top-[2px] left-[2px] w-6 h-6 rounded-full bg-m3-onSurface transition-transform duration-300 ease-out"></div>
                 </div>
             </div>
 
@@ -704,6 +717,14 @@
             </div>
 
             <button id="str-pdf-mode-btn-cancel" onclick="_closeModalAction('pdf-mode-modal', 'pdf-mode-sheet', true)" class="w-full py-3.5 mt-5 bg-transparent text-m3-onSurface font-bold rounded-full btn-morph text-sm">Batal</button>
+        </div>
+    </div>
+
+    <!-- Global Loading Spinner (antar modal, analisa PDF, dll) -->
+    <div id="global-loading-overlay" class="hidden fixed inset-0 z-[500] bg-black/50 backdrop-blur-sm flex flex-col items-center justify-center transition-opacity duration-200 opacity-0">
+        <div class="bg-m3-surface rounded-[32px] p-8 flex flex-col items-center gap-4 shadow-2xl min-w-[200px]">
+            <div class="w-12 h-12 rounded-full border-4 border-m3-surfaceVariant border-t-m3-primary animate-spin"></div>
+            <p id="global-loading-text" class="text-sm font-bold text-m3-onSurface text-center opacity-80">Memproses...</p>
         </div>
     </div>
 
