@@ -3197,6 +3197,48 @@ function _archiveShowState(state, errMsg) {
     if (state === 'error' && errMsg) { const el = document.getElementById('archive-error-text'); if (el) el.textContent = errMsg; }
 }
 
+// --- ARCHIVE FORMAT PICKER (inline overlay, tidak pakai history stack) ---
+function _showArchiveFormatPicker(epubFile, pdfFile, epubSizeMb, pdfSizeMb, onChoose) {
+    let overlay = document.getElementById('archive-fmt-overlay');
+    if (!overlay) {
+        overlay = document.createElement('div');
+        overlay.id = 'archive-fmt-overlay';
+        document.body.appendChild(overlay);
+    }
+    overlay.style.cssText = 'position:fixed;inset:0;z-index:9999;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.5);opacity:0;transition:opacity 0.2s ease;';
+    overlay.innerHTML = `
+        <div id="archive-fmt-sheet" style="background:var(--md-sys-color-surface);border-radius:28px;padding:24px 20px 20px;max-width:320px;width:90%;display:flex;flex-direction:column;gap:16px;transform:scale(0.85);transition:transform 0.28s cubic-bezier(0.34,1.56,0.64,1);">
+            <div style="display:flex;align-items:center;gap:10px;">
+                <span style="font-weight:800;font-size:1rem;color:var(--md-sys-color-on-surface);">Pilih Format</span>
+            </div>
+            <p style="font-size:0.75rem;color:var(--md-sys-color-on-surface-variant);opacity:0.75;line-height:1.5;margin:0;">Buku ini tersedia dalam dua format. Pilih yang kamu inginkan:</p>
+            <div style="display:flex;flex-direction:column;gap:10px;">
+                <button id="archive-fmt-epub" style="padding:14px 20px;background:var(--md-sys-color-secondary-container);color:var(--md-sys-color-on-secondary-container);border:none;border-radius:16px;font-weight:700;font-size:0.85rem;cursor:pointer;">
+                    EPUB &nbsp;<span style="opacity:0.6;font-size:0.75rem;font-weight:600;">(${epubSizeMb})</span>
+                </button>
+                <button id="archive-fmt-pdf" style="padding:14px 20px;background:var(--md-sys-color-primary);color:var(--md-sys-color-on-primary);border:none;border-radius:16px;font-weight:700;font-size:0.85rem;cursor:pointer;">
+                    PDF &nbsp;<span style="opacity:0.75;font-size:0.75rem;font-weight:600;">(${pdfSizeMb})</span>
+                </button>
+                <button id="archive-fmt-cancel" style="padding:10px 20px;background:transparent;color:var(--md-sys-color-on-surface-variant);border:none;border-radius:16px;font-weight:700;font-size:0.8rem;cursor:pointer;opacity:0.6;">Batal</button>
+            </div>
+        </div>`;
+
+    requestAnimationFrame(() => {
+        overlay.style.opacity = '1';
+        const sheet = document.getElementById('archive-fmt-sheet');
+        if (sheet) sheet.style.transform = 'scale(1)';
+    });
+
+    const _close = () => {
+        overlay.style.opacity = '0';
+        setTimeout(() => { overlay.innerHTML = ''; overlay.style.display = 'none'; }, 220);
+    };
+
+    document.getElementById('archive-fmt-epub').onclick   = () => { _close(); onChoose({ file: epubFile, type: 'epub' }); };
+    document.getElementById('archive-fmt-pdf').onclick    = () => { _close(); onChoose({ file: pdfFile,  type: 'pdf'  }); };
+    document.getElementById('archive-fmt-cancel').onclick = () => { _close(); onChoose(null); };
+}
+
 window.archiveDownload = async function(identifier, title) {
     if (_archiveDownloading) return;
     _archiveDownloading = true;
@@ -3206,90 +3248,103 @@ window.archiveDownload = async function(identifier, title) {
         return;
     }
 
-    const _updateDialog = (msg) => {
-        const el = document.getElementById('dialog-message');
-        if (el) el.innerHTML = `<div class="flex flex-col items-center gap-3 py-4"><div class="w-8 h-8 border-4 border-m3-primary border-t-transparent rounded-full animate-spin"></div><p class="text-xs font-bold text-center opacity-70 leading-relaxed max-w-[220px]">${_esc(msg)}</p></div>`;
+    // Gunakan overlay inline — BUKAN showDialog — supaya tidak ada history.back() yang interrupt async flow
+    const _showDlOverlay = (msg) => {
+        let ov = document.getElementById('archive-dl-overlay');
+        if (!ov) {
+            ov = document.createElement('div');
+            ov.id = 'archive-dl-overlay';
+            document.body.appendChild(ov);
+        }
+        ov.style.cssText = 'position:fixed;inset:0;z-index:9998;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.45);opacity:0;transition:opacity 0.2s ease;pointer-events:all;';
+        ov.innerHTML = `<div style="background:var(--md-sys-color-surface);border-radius:24px;padding:28px 24px;max-width:280px;width:88%;display:flex;flex-direction:column;align-items:center;gap:16px;">
+            <div style="width:36px;height:36px;border:4px solid var(--md-sys-color-primary);border-top-color:transparent;border-radius:50%;animation:spin 0.8s linear infinite;flex-shrink:0;"></div>
+            <p id="archive-dl-msg" style="font-size:0.75rem;font-weight:700;text-align:center;color:var(--md-sys-color-on-surface);opacity:0.75;max-width:220px;line-height:1.5;margin:0;">${_esc(msg)}</p>
+        </div>`;
+        requestAnimationFrame(() => { ov.style.opacity = '1'; });
+    };
+    const _updateDlMsg = (msg) => {
+        const el = document.getElementById('archive-dl-msg');
+        if (el) el.textContent = msg;
+    };
+    const _hideDlOverlay = () => {
+        const ov = document.getElementById('archive-dl-overlay');
+        if (!ov) return;
+        ov.style.opacity = '0';
+        setTimeout(() => { ov.innerHTML = ''; ov.style.display = 'none'; }, 220);
     };
 
-    showDialog('Mengunduh buku...', `<div class="flex flex-col items-center gap-3 py-4"><div class="w-8 h-8 border-4 border-m3-primary border-t-transparent rounded-full animate-spin"></div><p class="text-xs font-bold text-center opacity-70 leading-relaxed max-w-[220px]">${_esc(title)}</p></div>`, 'download', []);
+    _showDlOverlay('Mengambil metadata...');
 
     try {
         // Step 1: ambil metadata
-        _updateDialog('Mengambil metadata...');
         const metaRes = await fetch(`https://archive.org/metadata/${identifier}`, { signal: AbortSignal.timeout(15000) });
         if (!metaRes.ok) throw new Error('Metadata gagal (HTTP ' + metaRes.status + ')');
         const meta = await metaRes.json();
         const files = meta.files || [];
 
         const epubCandidates = files.filter(f => f.name && f.name.toLowerCase().endsWith('.epub'));
-        const pdfCandidates = files.filter(f => {
+        const pdfCandidates  = files.filter(f => {
             if (!f.name) return false;
             const n = f.name.toLowerCase();
             return n.endsWith('.pdf') && !n.includes('_text') && !n.includes('_djvu');
         });
 
-        if (epubCandidates.length === 0 && pdfCandidates.length === 0) throw new Error('Tidak ada file PDF atau EPUB yang tersedia untuk buku ini.');
+        if (epubCandidates.length === 0 && pdfCandidates.length === 0)
+            throw new Error('Tidak ada file PDF atau EPUB yang tersedia untuk buku ini.');
 
-        // Jika ada KEDUANYA, tanya user mau pilih mana
         let chosen = null, chosenType = null;
+
         if (epubCandidates.length > 0 && pdfCandidates.length > 0) {
-            // Tutup dialog loading sementara, tampilkan pilihan format
-            window.closeDialog();
-            _archiveDownloading = false;
-            const epubFile = epubCandidates[0];
-            const pdfFile = pdfCandidates.sort((a,b) => parseInt(a.size||0) - parseInt(b.size||0))[0];
-            const epubSizeMb = epubFile.size ? (parseInt(epubFile.size)/1024/1024).toFixed(1) + ' MB' : '?';
-            const pdfSizeMb = pdfFile.size ? (parseInt(pdfFile.size)/1024/1024).toFixed(1) + ' MB' : '?';
+            // Sembunyikan loading, tampilkan picker format — tanpa menyentuh history
+            _hideDlOverlay();
+            const epubFile  = epubCandidates[0];
+            const pdfFile   = pdfCandidates.sort((a, b) => parseInt(a.size || 0) - parseInt(b.size || 0))[0];
+            const epubSizeMb = epubFile.size ? (parseInt(epubFile.size) / 1024 / 1024).toFixed(1) + ' MB' : '?';
+            const pdfSizeMb  = pdfFile.size  ? (parseInt(pdfFile.size)  / 1024 / 1024).toFixed(1) + ' MB' : '?';
 
             const userChoice = await new Promise((resolve) => {
-                showDialog(
-                    'Pilih Format',
-                    `<div class="flex flex-col gap-3 py-2"><p class="text-xs opacity-70 text-center">Buku ini tersedia dalam dua format.<br>Pilih yang kamu inginkan:</p></div>`,
-                    'book-open',
-                    [
-                        { text: `EPUB  (${epubSizeMb})`, primary: false, action: () => { window.closeDialog(); resolve({ file: epubFile, type: 'epub' }); } },
-                        { text: `PDF  (${pdfSizeMb})`, primary: true, action: () => { window.closeDialog(); resolve({ file: pdfFile, type: 'pdf' }); } }
-                    ]
-                );
+                _showArchiveFormatPicker(epubFile, pdfFile, epubSizeMb, pdfSizeMb, resolve);
             });
 
-            chosen = userChoice.file;
+            if (!userChoice) {
+                // User batal
+                _archiveDownloading = false;
+                return;
+            }
+            chosen     = userChoice.file;
             chosenType = userChoice.type;
-            _archiveDownloading = true;
-            // Tampilkan ulang dialog loading setelah user pilih
-            showDialog('Mengunduh buku...', `<div class="flex flex-col items-center gap-3 py-4"><div class="w-8 h-8 border-4 border-m3-primary border-t-transparent rounded-full animate-spin"></div><p class="text-xs font-bold text-center opacity-70 leading-relaxed max-w-[220px]">${_esc(title)}</p></div>`, 'download', []);
+            _showDlOverlay('Menyiapkan unduhan...');
 
         } else if (epubCandidates.length > 0) {
             chosen = epubCandidates[0]; chosenType = 'epub';
         } else {
-            chosen = pdfCandidates.sort((a,b) => parseInt(a.size||0) - parseInt(b.size||0))[0];
+            chosen = pdfCandidates.sort((a, b) => parseInt(a.size || 0) - parseInt(b.size || 0))[0];
             chosenType = 'pdf';
         }
 
         // Step 2: download file
         const sizeMb = chosen.size ? (parseInt(chosen.size) / 1024 / 1024).toFixed(1) + ' MB' : '?';
-        _updateDialog(`Mengunduh ${chosenType.toUpperCase()} (${sizeMb})...`);
+        _updateDlMsg(`Mengunduh ${chosenType.toUpperCase()} (${sizeMb})...`);
 
         const fileUrl = `https://archive.org/download/${identifier}/${encodeURIComponent(chosen.name)}`;
         const fileRes = await fetch(fileUrl, { signal: AbortSignal.timeout(180000) });
         if (!fileRes.ok) throw new Error('Gagal mengunduh file (HTTP ' + fileRes.status + ')');
 
-        _updateDialog('Memproses file...');
+        _updateDlMsg('Memproses file...');
         const arrayBuffer = await fileRes.arrayBuffer();
-
         if (!arrayBuffer || arrayBuffer.byteLength === 0) throw new Error('File kosong atau gagal didownload.');
 
         const cleanTitle = title.replace(/[<>:"/\\|?*]/g, '').trim().substring(0, 60) || identifier;
-        const fileName = `${cleanTitle}.${chosenType}`;
-        const mimeType = chosenType === 'epub' ? 'application/epub+zip' : 'application/pdf';
-        const file = new File([arrayBuffer], fileName, { type: mimeType });
+        const fileName   = `${cleanTitle}.${chosenType}`;
+        const mimeType   = chosenType === 'epub' ? 'application/epub+zip' : 'application/pdf';
+        const file       = new File([arrayBuffer], fileName, { type: mimeType });
 
-        window.closeDialog();
+        _hideDlOverlay();
         _archiveDownloading = false;
 
-        // Step 3: langsung proses ke library (tanpa file input — works di Capacitor)
+        // Step 3: proses ke library — tutup search & scroll ke atas dulu
         setTimeout(async () => {
-            // Tutup search & scroll ke atas agar user bisa lihat loading bar konversi
             if (typeof window.closeSearch === 'function') window.closeSearch(false);
             const libScroll = document.getElementById('library-content-scroll');
             if (libScroll) libScroll.scrollTo({ top: 0, behavior: 'smooth' });
@@ -3307,7 +3362,8 @@ window.archiveDownload = async function(identifier, title) {
 
     } catch (err) {
         console.error('archiveDownload error:', err);
-        window.closeDialog();
+        const ov = document.getElementById('archive-dl-overlay');
+        if (ov) { ov.style.opacity = '0'; setTimeout(() => { ov.innerHTML = ''; ov.style.display = 'none'; }, 220); }
         _archiveDownloading = false;
         setTimeout(() => {
             showDialog(
