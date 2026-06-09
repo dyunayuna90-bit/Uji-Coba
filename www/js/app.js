@@ -26,11 +26,7 @@ let _archiveMode = false;
 let _archiveLastQuery = '';
 let _archiveSearchTimeout = null;
 let _archiveDownloading = false;
-
-// --- GUTENDEX STATE ---
-let _gutendexMode = false;
-let _gutendexLastQuery = '';
-let _gutendexSearchTimeout = null;
+let archiveAbortController = null;
 
 // --- CANVAS MODE STATE ---
 let currentPdfDoc = null;
@@ -502,8 +498,6 @@ function setupSearchListeners() {
             }
             if (_archiveMode) {
                 _archiveOnInput(e.target.value);
-            } else if (_gutendexMode) {
-                _gutendexOnInput(e.target.value);
             } else {
                 renderLibrary(e.target.value);
             }
@@ -539,14 +533,10 @@ window.closeSearch = function(fromHistory = false) {
         // Reset archive mode
         _archiveMode = false;
         _archiveLastQuery = '';
-        _gutendexMode = false;
-        _gutendexLastQuery = '';
         const modeRow = document.getElementById('search-mode-row');
         const archivePanel = document.getElementById('archive-results-panel');
-        const gutendexPanel = document.getElementById('gutendex-results-panel');
         if (modeRow) modeRow.classList.add('hidden');
         if (archivePanel) archivePanel.classList.add('hidden');
-        if (gutendexPanel) gutendexPanel.classList.add('hidden');
         _hideRacksForSearch(false);
         _syncSearchModeUI();
 
@@ -3113,48 +3103,32 @@ function _syncOfflineBadge() {
 }
 
 function _syncSearchModeUI() {
-    const btnLocal   = document.getElementById('search-mode-local');
+    const btnLocal = document.getElementById('search-mode-local');
     const btnArchive = document.getElementById('search-mode-archive');
-    const btnGuten   = document.getElementById('search-mode-gutendex');
-    const activeClass   = 'bg-m3-primary text-m3-onPrimary';
-    const inactiveClass = 'bg-m3-surfaceVariant text-m3-onSurfaceVariant';
-    const btns = [btnLocal, btnArchive, btnGuten].filter(Boolean);
-    btns.forEach(b => {
-        b.className = b.className.replace(activeClass, inactiveClass);
-    });
-    if (_gutendexMode && btnGuten) {
-        btnGuten.className = btnGuten.className.replace(inactiveClass, activeClass);
-    } else if (_archiveMode && btnArchive) {
-        btnArchive.className = btnArchive.className.replace(inactiveClass, activeClass);
-    } else if (btnLocal) {
-        btnLocal.className = btnLocal.className.replace(inactiveClass, activeClass);
+    if (!btnLocal || !btnArchive) return;
+    if (_archiveMode) {
+        btnLocal.className = btnLocal.className.replace('bg-m3-primary text-m3-onPrimary', 'bg-m3-surfaceVariant text-m3-onSurfaceVariant');
+        btnArchive.className = btnArchive.className.replace('bg-m3-surfaceVariant text-m3-onSurfaceVariant', 'bg-m3-primary text-m3-onPrimary');
+    } else {
+        btnLocal.className = btnLocal.className.replace('bg-m3-surfaceVariant text-m3-onSurfaceVariant', 'bg-m3-primary text-m3-onPrimary');
+        btnArchive.className = btnArchive.className.replace('bg-m3-primary text-m3-onPrimary', 'bg-m3-surfaceVariant text-m3-onSurfaceVariant');
     }
 }
 
 window.setSearchMode = function(mode) {
-    _archiveMode   = (mode === 'archive');
-    _gutendexMode  = (mode === 'gutendex');
+    _archiveMode = (mode === 'archive');
     _syncSearchModeUI();
 
-    const archivePanel  = document.getElementById('archive-results-panel');
-    const gutendexPanel = document.getElementById('gutendex-results-panel');
+    const archivePanel = document.getElementById('archive-results-panel');
     const query = DOM.globalSearch ? DOM.globalSearch.value.trim() : '';
 
     if (_archiveMode) {
-        if (archivePanel)  archivePanel.classList.remove('hidden');
-        if (gutendexPanel) gutendexPanel.classList.add('hidden');
+        if (archivePanel) archivePanel.classList.remove('hidden');
         _hideRacksForSearch(true);
         if (query.length >= 2) _archiveSearch(query);
         else _archiveShowState('empty');
-    } else if (_gutendexMode) {
-        if (archivePanel)  archivePanel.classList.add('hidden');
-        if (gutendexPanel) gutendexPanel.classList.remove('hidden');
-        _hideRacksForSearch(true);
-        if (query.length >= 2) _gutendexSearch(query);
-        else _gutendexShowState('empty');
     } else {
-        if (archivePanel)  archivePanel.classList.add('hidden');
-        if (gutendexPanel) gutendexPanel.classList.add('hidden');
+        if (archivePanel) archivePanel.classList.add('hidden');
         _hideRacksForSearch(false);
         renderLibrary(query);
     }
@@ -3171,19 +3145,6 @@ function _archiveOnInput(query) {
         return;
     }
     _archiveSearchTimeout = setTimeout(() => { _archiveSearch(query.trim()); }, 600);
-}
-
-function _gutendexOnInput(query) {
-    clearTimeout(_gutendexSearchTimeout);
-    const panel = document.getElementById('gutendex-results-panel');
-    if (!panel) return;
-    panel.classList.remove('hidden');
-    _hideRacksForSearch(true);
-    if (query.trim().length < 2) {
-        _gutendexShowState('empty');
-        return;
-    }
-    _gutendexSearchTimeout = setTimeout(() => { _gutendexSearch(query.trim()); }, 600);
 }
 
 async function _archiveSearch(query) {
@@ -3302,7 +3263,19 @@ window.archiveDownload = async function(identifier, title) {
         return;
     }
 
-    // Gunakan overlay inline — BUKAN showDialog — supaya tidak ada history.back() yang interrupt async flow
+    // Inisialisasi AbortController baru tiap unduhan
+    archiveAbortController = new AbortController();
+    const signal = archiveAbortController.signal;
+
+    // Kamus i18n lokal berdasarkan wikiLang
+    const lang = typeof wikiLang !== 'undefined' ? wikiLang : 'id';
+    const txtMap = {
+        id: { meta: 'Mengambil metadata...', downloading: 'Mengunduh', merging: 'Menyatukan file...', cancel: 'Batal', canceled: 'Unduhan dibatalkan', preparing: 'Menyiapkan unduhan...' },
+        en: { meta: 'Fetching metadata...', downloading: 'Downloading', merging: 'Merging file...', cancel: 'Cancel', canceled: 'Download canceled', preparing: 'Preparing download...' },
+        es: { meta: 'Obteniendo metadatos...', downloading: 'Descargando', merging: 'Fusionando archivo...', cancel: 'Cancelar', canceled: 'Descarga cancelada', preparing: 'Preparando descarga...' }
+    };
+    const txt = txtMap[lang] || txtMap['id'];
+
     const _showDlOverlay = (msg) => {
         let ov = document.getElementById('archive-dl-overlay');
         if (!ov) {
@@ -3311,10 +3284,14 @@ window.archiveDownload = async function(identifier, title) {
             document.body.appendChild(ov);
         }
         ov.style.cssText = 'position:fixed;inset:0;z-index:9998;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.45);opacity:0;transition:opacity 0.2s ease;pointer-events:all;';
-        ov.innerHTML = `<div style="background:var(--md-sys-color-surface);border-radius:24px;padding:28px 24px;max-width:280px;width:88%;display:flex;flex-direction:column;align-items:center;gap:16px;">
-            <div style="width:36px;height:36px;border:4px solid var(--md-sys-color-primary);border-top-color:transparent;border-radius:50%;animation:spin 0.8s linear infinite;flex-shrink:0;"></div>
-            <p id="archive-dl-msg" style="font-size:0.75rem;font-weight:700;text-align:center;color:var(--md-sys-color-on-surface);opacity:0.75;max-width:220px;line-height:1.5;margin:0;">${_esc(msg)}</p>
-        </div>`;
+        ov.innerHTML = `
+            <div style="background:var(--md-sys-color-surface);border-radius:24px;padding:28px 24px;max-width:280px;width:88%;display:flex;flex-direction:column;align-items:center;gap:16px;box-shadow:0 4px 24px rgba(0,0,0,0.2);">
+                <p id="archive-dl-msg" style="font-size:0.82rem;font-weight:700;text-align:center;color:var(--md-sys-color-on-surface);opacity:0.85;max-width:220px;line-height:1.5;margin:0;white-space:pre-line;">${_esc(msg)}</p>
+                <button id="archive-dl-cancel" style="padding:10px 20px;background:var(--md-sys-color-error-container,#FADBD8);color:var(--md-sys-color-on-error-container,#78281F);border:none;border-radius:16px;font-weight:700;font-size:0.8rem;cursor:pointer;width:100%;transition:transform 0.1s ease;">${txt.cancel}</button>
+            </div>`;
+        document.getElementById('archive-dl-cancel').onclick = () => {
+            if (archiveAbortController) archiveAbortController.abort();
+        };
         requestAnimationFrame(() => { ov.style.opacity = '1'; });
     };
     const _updateDlMsg = (msg) => {
@@ -3328,11 +3305,11 @@ window.archiveDownload = async function(identifier, title) {
         setTimeout(() => { ov.innerHTML = ''; ov.style.display = 'none'; }, 220);
     };
 
-    _showDlOverlay('Mengambil metadata...');
+    _showDlOverlay(txt.meta);
 
     try {
         // Step 1: ambil metadata
-        const metaRes = await fetch(`https://archive.org/metadata/${identifier}`, { signal: AbortSignal.timeout(15000) });
+        const metaRes = await fetch(`https://archive.org/metadata/${identifier}`, { signal });
         if (!metaRes.ok) throw new Error('Metadata gagal (HTTP ' + metaRes.status + ')');
         const meta = await metaRes.json();
         const files = meta.files || [];
@@ -3350,10 +3327,9 @@ window.archiveDownload = async function(identifier, title) {
         let chosen = null, chosenType = null;
 
         if (epubCandidates.length > 0 && pdfCandidates.length > 0) {
-            // Sembunyikan loading, tampilkan picker format — tanpa menyentuh history
             _hideDlOverlay();
-            const epubFile  = epubCandidates[0];
-            const pdfFile   = pdfCandidates.sort((a, b) => parseInt(a.size || 0) - parseInt(b.size || 0))[0];
+            const epubFile   = epubCandidates[0];
+            const pdfFile    = pdfCandidates.sort((a, b) => parseInt(a.size || 0) - parseInt(b.size || 0))[0];
             const epubSizeMb = epubFile.size ? (parseInt(epubFile.size) / 1024 / 1024).toFixed(1) + ' MB' : '?';
             const pdfSizeMb  = pdfFile.size  ? (parseInt(pdfFile.size)  / 1024 / 1024).toFixed(1) + ' MB' : '?';
 
@@ -3362,13 +3338,12 @@ window.archiveDownload = async function(identifier, title) {
             });
 
             if (!userChoice) {
-                // User batal
                 _archiveDownloading = false;
                 return;
             }
             chosen     = userChoice.file;
             chosenType = userChoice.type;
-            _showDlOverlay('Menyiapkan unduhan...');
+            _showDlOverlay(txt.preparing);
 
         } else if (epubCandidates.length > 0) {
             chosen = epubCandidates[0]; chosenType = 'epub';
@@ -3377,31 +3352,56 @@ window.archiveDownload = async function(identifier, title) {
             chosenType = 'pdf';
         }
 
-        // Step 2: download file
-        const sizeMb = chosen.size ? (parseInt(chosen.size) / 1024 / 1024).toFixed(1) + ' MB' : '?';
-        _updateDlMsg(`Mengunduh ${chosenType.toUpperCase()} (${sizeMb})...`);
-
+        // Step 2: download file dengan ReadableStream progress
         const fileUrl = `https://archive.org/download/${identifier}/${encodeURIComponent(chosen.name)}`;
-        const fileRes = await fetch(fileUrl, { signal: AbortSignal.timeout(180000) });
+        const fileRes = await fetch(fileUrl, { signal });
         if (!fileRes.ok) throw new Error('Gagal mengunduh file (HTTP ' + fileRes.status + ')');
 
-        _updateDlMsg('Memproses file...');
-        const arrayBuffer = await fileRes.arrayBuffer();
-        if (!arrayBuffer || arrayBuffer.byteLength === 0) throw new Error('File kosong atau gagal didownload.');
+        const contentLen = fileRes.headers.get('content-length');
+        const totalBytes = contentLen ? parseInt(contentLen, 10) : parseInt(chosen.size || 0, 10);
 
         const cleanTitle = title.replace(/[<>:"/\\|?*]/g, '').trim().substring(0, 60) || identifier;
         const fileName   = `${cleanTitle}.${chosenType}`;
         const mimeType   = chosenType === 'epub' ? 'application/epub+zip' : 'application/pdf';
-        const file       = new File([arrayBuffer], fileName, { type: mimeType });
+
+        let file;
+
+        if (totalBytes === 0) {
+            _updateDlMsg(txt.downloading + '...');
+            const arrayBuffer = await fileRes.arrayBuffer();
+            if (!arrayBuffer || arrayBuffer.byteLength === 0) throw new Error('File kosong atau gagal didownload.');
+            file = new File([arrayBuffer], fileName, { type: mimeType });
+        } else {
+            const reader = fileRes.body.getReader();
+            let receivedBytes = 0;
+            const chunks = [];
+
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+                chunks.push(value);
+                receivedBytes += value.length;
+
+                const receivedMB = (receivedBytes / 1024 / 1024).toFixed(1);
+                const totalMB    = (totalBytes    / 1024 / 1024).toFixed(1);
+                const pct        = Math.round((receivedBytes / totalBytes) * 100);
+                _updateDlMsg(`${txt.downloading} ${chosenType.toUpperCase()}...\n${receivedMB} MB / ${totalMB} MB (${pct}%)`);
+            }
+
+            _updateDlMsg(txt.merging);
+
+            const combinedArray = new Uint8Array(receivedBytes);
+            let position = 0;
+            for (const chunk of chunks) { combinedArray.set(chunk, position); position += chunk.length; }
+
+            file = new File([combinedArray.buffer], fileName, { type: mimeType });
+        }
 
         _hideDlOverlay();
         _archiveDownloading = false;
 
-        // Step 3: Tutup search dulu, tunggu animasi tutup selesai, BARU proses ke library
-        // Pakai delay 480ms agar animasi closeSearch (back) tuntas sebelum import mulai —
-        // ini mencegah toast tertutup oleh efek back dari closeSearch.
+        // Step 3: tutup search, tunggu animasi, proses ke library
         const _doProcess = async () => {
-            const lang = typeof wikiLang !== 'undefined' ? wikiLang : 'id';
             const d = typeof i18n !== 'undefined' ? (i18n[lang] || i18n['id']) : {};
             try {
                 if (typeof window._processFilesFromArchive === 'function') {
@@ -3420,24 +3420,31 @@ window.archiveDownload = async function(identifier, title) {
             }
         };
 
-        // Tutup search panel, lalu tunda proses agar animasi back selesai dulu
         setTimeout(async () => {
             if (typeof window.closeSearch === 'function') window.closeSearch(false);
             const libScroll = document.getElementById('library-content-scroll');
             if (libScroll) libScroll.scrollTo({ top: 0, behavior: 'smooth' });
-            // Tunggu animasi close search (≈400ms) sebelum import & toast
             await new Promise(r => setTimeout(r, 480));
             await _doProcess();
         }, 400);
 
     } catch (err) {
         console.error('archiveDownload error:', err);
-        const ov = document.getElementById('archive-dl-overlay');
-        if (ov) { ov.style.opacity = '0'; setTimeout(() => { ov.innerHTML = ''; ov.style.display = 'none'; }, 220); }
+        _hideDlOverlay();
         _archiveDownloading = false;
+        archiveAbortController = null;
+
+        if (err.name === 'AbortError') {
+            // Dibatalkan oleh user — tampilkan toast bersih tanpa dialog
+            if (typeof window.showPersistentToast === 'function') {
+                window.showPersistentToast(txt.canceled, 'duplicate', 3000);
+            }
+            return;
+        }
+
         setTimeout(() => {
             showDialog(
-                'Gagal Mengunduh',
+                lang === 'en' ? 'Download Failed' : (lang === 'es' ? 'Descarga Fallida' : 'Gagal Mengunduh'),
                 err.message || 'Terjadi kesalahan. Pastikan koneksi internet stabil.',
                 'alert-circle',
                 [{ text: 'Oke', primary: true }]
@@ -3445,149 +3452,6 @@ window.archiveDownload = async function(identifier, title) {
         }, 300);
     }
 };
-
-// ─── GUTENDEX (Project Gutenberg) INTEGRATION ────────────────────────────────
-async function _gutendexSearch(query) {
-    if (!navigator.onLine) { _gutendexShowState('offline'); return; }
-    if (query === _gutendexLastQuery) return;
-    _gutendexLastQuery = query;
-    _gutendexShowState('loading');
-    try {
-        const url = `https://gutendex.com/books/?search=${encodeURIComponent(query)}&languages=en,id`;
-        const res = await fetch(url, { signal: AbortSignal.timeout(30000) });
-        if (!res.ok) throw new Error('HTTP ' + res.status);
-        const data = await res.json();
-        const books = data.results || [];
-        if (books.length === 0) { _gutendexShowState('empty'); return; }
-        _gutendexRenderCards(books);
-    } catch (e) {
-        if (e.name === 'AbortError') _gutendexShowState('error', 'Request timeout. Coba lagi.');
-        else _gutendexShowState('error', e.message || 'Gagal mencari.');
-    }
-}
-
-function _gutendexRenderCards(books) {
-    const container = document.getElementById('gutendex-cards');
-    if (!container) return;
-    container.innerHTML = '';
-    books.slice(0, 12).forEach(book => {
-        const title   = book.title || 'Untitled';
-        const authors = book.authors && book.authors.length > 0
-            ? book.authors.map(a => a.name).join(', ')
-            : '';
-        const coverUrl = book.formats && book.formats['image/jpeg']
-            ? book.formats['image/jpeg']
-            : null;
-        // Cari EPUB dulu, fallback ke teks biasa
-        const epubUrl = book.formats && (
-            book.formats['application/epub+zip'] ||
-            book.formats['application/epub+zip; charset=utf-8'] ||
-            Object.keys(book.formats).find(k => k.includes('epub'))
-        );
-        const hasEpub = !!epubUrl;
-        const badge = hasEpub ? 'EPUB' : 'TXT';
-
-        const card = document.createElement('div');
-        card.className = 'flex items-start gap-3 bg-m3-surfaceVariant rounded-[20px] p-3';
-        card.innerHTML = `
-            ${coverUrl
-                ? `<img src="${_esc(coverUrl)}" alt="" class="w-9 h-12 object-cover rounded-xl shrink-0 bg-m3-surface" onerror="this.style.display='none'" loading="lazy">`
-                : `<div class="w-9 h-12 rounded-xl shrink-0 bg-m3-surface flex items-center justify-center"><i data-lucide="book-open" class="w-4 h-4 opacity-30"></i></div>`
-            }
-            <div class="flex-1 min-w-0">
-                <p class="text-xs font-bold text-m3-onSurfaceVariant leading-snug line-clamp-2 mb-0.5">${_esc(title)}</p>
-                ${authors ? `<p class="text-[10px] text-m3-onSurfaceVariant opacity-55 truncate mb-1">${_esc(authors)}</p>` : ''}
-                <div class="flex items-center gap-1.5">
-                    <span class="text-[9px] font-black bg-green-500/15 text-green-700 dark:text-green-400 px-1.5 py-0.5 rounded-full">Gutenberg</span>
-                    <span class="text-[9px] font-black bg-m3-primary/15 text-m3-primary px-1.5 py-0.5 rounded-full">${badge}</span>
-                </div>
-            </div>
-            <button class="shrink-0 w-9 h-9 rounded-full bg-m3-primary text-m3-onPrimary flex items-center justify-center btn-morph shadow-sm" onclick="window.gutendexDownload(${book.id}, '${_esc(title.replace(/'/g, "\\'").replace(/"/g, '&quot;'))}')">
-                <i data-lucide="download" class="w-4 h-4 pointer-events-none"></i>
-            </button>
-        `;
-        container.appendChild(card);
-    });
-    if (window.lucide) window.lucide.createIcons({ nodes: Array.from(container.querySelectorAll('[data-lucide]')) });
-    _gutendexShowState('cards');
-}
-
-function _gutendexShowState(state, errMsg) {
-    ['gutendex-state-loading','gutendex-state-offline','gutendex-state-empty','gutendex-state-error','gutendex-cards'].forEach(id => {
-        const el = document.getElementById(id);
-        if (el) el.classList.add('hidden');
-    });
-    const map = { loading:'gutendex-state-loading', offline:'gutendex-state-offline', empty:'gutendex-state-empty', error:'gutendex-state-error', cards:'gutendex-cards' };
-    const target = map[state];
-    if (target) { const el = document.getElementById(target); if (el) el.classList.remove('hidden'); }
-    if (state === 'error' && errMsg) { const el = document.getElementById('gutendex-error-text'); if (el) el.textContent = errMsg; }
-}
-
-window.gutendexDownload = async function(bookId, title) {
-    if (!navigator.onLine) {
-        showDialog('Offline', 'Tidak ada koneksi internet.', 'wifi-off', [{ text: 'Oke', primary: true }]);
-        return;
-    }
-    _showDlOverlay('Mengambil info buku...');
-    try {
-        const res = await fetch(`https://gutendex.com/books/${bookId}`, { signal: AbortSignal.timeout(10000) });
-        if (!res.ok) throw new Error('HTTP ' + res.status);
-        const book = await res.json();
-        const formats = book.formats || {};
-
-        // Prioritas: epub+zip → epub biasa
-        const epubKey = Object.keys(formats).find(k => k.includes('epub'));
-        const epubUrl = epubKey ? formats[epubKey] : null;
-
-        if (!epubUrl) {
-            _hideDlOverlay();
-            showDialog('Tidak Ada EPUB', 'Buku ini tidak punya file EPUB. Hanya tersedia dalam format lain yang tidak didukung.', 'alert-circle', [{ text: 'Oke', primary: true }]);
-            return;
-        }
-
-        const sizeMb = '—';
-        _updateDlMsg(`Mengunduh EPUB...`);
-
-        const fileRes = await fetch(epubUrl, { signal: AbortSignal.timeout(120000) });
-        if (!fileRes.ok) throw new Error('Gagal download file (HTTP ' + fileRes.status + ')');
-
-        _updateDlMsg('Memproses file...');
-        const arrayBuffer = await fileRes.arrayBuffer();
-        if (!arrayBuffer || arrayBuffer.byteLength === 0) throw new Error('File kosong atau gagal didownload.');
-
-        const cleanTitle = title.replace(/[<>:"/\\|?*]/g, '').trim().substring(0, 60) || `book_${bookId}`;
-        const fileName   = `${cleanTitle}.epub`;
-        const file       = new File([arrayBuffer], fileName, { type: 'application/epub+zip' });
-
-        _hideDlOverlay();
-
-        setTimeout(async () => {
-            if (typeof window.closeSearch === 'function') window.closeSearch(false);
-            const libScroll = document.getElementById('library-content-scroll');
-            if (libScroll) libScroll.scrollTo({ top: 0, behavior: 'smooth' });
-            await new Promise(r => setTimeout(r, 480));
-            try {
-                if (typeof window._processFilesFromArchive === 'function') {
-                    await window._processFilesFromArchive([file]);
-                } else {
-                    throw new Error('Engine pemroses belum siap.');
-                }
-            } catch (procErr) {
-                if (typeof window.showPersistentToast === 'function') {
-                    window.showPersistentToast('Gagal diproses, file mungkin rusak.', 'error', 4000);
-                }
-            }
-        }, 400);
-
-    } catch (err) {
-        const ov = document.getElementById('archive-dl-overlay');
-        if (ov) { ov.style.opacity = '0'; setTimeout(() => { ov.innerHTML = ''; ov.style.display = 'none'; }, 220); }
-        setTimeout(() => {
-            showDialog('Gagal Mengunduh', err.message || 'Terjadi kesalahan. Pastikan koneksi internet stabil.', 'alert-circle', [{ text: 'Oke', primary: true }]);
-        }, 300);
-    }
-};
-// ─────────────────────────────────────────────────────────────────────────────
 
 function _esc(str) {
     if (!str) return '';
