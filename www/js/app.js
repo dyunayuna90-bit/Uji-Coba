@@ -3339,6 +3339,8 @@ window.archiveDownload = async function(identifier, title) {
 
             if (!userChoice) {
                 _archiveDownloading = false;
+                // Pastikan state abort controller dikembalikan ke null tanpa memicu history back
+                archiveAbortController = null;
                 return;
             }
             chosen     = userChoice.file;
@@ -3372,20 +3374,41 @@ window.archiveDownload = async function(identifier, title) {
             if (!arrayBuffer || arrayBuffer.byteLength === 0) throw new Error('File kosong atau gagal didownload.');
             file = new File([arrayBuffer], fileName, { type: mimeType });
         } else {
+            // SELALU PAKAI STREAM, BAHKAN KALAU TOTAL SIZE GAK KETAHUAN
             const reader = fileRes.body.getReader();
             let receivedBytes = 0;
             const chunks = [];
+            let lastUpdate = 0; // Timer untuk throttle UI
 
             while (true) {
                 const { done, value } = await reader.read();
                 if (done) break;
                 chunks.push(value);
                 receivedBytes += value.length;
+                const now = Date.now();
+                // THROTTLE: Update UI maksimal tiap 150ms biar HP gak ngelag/freeze
+                if (now - lastUpdate > 150) {
+                    const receivedMB = (receivedBytes / 1024 / 1024).toFixed(1);
+                    if (totalBytes > 0) {
+                        const totalMB = (totalBytes / 1024 / 1024).toFixed(1);
+                        let pct = Math.round((receivedBytes / totalBytes) * 100);
+                        if (pct > 100) pct = 100;
+                        _updateDlMsg(`${txt.downloading} ${chosenType.toUpperCase()}...\n${receivedMB} MB / ${totalMB} MB (${pct}%)`);
+                    } else {
+                        _updateDlMsg(`${txt.downloading} ${chosenType.toUpperCase()}...\n${receivedMB} MB terunduh...`);
+                    }
+                    lastUpdate = now;
+                }
+            }
 
+            // Paksa update ke 100% pas loop selesai
+            if (totalBytes > 0) {
                 const receivedMB = (receivedBytes / 1024 / 1024).toFixed(1);
-                const totalMB    = (totalBytes    / 1024 / 1024).toFixed(1);
-                const pct        = Math.round((receivedBytes / totalBytes) * 100);
-                _updateDlMsg(`${txt.downloading} ${chosenType.toUpperCase()}...\n${receivedMB} MB / ${totalMB} MB (${pct}%)`);
+                const totalMB = (totalBytes / 1024 / 1024).toFixed(1);
+                _updateDlMsg(`${txt.downloading} ${chosenType.toUpperCase()}...\n${receivedMB} MB / ${totalMB} MB (100%)`);
+            } else {
+                const receivedMB = (receivedBytes / 1024 / 1024).toFixed(1);
+                _updateDlMsg(`${txt.downloading} ${chosenType.toUpperCase()}...\n${receivedMB} MB Selesai.`);
             }
 
             _updateDlMsg(txt.merging);
