@@ -417,7 +417,9 @@ function updateBottomNavUI(activeId) {
 
 // 3. HARDWARE BACK BUTTON & HISTORY ROUTING
 window.addEventListener('popstate', (e) => {
-    if (!document.getElementById('raw-backup-modal').classList.contains('opacity-0')) { _closeModalAction('raw-backup-modal', 'raw-backup-sheet', true, true); }
+    if (window._archiveFmtClose) { window._archiveFmtClose(); return; }
+    else if (window._archiveDlCancel) { window._archiveDlCancel(); return; }
+    else if (!document.getElementById('raw-backup-modal').classList.contains('opacity-0')) { _closeModalAction('raw-backup-modal', 'raw-backup-sheet', true, true); }
     else if (!document.getElementById('raw-restore-modal').classList.contains('opacity-0')) { _closeModalAction('raw-restore-modal', 'raw-restore-sheet', true, true); }
     else if (!document.getElementById('custom-dialog').classList.contains('opacity-0')) { window.closeDialog(true); }
     else if (!document.getElementById('ai-modal').classList.contains('opacity-0')) { closeAiModal(true); }
@@ -3250,11 +3252,18 @@ function _showArchiveFormatPicker(epubFile, pdfFile, epubSizeMb, pdfSizeMb, onCh
     const _close = () => {
         overlay.style.opacity = '0';
         setTimeout(() => { overlay.innerHTML = ''; overlay.style.display = 'none'; }, 220);
+        window._archiveFmtClose = null;
     };
 
-    document.getElementById('archive-fmt-epub').onclick   = () => { _close(); onChoose({ file: epubFile, type: 'epub' }); };
-    document.getElementById('archive-fmt-pdf').onclick    = () => { _close(); onChoose({ file: pdfFile,  type: 'pdf'  }); };
-    document.getElementById('archive-fmt-cancel').onclick = () => { _close(); onChoose(null); };
+    // Expose ke window agar popstate bisa memanggilnya (back gesture/hardware)
+    window._archiveFmtClose = () => { _close(); onChoose(null); };
+
+    // Push history agar back gesture/tombol hardware Android bisa menutup overlay ini
+    history.pushState({ state: 'archive-fmt' }, '', '#archive-fmt');
+
+    document.getElementById('archive-fmt-epub').onclick   = () => { history.back(); _close(); onChoose({ file: epubFile, type: 'epub' }); };
+    document.getElementById('archive-fmt-pdf').onclick    = () => { history.back(); _close(); onChoose({ file: pdfFile,  type: 'pdf'  }); };
+    document.getElementById('archive-fmt-cancel').onclick = () => { history.back(); _close(); onChoose(null); };
 }
 
 window.archiveDownload = async function(identifier, title) {
@@ -3295,6 +3304,12 @@ window.archiveDownload = async function(identifier, title) {
         document.getElementById('archive-dl-cancel').onclick = () => {
             if (archiveAbortController) archiveAbortController.abort();
         };
+        // Expose ke window agar popstate bisa memanggilnya (back gesture/hardware)
+        window._archiveDlCancel = () => {
+            if (archiveAbortController) archiveAbortController.abort();
+        };
+        // Push history agar back gesture/tombol hardware Android bisa menutup overlay ini
+        history.pushState({ state: 'archive-dl' }, '', '#archive-dl');
         requestAnimationFrame(() => { ov.style.opacity = '1'; });
     };
     const _updateDlMsg = (msg) => {
@@ -3306,6 +3321,7 @@ window.archiveDownload = async function(identifier, title) {
         if (!ov) return;
         ov.style.opacity = '0';
         setTimeout(() => { ov.innerHTML = ''; ov.style.display = 'none'; }, 220);
+        window._archiveDlCancel = null;
     };
 
     _showDlOverlay(txt.meta);
