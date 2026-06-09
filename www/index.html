@@ -29,6 +29,30 @@
     <!-- CSS Terpisah & Tema Dinamis -->
     <link rel="stylesheet" href="css/style.css">
     <style id="dynamic-theme"></style>
+    <style>
+        @keyframes splash-bar {
+            0%   { left: -50%; width: 40%; }
+            50%  { left: 30%; width: 50%; }
+            100% { left: 100%; width: 40%; }
+        }
+        .splash-bar-anim {
+            animation: splash-bar 1.2s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+        }
+    </style>
+    <!-- Deteksi tema awal agar splash screen tidak kedip putih di dark mode -->
+    <script>
+        (function() {
+            try {
+                if (localStorage.getItem('theme') !== 'light') {
+                    document.documentElement.classList.add('dark');
+                    document.getElementById && document.addEventListener('DOMContentLoaded', function() {
+                        var s = document.getElementById('splash-screen');
+                        if (s) s.style.backgroundColor = '#0B0314';
+                    });
+                }
+            } catch(e) {}
+        })();
+    </script>
 </head>
 <body class="font-sans flex flex-col relative">
 
@@ -68,11 +92,17 @@
                 <div class="bg-m3-secondaryContainer text-m3-onSecondaryContainer rounded-[28px] p-4 shadow-sm relative flex flex-col justify-center min-h-[100px]">
                     <!-- Ornamen background M3 Expressive -->
                     <i data-lucide="asterisk" class="absolute -right-4 -bottom-6 w-32 h-32 text-m3-onSecondaryContainer opacity-[0.04] transform rotate-45 pointer-events-none"></i>
-                    <div class="absolute -left-8 -top-8 w-24 h-24 bg-m3-onSecondaryContainer/5 rounded-full blur-2xl pointer-events-none"></div>
+                    <div class="absolute -left-8 -top-8 w-24 h-24 bg-m3-onSecondaryContainer/5 rounded-full pointer-events-none"></div>
 
-                    <div class="flex items-center gap-2 mb-3 relative z-10">
-                        <div class="w-1.5 h-4 bg-m3-primary rounded-full"></div>
-                        <h2 class="text-xs font-black uppercase tracking-[0.15em] text-m3-onSecondaryContainer" id="str-stat-title">Statistik</h2>
+                    <div class="flex items-center justify-between mb-3 relative z-10">
+                        <div class="flex items-center gap-2">
+                            <div class="w-1.5 h-4 bg-m3-primary rounded-full"></div>
+                            <h2 class="text-xs font-black uppercase tracking-[0.15em] text-m3-onSecondaryContainer" id="str-stat-title">Statistik</h2>
+                        </div>
+                        <button id="stat-expand-btn" onclick="toggleStatChart()" class="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-m3-onSecondaryContainer/10 hover:bg-m3-onSecondaryContainer/20 transition-colors btn-morph">
+                            <i data-lucide="bar-chart-2" class="w-3.5 h-3.5 text-m3-onSecondaryContainer" id="stat-expand-icon"></i>
+                            <span class="text-[10px] font-bold text-m3-onSecondaryContainer" id="str-stat-expand">Lihat Grafik</span>
+                        </button>
                     </div>
 
                     <div class="grid grid-cols-4 gap-2 relative z-10">
@@ -93,6 +123,74 @@
                             <span class="text-[9px] font-bold uppercase tracking-widest opacity-70 mt-0.5" id="str-stat-notes">Catatan</span>
                         </div>
                     </div>
+
+                    <!-- Chart Area — collapsed by default -->
+                    <div id="stat-chart-area" class="overflow-hidden" style="max-height:0; opacity:0;">
+                        <div class="mt-5 pt-4 border-t border-m3-onSecondaryContainer/15 relative z-10">
+                            <div class="flex items-center justify-between mb-3">
+                                <span class="text-[10px] font-black uppercase tracking-widest opacity-60" id="str-stat-chart-title">Aktivitas Membaca</span>
+                                <span class="text-[9px] opacity-50 font-bold" id="str-stat-chart-days">7 hari terakhir</span>
+                            </div>
+                            <canvas id="stat-chart-canvas" height="120" class="w-full rounded-2xl"></canvas>
+                            <p id="stat-chart-empty" class="hidden text-center text-[10px] opacity-50 font-bold py-6">Belum ada data aktivitas membaca.</p>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- ARCHIVE.ORG SEARCH SECTION -->
+            <section id="archive-search-section" class="mb-8">
+                <div class="flex items-center gap-2 mb-3">
+                    <i data-lucide="globe" class="w-5 h-5 text-m3-primary"></i>
+                    <h2 id="str-archive-section-title" class="text-base font-bold text-m3-onBg tracking-tight">Temukan &amp; Unduh Buku</h2>
+                </div>
+
+                <!-- Search Bar -->
+                <div class="flex gap-2 mb-3">
+                    <div class="flex-1 flex items-center bg-m3-secondaryContainer rounded-full px-4 gap-2 h-12">
+                        <i data-lucide="search" class="w-4 h-4 opacity-60 text-m3-onSecondaryContainer shrink-0 pointer-events-none"></i>
+                        <input
+                            type="text"
+                            id="archive-search-input"
+                            class="flex-1 bg-transparent border-none outline-none text-sm font-bold text-m3-onSecondaryContainer placeholder:text-m3-onSecondaryContainer/60"
+                            placeholder="Cari judul, penulis..."
+                            onkeydown="if(event.key==='Enter') window.searchArchive()"
+                        >
+                    </div>
+                    <button onclick="window.searchArchive()" class="w-12 h-12 rounded-full bg-m3-primary text-m3-onPrimary flex items-center justify-center btn-morph shadow-sm shrink-0">
+                        <i data-lucide="search" class="w-5 h-5"></i>
+                    </button>
+                </div>
+
+                <!-- Filter Chips -->
+                <div class="flex gap-2 mb-3">
+                    <button id="archive-filter-all" onclick="window.setArchiveFilter('all')" class="px-3 py-1.5 rounded-full text-xs font-bold bg-m3-primary text-m3-onPrimary btn-morph">Semua</button>
+                    <button id="archive-filter-pdf" onclick="window.setArchiveFilter('pdf')" class="px-3 py-1.5 rounded-full text-xs font-bold bg-m3-surfaceVariant text-m3-onSurfaceVariant btn-morph">PDF</button>
+                    <button id="archive-filter-epub" onclick="window.setArchiveFilter('epub')" class="px-3 py-1.5 rounded-full text-xs font-bold bg-m3-surfaceVariant text-m3-onSurfaceVariant btn-morph">EPUB</button>
+                </div>
+
+                <!-- Result count -->
+                <p id="archive-result-count" class="hidden text-[10px] font-bold text-m3-onBg opacity-50 mb-2 px-1"></p>
+
+                <!-- Results Container -->
+                <div id="archive-results" class="flex flex-col gap-3">
+                    <!-- Placeholder state -->
+                    <div id="archive-placeholder" class="flex flex-col items-center justify-center py-8 opacity-30">
+                        <i data-lucide="book-open" class="w-12 h-12 mb-3 text-m3-onBg"></i>
+                        <p class="text-xs font-bold text-m3-onBg text-center">Cari buku dari jutaan koleksi<br>Internet Archive</p>
+                    </div>
+                    <!-- Loading state (hidden by default) -->
+                    <div id="archive-loading" class="hidden flex flex-col items-center justify-center py-8 gap-3">
+                        <div class="w-8 h-8 border-3 border-m3-primary border-t-transparent rounded-full animate-spin"></div>
+                        <p id="str-archive-loading" class="text-xs font-bold text-m3-onBg opacity-60">Mencari di arsip...</p>
+                    </div>
+                    <!-- Empty state (hidden by default) -->
+                    <div id="archive-empty" class="hidden flex flex-col items-center justify-center py-8 opacity-40">
+                        <i data-lucide="search-x" class="w-10 h-10 mb-3 text-m3-onBg"></i>
+                        <p id="str-archive-empty" class="text-xs font-bold text-m3-onBg text-center">Tidak ada hasil. Coba kata kunci lain.</p>
+                    </div>
+                    <!-- Book result cards injected here by JS -->
+                    <div id="archive-cards-container" class="hidden flex flex-col gap-3"></div>
                 </div>
             </section>
 
@@ -183,7 +281,7 @@
             </div>
 
             <!-- MODE CANVAS (Layout Asli) -->
-            <div id="canvas-container" class="hidden absolute inset-0 overflow-hidden w-full h-full bg-m3-bg select-none" style="padding-top: 56px; padding-bottom: 96px;">
+            <div id="canvas-container" class="hidden absolute inset-0 overflow-hidden w-full h-full bg-m3-bg select-none" style="padding-top: 56px; padding-bottom: 0px;">
                 <div id="canvas-zoom-viewport" class="w-full h-full overflow-hidden flex items-center justify-center">
                     <!-- Wrapper: di-center oleh flex parent, transform-origin center agar zoom tidak loncat -->
                     <div id="canvas-wrapper" class="shadow-lg bg-white flex-shrink-0" style="transform-origin: center center;">
@@ -191,24 +289,7 @@
                     </div>
                 </div>
                 
-                <!-- CANVAS PAGE CONTROLLER -->
-                <div id="canvas-page-controller" class="hidden absolute left-1/2 -translate-x-1/2 bg-m3-surfaceVariant text-m3-onSurfaceVariant px-4 py-2.5 rounded-full shadow-lg z-30 flex items-center gap-3 border border-m3-surfaceVariant/20" style="bottom: 12px;">
-                    <button onclick="window.prevCanvasPage()" class="w-9 h-9 rounded-full hover:bg-m3-surface flex items-center justify-center transition-colors btn-morph">
-                        <i data-lucide="chevron-left" class="w-5 h-5"></i>
-                    </button>
-                    <div class="flex items-center gap-1 text-xs font-black tracking-wide">
-                        <span id="canvas-page-num" class="text-m3-primary">1</span>
-                        <span class="opacity-50">/</span>
-                        <span id="canvas-page-total">1</span>
-                    </div>
-                    <button onclick="window.nextCanvasPage()" class="w-9 h-9 rounded-full hover:bg-m3-surface flex items-center justify-center transition-colors btn-morph">
-                        <i data-lucide="chevron-right" class="w-5 h-5"></i>
-                    </button>
-                    <div class="w-[1px] h-5 bg-m3-onSurfaceVariant/20 mx-1"></div>
-                    <button onclick="window.showJumpToPageDialog()" class="w-9 h-9 rounded-full hover:bg-m3-surface flex items-center justify-center transition-colors text-m3-primary btn-morph" title="Lompat Halaman">
-                        <i data-lucide="hash" class="w-4 h-4"></i>
-                    </button>
-                </div>
+
             </div>
 
             <div id="side-panel-overlay" class="hidden absolute inset-0 bg-black/20 z-30 transition-opacity"></div>
@@ -248,11 +329,25 @@
 
                     <div id="setting-group-search">
                         <label id="str-set-search" class="text-xs font-bold opacity-70 block mb-3 uppercase tracking-wider">Pencarian</label>
-                        <div class="search-capsule bg-m3-surface p-1 rounded-full relative flex items-center h-14 border-none transition-all duration-300">
-                            <i data-lucide="search" class="w-5 h-5 ml-4 opacity-70 text-m3-onSurface shrink-0 pointer-events-none"></i>
-                            <input type="text" id="inbook-search-input" class="w-full bg-transparent border-none outline-none py-2 pl-3 pr-4 text-sm font-bold text-m3-onSurface placeholder:opacity-60" placeholder="Cari dalam buku...">
+                        <!-- Scroll mode: pencarian teks -->
+                        <div id="search-scroll-area">
+                            <div class="search-capsule bg-m3-surface p-1 rounded-full relative flex items-center h-14 border-none transition-all duration-300">
+                                <i data-lucide="search" class="w-5 h-5 ml-4 opacity-70 text-m3-onSurface shrink-0 pointer-events-none"></i>
+                                <input type="text" id="inbook-search-input" class="w-full bg-transparent border-none outline-none py-2 pl-3 pr-4 text-sm font-bold text-m3-onSurface placeholder:opacity-60" placeholder="Cari dalam buku...">
+                            </div>
+                            <div id="search-results-panel" class="hidden mt-3 max-h-48 overflow-y-auto rounded-2xl bg-m3-surface text-xs shadow-md border-none pointer-events-auto flex-col gap-1 p-2"></div>
                         </div>
-                        <div id="search-results-panel" class="hidden mt-3 max-h-48 overflow-y-auto rounded-2xl bg-m3-surface text-xs shadow-md border-none pointer-events-auto flex-col gap-1 p-2"></div>
+                        <!-- Canvas mode: lompat ke halaman -->
+                        <div id="search-canvas-area" class="hidden">
+                            <div class="flex items-center gap-2 bg-m3-surface p-2 pl-4 rounded-full h-14">
+                                <i data-lucide="corner-down-right" class="w-5 h-5 opacity-70 text-m3-primary shrink-0 pointer-events-none"></i>
+                                <input type="number" id="canvas-jump-input" min="1"
+                                    class="flex-1 bg-transparent border-none outline-none text-sm font-bold text-m3-onSurface placeholder:opacity-60 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                                    placeholder="Halaman..."
+                                    onkeydown="if(event.key==='Enter') window.executeJumpToPage()">
+                                <button onclick="window.executeJumpToPage()" class="px-4 py-2 bg-m3-primary text-m3-onPrimary rounded-full font-bold text-xs btn-morph shrink-0">Go</button>
+                            </div>
+                        </div>
                     </div>
 
                     <div id="setting-group-theme">
@@ -294,9 +389,40 @@
             </div>
         </div>
 
+        <!-- JUMP TO PAGE BAR (canvas mode, above bottom bar) -->
+        <div id="canvas-jump-bar" class="hidden bg-m3-surface border-t border-m3-surfaceVariant px-4 py-2.5 shrink-0 z-40 flex items-center gap-2 transition-all duration-200">
+            <i data-lucide="corner-down-right" class="w-4 h-4 text-m3-primary shrink-0"></i>
+            <input type="number" id="canvas-jump-input" min="1" placeholder="Halaman..." 
+                class="flex-1 bg-m3-surfaceVariant text-m3-onSurface text-sm font-bold px-3 py-1.5 rounded-full border-none outline-none focus:ring-2 focus:ring-m3-primary/30 placeholder:opacity-50 placeholder:font-normal [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                onkeydown="if(event.key==='Enter') window.executeJumpToPage()">
+            <button onclick="window.executeJumpToPage()" class="px-4 py-1.5 bg-m3-primary text-m3-onPrimary rounded-full font-bold text-xs btn-morph shrink-0">Go</button>
+            <button onclick="window.hideJumpBar()" class="w-7 h-7 rounded-full flex items-center justify-center text-m3-onSurfaceVariant btn-morph shrink-0">
+                <i data-lucide="x" class="w-4 h-4"></i>
+            </button>
+        </div>
+
         <!-- PROGRESS BAR -->
         <div id="progress-container" class="h-1 w-full bg-m3-surfaceVariant shrink-0 z-40 relative">
             <div id="reading-progress-bar" class="h-full bg-m3-primary progress-smooth w-0"></div>
+        </div>
+
+        <!-- CANVAS PAGE INDICATOR (di atas bottom bar, hanya canvas mode) -->
+        <div id="canvas-page-indicator-bar" class="hidden bg-m3-surfaceVariant/80 px-3 py-1.5 shrink-0 z-40 flex items-center gap-2" style="display:none !important">
+            <!-- This element is kept for backward compat, logic moved to canvas-page-controller -->
+        </div>
+        <!-- Canvas Page Controller: prev/next + nomor halaman -->
+        <div id="canvas-page-controller" class="hidden bg-m3-surfaceVariant/90 px-3 py-1.5 shrink-0 z-40 flex items-center gap-2">
+            <button onclick="window.prevCanvasPage()" class="w-7 h-7 rounded-full flex items-center justify-center text-m3-primary btn-morph hover:bg-m3-surface transition-colors" title="Halaman Sebelumnya">
+                <i data-lucide="chevron-left" class="w-4 h-4"></i>
+            </button>
+            <div class="flex items-center gap-1 text-xs font-black tracking-wide text-m3-onSurfaceVariant flex-1 justify-center">
+                <span id="canvas-page-num" class="text-m3-primary">1</span>
+                <span class="opacity-40">/</span>
+                <span id="canvas-page-total">1</span>
+            </div>
+            <button onclick="window.nextCanvasPage()" class="w-7 h-7 rounded-full flex items-center justify-center text-m3-primary btn-morph hover:bg-m3-surface transition-colors" title="Halaman Berikutnya">
+                <i data-lucide="chevron-right" class="w-4 h-4"></i>
+            </button>
         </div>
 
         <!-- BOTTOM NAV BAR -->
@@ -338,6 +464,11 @@
                         <i data-lucide="database-backup" class="text-m3-primary mb-3 w-6 h-6"></i>
                         <h3 id="str-wel-backup" class="font-bold mb-1 text-sm">Pencadangan Data</h3>
                         <p id="str-wel-backup-desc" class="text-xs opacity-80 leading-relaxed font-medium">Gunakan fitur Backup di Pengaturan. Tersedia opsi <b>JSON</b> (hanya progres) dan <b>ZIP</b> (full backup isi buku). File disimpan di folder <b>Documents</b> HP lu.</p>
+                    </div>
+                    <div class="bg-m3-surfaceVariant p-5 rounded-3xl pb-6">
+                        <i data-lucide="layers" class="text-m3-primary mb-3 w-6 h-6"></i>
+                        <h3 id="str-wel-canvas" class="font-bold mb-1 text-sm">Mode Canvas PDF</h3>
+                        <p id="str-wel-canvas-desc" class="text-xs opacity-80 leading-relaxed font-medium">Mode Canvas menampilkan halaman PDF persis seperti aslinya.</p>
                     </div>
                     <div class="bg-m3-surfaceVariant p-5 rounded-3xl pb-6">
                         <i data-lucide="file-warning" class="text-m3-primary mb-3 w-6 h-6"></i>
@@ -729,6 +860,17 @@
         <div class="bg-m3-surface rounded-[32px] p-8 flex flex-col items-center gap-4 shadow-2xl min-w-[200px]">
             <div class="w-12 h-12 rounded-full border-4 border-m3-surfaceVariant border-t-m3-primary animate-spin"></div>
             <p id="global-loading-text" class="text-sm font-bold text-m3-onSurface text-center opacity-80">Memproses...</p>
+        </div>
+    </div>
+
+    <!-- SPLASH SCREEN — ditampilkan saat app pertama kali muat, hilang setelah library siap -->
+    <div id="splash-screen" class="fixed inset-0 z-[9999] flex flex-col items-center justify-center gap-6 transition-opacity duration-500" style="background-color: var(--md-sys-color-background, #FAF5FF);">
+        <div class="flex flex-col items-center gap-3">
+            <h1 class="text-5xl font-black tracking-tighter" style="color: var(--md-sys-color-on-background, #1C1B1E); font-family: 'Outfit', sans-serif;">Baca.</h1>
+            <p id="splash-status" class="text-xs font-bold uppercase tracking-widest animate-pulse" style="color: var(--md-sys-color-on-surface-variant, #49454F); opacity: 0.7;">Memuat...</p>
+        </div>
+        <div class="w-40 h-1 rounded-full overflow-hidden relative" style="background-color: var(--md-sys-color-surface-variant, #E7E0EB);">
+            <div class="absolute inset-y-0 left-0 rounded-full splash-bar-anim" style="background-color: var(--md-sys-color-primary, #6750A4); width: 40%;"></div>
         </div>
     </div>
 
