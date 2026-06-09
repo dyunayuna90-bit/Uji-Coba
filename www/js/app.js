@@ -336,6 +336,8 @@ function applyLanguage() {
     setElementText('str-edit-book-cover', d.editBookCover); setElementText('str-edit-book-shape', d.editBookShape);
     setElementText('str-edit-cancel', d.editCancel); setElementText('str-edit-save', d.editSave);
     setElementText('str-amoled-label', d.amoledLabel);
+    setElementText('str-hide-titles-label', d.setHideTitles || 'Sembunyikan Judul Buku');
+    _syncHideTitlesUI();
     
     setElementText('shape-default', d.shapeDyn);
     setElementText('shape-rounded', d.shapeRound);
@@ -384,6 +386,9 @@ function applyLanguage() {
     setElementText('str-stat-reading', d.statReading || "Dibaca");
     setElementText('str-stat-completed', d.statCompleted || "Selesai");
     setElementText('str-stat-notes', d.statNotes || "Catatan");
+
+    // TOC canvas warning
+    setElementText('str-toc-canvas-warning', d.tocCanvasWarning || 'Untuk mode canvas, daftar isi tidak tersedia.');
 }
 
 window.setWikiLang = function(lang) {
@@ -1043,12 +1048,10 @@ function createBookCard(book, isSlider = false, index = 0) {
         </div>
     ` : '';
 
-    // Menyiapkan Badge khusus PDF-Canvas vs PDF-Scroll
+    // Badge: PDF ya PDF saja, tidak perlu label mode
     const d = i18n[wikiLang] || i18n['id'];
-    let badgeText = book.type;
-    if (book.type === 'pdf') {
-        badgeText = book.pdfMode === 'canvas' ? (d.pdfCanvasBadge || 'PDF-CANVAS') : (d.pdfScrollBadge || 'PDF-SCROLL');
-    }
+    let badgeText = book.type.toUpperCase();
+    if (book.type === 'pdf') badgeText = 'PDF';
 
     card.innerHTML = `
         ${batchOverlayHTML}
@@ -1393,11 +1396,41 @@ function applyThemeToDOM() {
     localStorage.setItem('theme', isDark ? 'dark' : 'light'); 
     localStorage.setItem('m3-key', currentThemeKey);
     localStorage.setItem('amoled', isAmoled);
+
+    // Canvas AMOLED: background kertas jadi hitam pekat, teks jadi putih
+    const canvasWrapper = document.getElementById('canvas-wrapper');
+    if (canvasWrapper) {
+        if (isDark && isAmoled) {
+            canvasWrapper.style.backgroundColor = '#000000';
+            canvasWrapper.style.filter = 'invert(1) hue-rotate(180deg)';
+        } else {
+            canvasWrapper.style.backgroundColor = '';
+            canvasWrapper.style.filter = '';
+        }
+    }
 }
 
 window.setTheme = function(key) { currentThemeKey = key; applyThemeToDOM(); };
 window.toggleThemeState = function() { isDark = !isDark; applyThemeToDOM(); };
 window.toggleAmoled = function() { isAmoled = !isAmoled; applyThemeToDOM(); };
+
+// ── Global Loading Spinner (untuk jeda antar modal / proses berat) ──
+window.showGlobalLoading = function(text) {
+    const d    = i18n[wikiLang] || i18n['id'];
+    const overlay = document.getElementById('global-loading-overlay');
+    const txt  = document.getElementById('global-loading-text');
+    if (!overlay) return;
+    if (txt) txt.textContent = text || d.loadingDocs || 'Memproses...';
+    overlay.classList.remove('hidden');
+    requestAnimationFrame(() => overlay.classList.remove('opacity-0'));
+};
+
+window.hideGlobalLoading = function() {
+    const overlay = document.getElementById('global-loading-overlay');
+    if (!overlay) return;
+    overlay.classList.add('opacity-0');
+    setTimeout(() => overlay.classList.add('hidden'), 220);
+};
 
 // Fitur Baru v25: Sembunyikan Judul di Rak Buku
 window.toggleHideTitles = function() {
@@ -1410,8 +1443,25 @@ window.toggleHideTitles = function() {
         document.body.classList.remove('hide-book-titles');
     }
     
+    // Sync toggle UI
+    _syncHideTitlesUI();
     renderLibrary(DOM.globalSearch ? DOM.globalSearch.value : '');
 };
+
+function _syncHideTitlesUI() {
+    const bg   = document.getElementById('hide-titles-switch-bg');
+    const knob = document.getElementById('hide-titles-switch-knob');
+    if (!bg || !knob) return;
+    if (isTitlesHidden) {
+        bg.classList.add('bg-m3-primary');
+        bg.classList.remove('bg-m3-onSurfaceVariant/20');
+        knob.style.transform = 'translateX(32px)';
+    } else {
+        bg.classList.remove('bg-m3-primary');
+        bg.classList.add('bg-m3-onSurfaceVariant/20');
+        knob.style.transform = 'translateX(0)';
+    }
+}
 
 window.setReaderTheme = function(mode) {
     if (mode === 'light') { isDark = false; isAmoled = false; }
@@ -1476,11 +1526,28 @@ window.openBook = async function(book) {
     const currentBook = library.find(b => b.id === book.id);
     const isCanvas = currentBook && currentBook.pdfMode === 'canvas';
 
+    // Tampilkan/sembunyikan TOC canvas warning
+    const tocCanvasWarn = document.getElementById('toc-canvas-warning');
+    if (tocCanvasWarn) tocCanvasWarn.classList.toggle('hidden', !isCanvas);
+    // Terjemahan
+    const tocWarnStr = document.getElementById('str-toc-canvas-warning');
+    if (tocWarnStr) {
+        const dNow = i18n[wikiLang] || i18n['id'];
+        tocWarnStr.textContent = dNow.tocCanvasWarning || 'Untuk mode canvas, daftar isi tidak tersedia.';
+    }
+
+    // Tampilkan capsule page controller hanya di canvas mode
+    const canvasCtrl = document.getElementById('canvas-page-controller');
+
     // Kelola visibilitas viewport pembaca secara dinamis (Scroll vs Canvas)
     if (isCanvas) {
         DOM.readContent.classList.add('hidden');
         if (DOM.canvasContainer) DOM.canvasContainer.classList.remove('hidden');
         if (DOM.canvasWarning) DOM.canvasWarning.classList.remove('hidden');
+        if (canvasCtrl) canvasCtrl.classList.remove('hidden');
+
+        // Terapkan AMOLED ke canvas wrapper jika aktif
+        applyThemeToDOM();
 
         // Redupkan grup setting tipografi & AI secara halus
         ['size', 'align', 'font', 'search'].forEach(grp => {
@@ -1516,6 +1583,7 @@ window.openBook = async function(book) {
         DOM.readContent.classList.remove('hidden');
         if (DOM.canvasContainer) DOM.canvasContainer.classList.add('hidden');
         if (DOM.canvasWarning) DOM.canvasWarning.classList.add('hidden');
+        if (canvasCtrl) canvasCtrl.classList.add('hidden');
 
         // Kembalikan visibilitas grup setting secara utuh
         ['size', 'align', 'font', 'search'].forEach(grp => {
