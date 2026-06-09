@@ -1428,27 +1428,44 @@ function createBookCard(book, isSlider = false, index = 0) {
     `;
 
     localforage.getItem('cover_' + book.id).then(coverData => {
-        if (coverData && coverData.length > 50) {
-            card.style.backgroundImage = `url('${coverData}')`;
-            card.style.backgroundSize = 'cover';
-            card.style.backgroundPosition = 'top center';
-            
-            card.classList.remove(...baseClass.split(' '));
-            card.classList.add('text-white', 'shadow-lg');
-            
-            const overlay = document.getElementById(`overlay-${book.id}`);
-            if(overlay) overlay.classList.remove('hidden');
-            
-            ['title-', 'top-icons-', 'pct-'].forEach(prefix => {
-                const el = document.getElementById(prefix + book.id);
-                if(el) el.classList.add('text-white');
+        if (!coverData) return;
+
+        // Support format baru (Blob) dan format lama (base64 string) secara bersamaan
+        let coverUrl = null;
+        if (coverData instanceof Blob) {
+            coverUrl = URL.createObjectURL(coverData);
+        } else if (typeof coverData === 'string' && coverData.length > 50) {
+            coverUrl = coverData;
+        }
+        if (!coverUrl) return;
+
+        card.style.backgroundImage = `url('${coverUrl}')`;
+        card.style.backgroundSize = 'cover';
+        card.style.backgroundPosition = 'top center';
+        
+        card.classList.remove(...baseClass.split(' '));
+        card.classList.add('text-white', 'shadow-lg');
+        
+        const overlay = document.getElementById(`overlay-${book.id}`);
+        if(overlay) overlay.classList.remove('hidden');
+        
+        ['title-', 'top-icons-', 'pct-'].forEach(prefix => {
+            const el = document.getElementById(prefix + book.id);
+            if(el) el.classList.add('text-white');
+        });
+        
+        const bar = document.getElementById(`bar-${book.id}`);
+        if(bar) { bar.classList.remove('bg-m3-primary', 'dark:bg-m3-primaryContainer'); bar.classList.add('bg-white'); }
+        
+        const icon = document.getElementById(`book-icon-${book.id}`);
+        if(icon) icon.classList.add('hidden');
+
+        // Revoke ObjectURL saat card dihapus dari DOM agar tidak leak
+        if (coverData instanceof Blob) {
+            const mo = new MutationObserver(() => {
+                if (!document.body.contains(card)) { URL.revokeObjectURL(coverUrl); mo.disconnect(); }
             });
-            
-            const bar = document.getElementById(`bar-${book.id}`);
-            if(bar) { bar.classList.remove('bg-m3-primary', 'dark:bg-m3-primaryContainer'); bar.classList.add('bg-white'); }
-            
-            const icon = document.getElementById(`book-icon-${book.id}`);
-            if(icon) icon.classList.add('hidden');
+            mo.observe(document.body, { childList: true, subtree: true });
         }
     });
 
@@ -1966,63 +1983,98 @@ window.openBook = async function(book) {
         }
 
         setTimeout(() => {
-            let hCounter = 0; const fragment = document.createDocumentFragment(); let currentHeadingId = null;
+            const CHUNK_SIZE = 50;
+            let hCounter = 0;
+            let currentHeadingId = null;
+            const allNodes = book.nodes;
+            const totalNodes = allNodes.length;
 
-            book.nodes.forEach((node, i) => {
-                let el; const annots = (book.annotations || []).filter(a => a.nodeIdx === i);
-
+            // Helper: buat satu elemen DOM dari node data
+            function _buildNodeEl(node, i) {
+                let el;
+                const annots = (book.annotations || []).filter(a => a.nodeIdx === i);
                 if (node.tag === 'img') {
                     el = document.createElement('img'); el.src = node.src; el.id = `node-${i}`;
                     el.className = "w-full max-w-lg mx-auto rounded-2xl my-8 object-contain shadow-sm"; el.loading = "lazy";
                 } else {
-                    el = document.createElement(node.tag); 
-                    el.innerHTML = window.renderNodeText ? window.renderNodeText(node.text, annots) : node.text; 
+                    el = document.createElement(node.tag);
+                    el.innerHTML = window.renderNodeText ? window.renderNodeText(node.text, annots) : node.text;
                     el.id = `node-${i}`;
                     if (node.tag === 'h1' || node.tag === 'h2') {
-                        hCounter++; currentHeadingId = el.id; 
+                        hCounter++; currentHeadingId = el.id;
                         el.className = node.tag === 'h1' ? "text-3xl font-bold tracking-tight mt-12 mb-6 text-m3-primary leading-snug break-words" : "text-xl font-bold mt-10 mb-4 text-m3-onSurfaceVariant border-b border-m3-surfaceVariant pb-2 break-words";
                         const tocItem = document.createElement('button'); tocItem.id = `toc-btn-${el.id}`;
-                        tocItem.className = `text-left text-sm p-3 rounded-2xl hover:bg-m3-surface transition-all duration-300 ${node.tag==='h1'?'font-bold text-m3-primary':'ml-4 opacity-80'}`;
+                        tocItem.className = `text-left text-sm p-3 rounded-2xl hover:bg-m3-surface transition-all duration-300 ${node.tag === 'h1' ? 'font-bold text-m3-primary' : 'ml-4 opacity-80'}`;
                         tocItem.textContent = node.text;
                         tocItem.onclick = () => { el.scrollIntoView({ behavior: 'smooth', block: 'start' }); history.back(); };
                         DOM.tocList.appendChild(tocItem);
                     } else { el.className = "text-m3-onSurface opacity-90 mb-5 tracking-wide"; }
                 }
-                el.dataset.headingId = currentHeadingId; fragment.appendChild(el);
-            });
-            DOM.inner.appendChild(fragment);
-            
-            if(hCounter === 0) DOM.tocList.innerHTML = "<p class='text-sm opacity-50 block p-3'>No Table of Contents.</p>";
+                el.dataset.headingId = currentHeadingId;
+                return el;
+            }
+
+            // Render satu chunk node ke DOM, pasang sentinel di akhir jika masih ada
+            let _chunkObserver = null;
+            function _renderChunk(startIdx) {
+                // Putus sentinel observer lama sebelum pasang yang baru
+                if (_chunkObserver) { _chunkObserver.disconnect(); _chunkObserver = null; }
+
+                const endIdx = Math.min(startIdx + CHUNK_SIZE, totalNodes);
+                const fragment = document.createDocumentFragment();
+                for (let i = startIdx; i < endIdx; i++) {
+                    fragment.appendChild(_buildNodeEl(allNodes[i], i));
+                }
+                DOM.inner.appendChild(fragment);
+
+                // Jika masih ada node tersisa, pasang IntersectionObserver pada elemen terakhir
+                if (endIdx < totalNodes) {
+                    const lastRendered = DOM.inner.lastElementChild;
+                    if (lastRendered) {
+                        _chunkObserver = new IntersectionObserver((entries) => {
+                            if (entries[0].isIntersecting) {
+                                _renderChunk(endIdx);
+                            }
+                        }, { root: DOM.readContent, rootMargin: '0px 0px 200px 0px', threshold: 0 });
+                        _chunkObserver.observe(lastRendered);
+                    }
+                }
+            }
+
+            // Mulai render chunk pertama
+            _renderChunk(0);
+
+            if (hCounter === 0) DOM.tocList.innerHTML = "<p class='text-sm opacity-50 block p-3'>No Table of Contents.</p>";
             DOM.searchRes.classList.add('hidden'); DOM.searchInput.value = '';
 
             const header = document.getElementById('reader-floating-header');
             header.classList.remove('-translate-y-[150%]', 'opacity-0');
             header.classList.add('translate-y-0', 'opacity-100');
 
-            renderBookmarkPanel(); 
+            renderBookmarkPanel();
 
             requestAnimationFrame(() => {
-                if (book.lastReadId) { 
-                    const target = document.getElementById(book.lastReadId); 
+                if (book.lastReadId) {
+                    const target = document.getElementById(book.lastReadId);
                     const container = DOM.readContent;
                     if (target && container) {
                         const cRect = container.getBoundingClientRect();
                         const tRect = target.getBoundingClientRect();
                         const offset = tRect.top - cRect.top + container.scrollTop - (cRect.height / 2) + (tRect.height / 2);
                         container.scrollTo({ top: offset, behavior: 'auto' });
-                    } 
-                } else { 
-                    DOM.readContent.scrollTo({ top: 0, behavior: 'auto' }); 
+                    }
+                } else {
+                    DOM.readContent.scrollTo({ top: 0, behavior: 'auto' });
                 }
-                
+
                 setTimeout(() => {
-                    loader.classList.add('opacity-0'); 
+                    loader.classList.add('opacity-0');
                     setTimeout(() => loader.classList.add('hidden'), 300);
-                    window.setupIntersectionObserver(); 
+                    window.setupIntersectionObserver();
                 }, 150);
             });
 
-        }, 300); 
+        }, 300);
     }
 }
 
@@ -2404,6 +2456,10 @@ window._closeReaderAction = function(isFromHistory = false) {
     if(observer) observer.disconnect(); 
     
     // Reset Canvas State (v25: termasuk translate)
+    // Destroy PDF.js document sebelum null-kan untuk mencegah memory leak
+    if (currentPdfDoc) {
+        try { currentPdfDoc.destroy(); } catch(e) { console.warn('PDFDocumentProxy.destroy():', e); }
+    }
     currentPdfDoc = null;
     currentCanvasPage = 1;
     currentCanvasScale = 1.0;

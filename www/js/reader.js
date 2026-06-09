@@ -759,7 +759,7 @@ async function processPdfDirect(file, bookTitle, finalMode, total) {
     const pdf = await pdfjsLib.getDocument({ data: arrayBuffer.slice(0) }).promise;
 
     // --- EKSTRAK COVER ---
-    let coverBase64 = null;
+    let coverBlob = null;
     try {
         const coverCanvas = document.createElement('canvas');
         const coverCtx = coverCanvas.getContext('2d');
@@ -768,7 +768,7 @@ async function processPdfDirect(file, bookTitle, finalMode, total) {
         coverCanvas.width = viewport.width;
         coverCanvas.height = viewport.height;
         await firstPage.render({ canvasContext: coverCtx, viewport: viewport }).promise;
-        coverBase64 = coverCanvas.toDataURL('image/jpeg', 0.8);
+        coverBlob = await new Promise(resolve => coverCanvas.toBlob(resolve, 'image/jpeg', 0.8));
     } catch(e) { console.error("Gagal cover PDF", e); }
 
     let newBookId = btoa(unescape(encodeURIComponent(file.name))).replace(/[^a-zA-Z0-9]/g, '').substring(0, 32);
@@ -784,7 +784,7 @@ async function processPdfDirect(file, bookTitle, finalMode, total) {
         
         const pdfBlob = new Blob([arrayBuffer], { type: 'application/pdf' });
         await localforage.setItem('rawpdf_' + newBookId, pdfBlob);
-        if(coverBase64) await localforage.setItem('cover_' + newBookId, coverBase64);
+        if(coverBlob) await localforage.setItem('cover_' + newBookId, coverBlob);
 
         const existingIndex = library.findIndex(b => b.id === newBookId);
         if (existingIndex === -1) {
@@ -1133,7 +1133,7 @@ async function processPdfDirect(file, bookTitle, finalMode, total) {
         }
 
         await localforage.setItem('content_' + newBookId, mergedNodes);
-        if(coverBase64) await localforage.setItem('cover_' + newBookId, coverBase64);
+        if(coverBlob) await localforage.setItem('cover_' + newBookId, coverBlob);
 
         const existingIndex = library.findIndex(b => b.id === newBookId);
         if (existingIndex === -1) {
@@ -1167,8 +1167,7 @@ async function processPdfDirect(file, bookTitle, finalMode, total) {
 // 3. FUNGSI EKSTRAK EPUB
 async function handleEpub(file, bookTitle) {
     const zip = await JSZip.loadAsync(file); 
-    let parsedNodes = []; 
-    let coverBase64 = null;
+    let parsedNodes = [];
 
     const containerXml = await zip.file("META-INF/container.xml").async("text");
     const opfPath = (new DOMParser()).parseFromString(containerXml, "text/xml").getElementsByTagName("rootfile")[0].getAttribute("full-path");
@@ -1184,6 +1183,8 @@ async function handleEpub(file, bookTitle) {
         manifest[item.getAttribute("id")] = { href: item.getAttribute("href"), mediaType: item.getAttribute("media-type") }; 
     });
 
+    let coverBlob = null;
+
     const metaCover = opfDoc.querySelector("meta[name='cover']");
     if (metaCover) {
         const coverId = metaCover.getAttribute("content");
@@ -1192,19 +1193,27 @@ async function handleEpub(file, bookTitle) {
             const coverFile = zip.file(coverPath);
             if (coverFile) {
                 const b64 = await coverFile.async("base64");
-                coverBase64 = "data:" + manifest[coverId].mediaType + ";base64," + b64;
+                const mime = manifest[coverId].mediaType || 'image/jpeg';
+                const raw = atob(b64);
+                const arr = new Uint8Array(raw.length);
+                for (let i = 0; i < raw.length; i++) arr[i] = raw.charCodeAt(i);
+                coverBlob = new Blob([arr], { type: mime });
             }
         }
     }
 
-    if (!coverBase64) {
+    if (!coverBlob) {
         const potentialCover = Object.values(manifest).find(m => m.href.toLowerCase().includes('cover') && m.mediaType.startsWith('image/'));
         if (potentialCover) {
             let coverPath = opfDir + potentialCover.href;
             const coverFile = zip.file(coverPath);
             if (coverFile) {
                 const b64 = await coverFile.async("base64");
-                coverBase64 = "data:" + potentialCover.mediaType + ";base64," + b64;
+                const mime = potentialCover.mediaType || 'image/jpeg';
+                const raw = atob(b64);
+                const arr = new Uint8Array(raw.length);
+                for (let i = 0; i < raw.length; i++) arr[i] = raw.charCodeAt(i);
+                coverBlob = new Blob([arr], { type: mime });
             }
         }
     }
@@ -1330,7 +1339,7 @@ async function handleEpub(file, bookTitle) {
     const existingIndex = library.findIndex(b => b.id === newBookId);
 
     await localforage.setItem('content_' + newBookId, parsedNodes);
-    if (coverBase64) await localforage.setItem('cover_' + newBookId, coverBase64);
+    if (coverBlob) await localforage.setItem('cover_' + newBookId, coverBlob);
 
     if (existingIndex === -1) {
         library.push({
