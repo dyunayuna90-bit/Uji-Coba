@@ -3261,8 +3261,8 @@ function _showArchiveFormatPicker(epubFile, pdfFile, epubSizeMb, pdfSizeMb, onCh
     // Push history agar back gesture/tombol hardware Android bisa menutup overlay ini
     history.pushState({ state: 'archive-fmt' }, '', '#archive-fmt');
 
-    document.getElementById('archive-fmt-epub').onclick   = () => { history.back(); _close(); onChoose({ file: epubFile, type: 'epub' }); };
-    document.getElementById('archive-fmt-pdf').onclick    = () => { history.back(); _close(); onChoose({ file: pdfFile,  type: 'pdf'  }); };
+    document.getElementById('archive-fmt-epub').onclick   = () => { window._archiveFmtClose = null; history.back(); _close(); onChoose({ file: epubFile, type: 'epub' }); };
+    document.getElementById('archive-fmt-pdf').onclick    = () => { window._archiveFmtClose = null; history.back(); _close(); onChoose({ file: pdfFile,  type: 'pdf'  }); };
     document.getElementById('archive-fmt-cancel').onclick = () => { history.back(); _close(); onChoose(null); };
 }
 
