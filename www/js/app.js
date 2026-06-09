@@ -2030,20 +2030,15 @@ async function renderCanvasPage(pageNum) {
     const canvas  = document.getElementById('pdf-canvas');
     const wrapper = document.getElementById('canvas-wrapper');
 
-    // Fade out canvas saat ganti halaman — langsung terasa responsif
-    if (canvas) {
-        canvas.style.transition = 'opacity 80ms ease';
-        canvas.style.opacity = '0.15';
-    }
-
     try {
         const page = await currentPdfDoc.getPage(pageNum);
         const vpEl = document.getElementById('canvas-zoom-viewport');
         if (!canvas || !wrapper || !vpEl) { isRenderingCanvas = false; return; }
 
         const pixelRatio = window.devicePixelRatio || 1;
-        // Turunkan renderScale: 2× dpr, capped 3× — cukup HD di zoom tapi jauh lebih ringan
-        const renderScale = Math.min(pixelRatio * 2, 3);
+        // 2.5× dpr tanpa cap — tajam di zoom, tidak ada batas buatan
+        const renderScale = pixelRatio * 2.5;
+
         const cW = vpEl.clientWidth;
         const cH = vpEl.clientHeight;
 
@@ -2065,18 +2060,14 @@ async function renderCanvasPage(pageNum) {
         wrapper._cH = cH;
 
         const ctx = canvas.getContext('2d');
-        ctx.imageSmoothingEnabled = true;
-        ctx.imageSmoothingQuality = 'high';
+        // Smoothing OFF — teks PDF jadi solid, tidak blur/anti-alias berlebihan
+        ctx.imageSmoothingEnabled = false;
 
         await page.render({
             canvasContext: ctx,
             viewport: fit,
             transform: [renderScale, 0, 0, renderScale, 0, 0]
         }).promise;
-
-        // Fade in setelah render selesai — konten sudah siap, baru tampilkan
-        canvas.style.transition = 'opacity 120ms ease';
-        canvas.style.opacity = '1';
 
         const lbl = document.getElementById('canvas-page-num');
         if (lbl) lbl.textContent = pageNum;
@@ -2088,7 +2079,6 @@ async function renderCanvasPage(pageNum) {
 
     } catch (e) {
         console.error('renderCanvasPage:', e);
-        if (canvas) canvas.style.opacity = '1';
     } finally {
         isRenderingCanvas = false;
     }
@@ -3464,7 +3454,7 @@ async function _gutendexSearch(query) {
     _gutendexShowState('loading');
     try {
         const url = `https://gutendex.com/books/?search=${encodeURIComponent(query)}&languages=en,id`;
-        const res = await fetch(url, { signal: AbortSignal.timeout(12000) });
+        const res = await fetch(url, { signal: AbortSignal.timeout(30000) });
         if (!res.ok) throw new Error('HTTP ' + res.status);
         const data = await res.json();
         const books = data.results || [];
