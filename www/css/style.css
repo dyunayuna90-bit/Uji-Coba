@@ -164,6 +164,9 @@ html, body {
 .skeleton { background: linear-gradient(90deg, var(--md-sys-color-surface-variant) 25%, color-mix(in srgb, var(--md-sys-color-surface-variant) 60%, white 10%) 37%, var(--md-sys-color-surface-variant) 63%); background-size: 400% 100%; animation: skeleton-shimmer 1.4s ease infinite; border-radius: 16px; }
 @keyframes skeleton-shimmer { 0% { background-position: 100% 50%; } 100% { background-position: 0% 50%; } }
 
+/* Animasi Pindah Halaman 3D (opsional, opt-in via Pengaturan) */
+.page-turn-3d { perspective: 1400px; }
+
 .ripple-container { position: relative; overflow: hidden; }
 .ripple-effect {
     position: absolute;
