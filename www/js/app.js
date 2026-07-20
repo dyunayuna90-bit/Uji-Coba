@@ -2779,6 +2779,16 @@ async function renderCanvasPage(pageNum) {
             if (myToken !== _renderToken) return;
         }
 
+        // [FIX HALAMAN PUTIH SAAT DRAG] Mulai render buffer next→prev SEDINI MUNGKIN,
+        // jalan di background TANPA diblokir oleh textLayer/highlight/progress-bar di bawah.
+        // Tetap sequential next-lalu-prev (bukan Promise.all) supaya worker PDF.js tidak bentrok
+        // dengan render utama yang baru saja jalan; tapi karena tidak di-await di sini,
+        // textLayer dkk di bawah tetap jalan concurrent, jadi buffer selesai jauh lebih cepat.
+        (async () => {
+            await renderCanvasBuffer(pageNum + 1, 'canvas-next', myToken, 'next');
+            await renderCanvasBuffer(pageNum - 1, 'canvas-prev', myToken, 'prev');
+        })();
+
         // --- RENDER TEXTLAYER TRANSPARAN (untuk text selection di Canvas Mode) ---
         const textLayerDiv = document.getElementById('canvas-text-layer');
         if (textLayerDiv) {
@@ -2867,10 +2877,6 @@ if (typeof pdfjsLib !== 'undefined' && pdfjsLib.renderTextLayer) {
     } catch (e) {
         console.error('renderCanvasPage:', e);
     }
-
-    // next dulu (prioritas maju), baru prev — satu-satu agar worker PDF.js tidak crash.
-    await renderCanvasBuffer(pageNum + 1, 'canvas-next', myToken, 'next');
-    await renderCanvasBuffer(pageNum - 1, 'canvas-prev', myToken, 'prev');
 }
 
 // [PRE-RENDER BUFFER] Fungsi terisolasi untuk merender satu halaman ke canvas buffer.
@@ -3175,22 +3181,27 @@ function initCanvasGestures() {
         if (!foldShadow || !seamShadow) return;
         const absP = Math.min(1, Math.abs(progress));
         foldShadow.style.opacity = absP.toFixed(2);
-        seamShadow.style.opacity = (absP * 0.9).toFixed(2);
+        seamShadow.style.opacity = absP.toFixed(2);
+        // Box-shadow dinamis di pageStage: kesan kertas terangkat dari permukaan (depth cue)
+        if (pageStage) {
+            pageStage.style.boxShadow = `0 ${8 + absP * 26}px ${18 + absP * 46}px rgba(0,0,0,${(0.12 + absP * 0.28).toFixed(2)})`;
+        }
         if (progress < 0) {
             // ditarik ke kiri → pivot kanan, seam nempel di canvas-next (kanan)
-            foldShadow.style.background = 'linear-gradient(to right, transparent 0%, rgba(255,255,255,.22) 8%, rgba(0,0,0,.04) 22%, rgba(0,0,0,.5) 100%)';
+            foldShadow.style.background = 'linear-gradient(to right, transparent 0%, rgba(255,255,255,.38) 9%, rgba(0,0,0,.06) 22%, rgba(0,0,0,.7) 100%)';
             seamShadow.style.left = '100%'; seamShadow.style.right = 'auto';
-            seamShadow.style.background = 'linear-gradient(to right, rgba(0,0,0,.55), transparent)';
+            seamShadow.style.background = 'linear-gradient(to right, rgba(0,0,0,.65) 0%, rgba(0,0,0,.28) 45%, transparent 100%)';
         } else if (progress > 0) {
             // ditarik ke kanan → pivot kiri, seam nempel di canvas-prev (kiri)
-            foldShadow.style.background = 'linear-gradient(to left, transparent 0%, rgba(255,255,255,.22) 8%, rgba(0,0,0,.04) 22%, rgba(0,0,0,.5) 100%)';
+            foldShadow.style.background = 'linear-gradient(to left, transparent 0%, rgba(255,255,255,.38) 9%, rgba(0,0,0,.06) 22%, rgba(0,0,0,.7) 100%)';
             seamShadow.style.right = '100%'; seamShadow.style.left = 'auto';
-            seamShadow.style.background = 'linear-gradient(to left, rgba(0,0,0,.55), transparent)';
+            seamShadow.style.background = 'linear-gradient(to left, rgba(0,0,0,.65) 0%, rgba(0,0,0,.28) 45%, transparent 100%)';
         }
     }
     function _resetTurnShade() {
         if (foldShadow) foldShadow.style.opacity = 0;
         if (seamShadow) seamShadow.style.opacity = 0;
+        if (pageStage)  pageStage.style.boxShadow = 'none';
     }
 
     wrapper.style.transformOrigin = 'center center';
@@ -3337,10 +3348,11 @@ function initCanvasGestures() {
                 // Tilt 3D ala Play Books: makin jauh drag, makin miring & sedikit mengecil.
                 // HANYA pageStage yang gerak — canvas-prev/next diam total di belakang.
                 const progress = Math.max(-1, Math.min(1, deltaX / window.innerWidth));
-                const rotateY  = -progress * 16; // derajat maksimum
-                const scaleTo  = 1 - Math.abs(progress) * 0.04;
+                const rotateY  = -progress * 26; // derajat maksimum (lebih besar = lebih 3D)
+                const liftZ    = -Math.abs(progress) * 50; // "terangkat" menjauh sedikit
+                const scaleTo  = 1 - Math.abs(progress) * 0.05;
                 pageStage.style.transformOrigin = deltaX < 0 ? 'right center' : 'left center';
-                pageStage.style.transform = `translate(${deltaX}px, 0px) perspective(1400px) rotateY(${rotateY}deg) scale(${scaleTo})`;
+                pageStage.style.transform = `translate(${deltaX}px, 0px) perspective(1000px) rotateY(${rotateY}deg) translateZ(${liftZ}px) scale(${scaleTo})`;
                 _updateTurnShade(progress);
             } else if (pageStage) {
                 pageStage.style.transform = `translate(${deltaX}px, 0px) scale(1)`;
@@ -3360,7 +3372,7 @@ function initCanvasGestures() {
     // Helper: snap wrapper kembali ke posisi tengah dengan animasi singkat
     function _snapSliderToCenter() {
         if (!pageStage) return;
-        pageStage.style.transition = 'transform 0.28s cubic-bezier(0.2, 0, 0, 1)';
+        pageStage.style.transition = 'transform 0.28s cubic-bezier(0.2, 0, 0, 1), box-shadow 0.28s ease';
         pageStage.style.transform  = 'translate(0px, 0px) scale(1)';
         _resetTurnShade();
         setTimeout(() => { pageStage.style.transition = 'none'; pageStage.style.transformOrigin = 'center center'; }, 300);
@@ -3399,10 +3411,10 @@ function initCanvasGestures() {
                 } else if (deltaX < -80) {
                     // SWIPE KIRI → halaman berikutnya
                     if (currentPdfDoc && currentCanvasPage < currentPdfDoc.numPages) {
-                        if (pageStage) pageStage.style.transition = 'transform 0.3s cubic-bezier(0.2, 0, 0, 1)';
+                        if (pageStage) pageStage.style.transition = 'transform 0.3s cubic-bezier(0.2, 0, 0, 1), box-shadow 0.3s ease';
                         if (pageTurnAnimEnabled && pageStage) {
                             pageStage.style.transformOrigin = 'right center';
-                            pageStage.style.transform = `translate(-${window.innerWidth}px, 0px) perspective(1400px) rotateY(-24deg) scale(0.94)`;
+                            pageStage.style.transform = `translate(-${window.innerWidth}px, 0px) perspective(1000px) rotateY(-32deg) translateZ(-60px) scale(0.92)`;
                             _updateTurnShade(-1);
                         } else if (pageStage) {
                             pageStage.style.transform = `translate(-${window.innerWidth}px, 0px) scale(1)`;
@@ -3438,10 +3450,10 @@ function initCanvasGestures() {
                 } else if (deltaX > 80) {
                     // SWIPE KANAN → halaman sebelumnya
                     if (currentPdfDoc && currentCanvasPage > 1) {
-                        if (pageStage) pageStage.style.transition = 'transform 0.3s cubic-bezier(0.2, 0, 0, 1)';
+                        if (pageStage) pageStage.style.transition = 'transform 0.3s cubic-bezier(0.2, 0, 0, 1), box-shadow 0.3s ease';
                         if (pageTurnAnimEnabled && pageStage) {
                             pageStage.style.transformOrigin = 'left center';
-                            pageStage.style.transform = `translate(${window.innerWidth}px, 0px) perspective(1400px) rotateY(24deg) scale(0.94)`;
+                            pageStage.style.transform = `translate(${window.innerWidth}px, 0px) perspective(1000px) rotateY(32deg) translateZ(-60px) scale(0.92)`;
                             _updateTurnShade(1);
                         } else if (pageStage) {
                             pageStage.style.transform = `translate(${window.innerWidth}px, 0px) scale(1)`;
