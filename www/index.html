@@ -64,7 +64,7 @@
                     <i data-lucide="layout-grid"></i>
                 </button>
                 <div id="search-container" class="flex-1">
-                    <div id="search-capsule" onclick="openSearchMode()" class="bg-m3-surfaceVariant text-m3-onSurfaceVariant p-1 rounded-full flex items-center h-12 w-full cursor-pointer transition-all duration-300 shadow-sm border-none select-none">
+                    <div id="search-capsule" onclick="_archiveMode ? openArchiveModal() : openSearchMode()" class="bg-m3-surfaceVariant text-m3-onSurfaceVariant p-1 rounded-full flex items-center h-12 w-full cursor-pointer transition-all duration-300 shadow-sm border-none select-none">
                         <i data-lucide="search" class="w-5 h-5 ml-3 opacity-70 shrink-0"></i>
                         <span class="ml-3 font-bold opacity-60 text-sm truncate" id="search-dummy-text">Cari...</span>
                     </div>
@@ -125,25 +125,6 @@
                     </div>
                 </section>
                 <div id="archive-dashboard" class="flex flex-col gap-6 w-full"></div>
-                <div id="archive-results-panel" class="hidden flex flex-col gap-2.5 overflow-y-auto pb-6 w-full">
-                    <div id="archive-state-loading" class="hidden flex items-center justify-center gap-3 py-8">
-                        <div class="w-6 h-6 border-[3px] border-m3-primary border-t-transparent rounded-full animate-spin shrink-0"></div>
-                        <span class="text-xs font-bold text-m3-onBg opacity-60">Mencari di arsip...</span>
-                    </div>
-                    <div id="archive-state-offline" class="hidden flex flex-col items-center justify-center py-8 gap-2 opacity-50">
-                        <i data-lucide="wifi-off" class="w-10 h-10 text-m3-onBg"></i>
-                        <span class="text-xs font-bold text-m3-onBg text-center">Tidak ada koneksi internet.</span>
-                    </div>
-                    <div id="archive-state-empty" class="hidden flex flex-col items-center justify-center py-8 gap-2 opacity-50">
-                        <i data-lucide="search-x" class="w-10 h-10 text-m3-onBg"></i>
-                        <span id="str-archive-empty" class="text-xs font-bold text-m3-onBg">Tidak ada hasil. Coba kata lain.</span>
-                    </div>
-                    <div id="archive-state-error" class="hidden flex flex-col items-center justify-center py-8 gap-2 opacity-50">
-                        <i data-lucide="alert-circle" class="w-10 h-10 text-m3-onBg"></i>
-                        <span id="archive-error-text" class="text-xs font-bold text-m3-onBg text-center">Gagal mencari.</span>
-                    </div>
-                    <div id="archive-cards" class="flex flex-col gap-2.5"></div>
-                </div>
             </div>
 
             <!-- TAB 2: SCROLL — Rak lokal mode Scroll (teks dinamis) -->
@@ -499,6 +480,38 @@
             </div>
             <div class="p-4 bg-m3-surface border-none">
                 <button id="str-wel-btn" onclick="closeWelcome()" class="w-full py-4 bg-m3-primary text-m3-onPrimary rounded-full font-bold btn-morph tracking-wide">Mengerti</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Archive Search Modal (Material 3 Expressive — full page, slide dari bawah) -->
+    <div id="archive-modal" onclick="if(event.target === this) history.back()" class="hidden fixed inset-0 bg-black/40 z-[150] flex flex-col justify-end opacity-0 transition-opacity duration-300">
+        <div id="archive-sheet" class="w-full flex flex-col bg-m3-surface rounded-t-[32px] translate-y-full transition-transform duration-[350ms] overflow-hidden border-none" style="height:94vh; transition-timing-function: cubic-bezier(0.2, 0.8, 0.2, 1);">
+            <div class="w-10 h-1.5 bg-m3-onSurfaceVariant/30 rounded-full mx-auto mt-3 mb-1 shrink-0"></div>
+            <div class="flex items-center gap-2 px-4 pt-2 pb-3 shrink-0">
+                <button onclick="history.back()" class="w-11 h-11 shrink-0 flex items-center justify-center text-m3-onSurface bg-m3-surfaceVariant/60 rounded-full btn-morph"><i data-lucide="arrow-left" class="w-5 h-5"></i></button>
+                <div class="flex-1 relative">
+                    <input id="archive-search-input" type="text" placeholder="Cari di Internet Archive..." autocomplete="off" oninput="_archiveOnInput(this.value)" class="w-full h-11 rounded-full bg-m3-surfaceVariant text-m3-onSurface px-5 text-sm font-bold outline-none border-none placeholder:opacity-50 placeholder:font-medium">
+                </div>
+            </div>
+            <div id="archive-results-panel" class="flex-1 flex flex-col gap-2.5 overflow-y-auto px-5 pb-8 w-full">
+                <div id="archive-state-loading" class="hidden flex items-center justify-center gap-3 py-16">
+                    <div class="w-6 h-6 border-[3px] border-m3-primary border-t-transparent rounded-full animate-spin shrink-0"></div>
+                    <span class="text-xs font-bold text-m3-onBg opacity-60">Mencari di arsip...</span>
+                </div>
+                <div id="archive-state-offline" class="hidden flex flex-col items-center justify-center py-16 gap-2 opacity-50">
+                    <i data-lucide="wifi-off" class="w-10 h-10 text-m3-onBg"></i>
+                    <span class="text-xs font-bold text-m3-onBg text-center">Tidak ada koneksi internet.</span>
+                </div>
+                <div id="archive-state-empty" class="flex flex-col items-center justify-center py-16 gap-2 opacity-50">
+                    <i data-lucide="search-x" class="w-10 h-10 text-m3-onBg"></i>
+                    <span id="str-archive-empty" class="text-xs font-bold text-m3-onBg">Tidak ada hasil. Coba kata lain.</span>
+                </div>
+                <div id="archive-state-error" class="hidden flex flex-col items-center justify-center py-16 gap-2 opacity-50">
+                    <i data-lucide="alert-circle" class="w-10 h-10 text-m3-onBg"></i>
+                    <span id="archive-error-text" class="text-xs font-bold text-m3-onBg text-center">Gagal mencari.</span>
+                </div>
+                <div id="archive-cards" class="flex flex-col gap-2.5"></div>
             </div>
         </div>
     </div>
