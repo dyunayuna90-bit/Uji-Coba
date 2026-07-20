@@ -124,8 +124,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
     // Terapkan ikon layout tersimpan (grid/list) sebelum render pertama
     // Ikon menandakan aksi berikutnya (kebalikan dari mode aktif saat ini)
-    // Catatan: pakai 'i, svg' karena setelah Lucide render pertama, tag <i> diganti jadi <svg>
-    const layoutIcon = document.querySelector('#layout-btn i, #layout-btn svg');
+    const layoutIcon = document.querySelector('#layout-btn i');
     if (layoutIcon) layoutIcon.setAttribute('data-lucide', layoutMode === 'grid' ? 'layout-list' : 'layout-grid');
 
     loadLibrary().finally(() => {
@@ -561,21 +560,13 @@ window.openSearchMode = function() {
     if (modalResults) { modalResults.style.transition = 'none'; modalResults.style.opacity = '0'; }
 
     // Morphing: Start with exact capsule dimensions
-    // Fix: modal tetap 100vw/100vh sepanjang animasi (ga pernah nyentuh top/left/width/height lagi).
-    // "Kecil"-nya cuma ilusi dari transform translate+scale, jadi cuma 1 properti yang
-    // dianimasiin, dikerjain GPU compositor, semua sisi (atas/bawah/kiri/kanan) dijamin
-    // gerak bareng persis di frame yang sama -> ga ada lagi kesan "kepeleset"/ngehentak.
     if (capsule) {
         const rect = capsule.getBoundingClientRect();
-        const vw = window.innerWidth;
-        const vh = window.innerHeight;
         modal.style.transition = 'none';
-        modal.style.top = '0px';
-        modal.style.left = '0px';
-        modal.style.width = '100vw';
-        modal.style.height = '100vh';
-        modal.style.transformOrigin = '0 0';
-        modal.style.transform = `translate(${rect.left}px, ${rect.top}px) scale(${rect.width / vw}, ${rect.height / vh})`;
+        modal.style.top = rect.top + 'px';
+        modal.style.left = rect.left + 'px';
+        modal.style.width = rect.width + 'px';
+        modal.style.height = rect.height + 'px';
         modal.style.borderRadius = '9999px';
         capsule.style.opacity = '0'; // Hide original capsule instantly
     }
@@ -585,29 +576,19 @@ window.openSearchMode = function() {
     void modal.offsetWidth; // Force layout calc
     modal.style.transition = ''; // Restore CSS transitions
 
-    // Expand physically (transform-only, GPU-composited)
+    // Expand physically
     requestAnimationFrame(() => {
-        modal.style.transform = 'translate(0px, 0px) scale(1, 1)';
+        modal.style.top = '0px';
+        modal.style.left = '0px';
+        modal.style.width = '100vw';
+        modal.style.height = '100vh';
         modal.style.borderRadius = '0px';
-
-        // Tampilkan konten (header/hasil) baru SETELAH modal benar-benar full size.
-        // Kalau di-fade-in sambil scale masih < 1, teks/ikon di dalamnya ikut
-        // "kegencet" oleh transform scale milik parent-nya -> jadi kelihatan distorsi.
-        let revealed = false;
-        const revealContent = () => {
-            if (revealed) return;
-            revealed = true;
+        // Fade in contents during expansion
+        setTimeout(() => {
             if (modalHeader) { modalHeader.style.transition = 'opacity 0.2s ease'; modalHeader.style.opacity = '1'; }
             if (modalResults) { modalResults.style.transition = 'opacity 0.25s ease'; modalResults.style.opacity = '1'; }
             searchInput.focus();
-        };
-        modal.addEventListener('transitionend', function onEnd(e) {
-            if (e.target === modal && e.propertyName === 'transform') {
-                modal.removeEventListener('transitionend', onEnd);
-                revealContent();
-            }
-        });
-        setTimeout(revealContent, 450); // fallback jaga-jaga kalau transitionend ga fire
+        }, 100);
     });
 
     const archivePanel = document.getElementById('archive-results-panel');
@@ -643,13 +624,13 @@ window.closeSearchMode = function(fromHistory = false) {
     if (modalHeader) { modalHeader.style.transition = 'opacity 0.15s ease'; modalHeader.style.opacity = '0'; }
     if (modalResults) { modalResults.style.transition = 'opacity 0.15s ease'; modalResults.style.opacity = '0'; }
 
-    // Shrink physically back to capsule size (transform-only, GPU-composited)
+    // Shrink physically back to capsule size
     if (capsule) {
         const rect = capsule.getBoundingClientRect();
-        const vw = window.innerWidth;
-        const vh = window.innerHeight;
-        modal.style.transformOrigin = '0 0';
-        modal.style.transform = `translate(${rect.left}px, ${rect.top}px) scale(${rect.width / vw}, ${rect.height / vh})`;
+        modal.style.top = rect.top + 'px';
+        modal.style.left = rect.left + 'px';
+        modal.style.width = rect.width + 'px';
+        modal.style.height = rect.height + 'px';
         modal.style.borderRadius = '9999px';
     }
     _hideRacksForSearch(false);
@@ -667,7 +648,6 @@ window.closeSearchMode = function(fromHistory = false) {
         // Reset modal constraints for next use
         modal.style.top = '0px'; modal.style.left = '0px';
         modal.style.width = '100vw'; modal.style.height = '100vh';
-        modal.style.transform = 'translate(0px, 0px) scale(1, 1)';
         modal.style.borderRadius = '0px';
         const tabHome = document.getElementById('tab-home');
         const archivePanel = document.getElementById('archive-results-panel');
@@ -785,12 +765,17 @@ window.switchTab = function(tabId) {
 window.toggleLayoutMode = function() {
     layoutMode = layoutMode === 'grid' ? 'list' : 'grid';
     localStorage.setItem('layout_mode', layoutMode);
-    // Catatan: pakai 'i, svg' karena setelah Lucide render pertama, tag <i> diganti jadi <svg>
-    const icon = document.querySelector('#layout-btn i, #layout-btn svg');
-    if(icon) {
+    const btn = document.getElementById('layout-btn');
+    if(btn) {
+        // Regenerate ulang sebagai <i data-lucide> segar tiap kali dipanggil.
+        // Lucide mengganti tag <i> jadi <svg> begitu ikon dirender pertama kali,
+        // jadi querySelector('#layout-btn i') berikutnya tidak akan pernah nemu
+        // apa-apa lagi (elemen itu sudah jadi <svg>, bukan <i>) — makanya ikon
+        // nyangkut di satu gambar selamanya. Bikin ulang <i>-nya tiap toggle
+        // supaya Lucide selalu punya elemen segar untuk dikonversi.
         // Ikon menandakan aksi berikutnya (kebalikan dari mode aktif saat ini)
-        icon.setAttribute('data-lucide', layoutMode === 'grid' ? 'layout-list' : 'layout-grid');
-        if(window.lucide) window.lucide.createIcons({nodes: [icon]});
+        btn.innerHTML = `<i data-lucide="${layoutMode === 'grid' ? 'layout-list' : 'layout-grid'}"></i>`;
+        if(window.lucide) window.lucide.createIcons({nodes: [btn.firstElementChild]});
     }
     // Sinkronkan seluruh rak buku (Beranda/Archive & Scroll/Canvas) secara serentak
     loadArchivePlayBooksStyle();
@@ -1868,7 +1853,6 @@ function createBookCard(book, isSlider = false, index = 0, isSearch = false) {
     const widthClass = isSlider ? 'w-[110px] sm:w-[130px] snap-start' : 'w-full';
     card.className = `${isSlider || isSearch ? '' : 'card-morph'} lazy-cover outline-none ring-0 relative ${isList ? 'flex gap-4 items-center w-full mb-4' : `flex flex-col ${widthClass} shrink-0`}`;
     card.dataset.coverId = book.id;
-    let badgeText = book.type === 'pdf' ? 'PDF' : book.type.toUpperCase();
     let batchOverlayHTML = !isSlider ? `
         <div class="batch-overlay absolute inset-0 z-20 transition-all duration-300 pointer-events-none rounded-xl" data-book-id="${book.id}" style="display: none; opacity: 0; background-color: transparent;">
             <div class="batch-icon-box absolute top-2 left-2 w-6 h-6 rounded-full flex items-center justify-center transition-colors"></div>
@@ -1880,7 +1864,6 @@ function createBookCard(book, isSlider = false, index = 0, isSearch = false) {
             <div class="cover-img-target-${book.id} bg-cover bg-center bg-no-repeat w-full h-full absolute inset-0 transition-opacity duration-300 opacity-0"></div>
             <div class="absolute inset-0 bg-black/5 pointer-events-none"></div>
             <div class="absolute top-2 left-2 flex gap-1 z-10">
-                <span class="text-[9px] font-black px-1.5 py-0.5 bg-m3-primary/90 rounded-md text-m3-onPrimary shadow-sm">${badgeText}</span>
                 ${book.isPinned ? `<div class="bg-m3-secondaryContainer/90 rounded-md p-0.5 shadow-sm"><i data-lucide="pin" class="w-3 h-3 text-m3-onSecondaryContainer"></i></div>` : ''}
             </div>
             ${isList ? `<div class="absolute bottom-0 left-0 right-0 h-1 bg-black/20"><div class="h-full bg-m3-primary" style="width: ${progress}%"></div></div>` : ''}
@@ -1934,8 +1917,6 @@ function createBookListItem(book, index = 0, isSearch = false) {
     row.dataset.coverId = book.id;
     row.dataset.coverMode = 'list';
 
-    const badgeText = book.type === 'pdf' ? 'PDF' : book.type.toUpperCase();
-
     const batchOverlayHTML = `
         <div class="batch-overlay absolute inset-0 z-20 transition-all duration-300 pointer-events-none rounded-2xl" data-book-id="${book.id}" style="display: none; opacity: 0; background-color: transparent;">
             <div class="batch-icon-box absolute top-2 left-2 w-6 h-6 rounded-full flex items-center justify-center transition-colors"></div>
@@ -1949,7 +1930,6 @@ function createBookListItem(book, index = 0, isSearch = false) {
         </div>
         <div class="flex-1 min-w-0 flex flex-col gap-1.5 pointer-events-none">
             <div class="flex items-center gap-1.5">
-                <span class="text-[0.55rem] font-black px-1.5 py-0.5 bg-m3-primary/15 text-m3-primary rounded-full uppercase tracking-wider shrink-0">${badgeText}</span>
                 ${book.isPinned ? `<i data-lucide="pin" class="w-3 h-3 text-m3-primary shrink-0"></i>` : ''}
                 <h3 class="book-title-text font-bold text-sm text-m3-onSurfaceVariant leading-tight truncate">${book.title}</h3>
             </div>
