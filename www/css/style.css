@@ -166,6 +166,7 @@ html, body {
 
 /* Animasi Pindah Halaman 3D (opsional, opt-in via Pengaturan) */
 .page-turn-3d { perspective: 1400px; }
+#fold-shadow, #seam-shadow { transition: opacity .12s ease; will-change: opacity; }
 
 .ripple-container { position: relative; overflow: hidden; }
 .ripple-effect {
