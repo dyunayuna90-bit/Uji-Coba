@@ -2964,6 +2964,10 @@ function _resetCanvasTransform() {
     const w = document.getElementById('canvas-wrapper');
     if (w) { w.style.transition = 'none'; w.style.transform = `translate(0px,0px) scale(${currentCanvasScale})`; }
     // canvas-prev/next kini absolute di dalam wrapper — otomatis ikut reset bersama wrapper
+    // Jaga-jaga: pastikan page-stage tidak "nyangkut" transparan kalau ada gesture animasi
+    // page-turn yang ke-interrupt di tengah jalan (fail-safe untuk trik fade swap).
+    const ps = document.getElementById('page-stage');
+    if (ps) { ps.style.transition = 'none'; ps.style.opacity = '1'; }
 }
 
 window.toggleZoomSlider = function() {
@@ -3190,14 +3194,19 @@ function initCanvasGestures() {
     function _updateTurnShade(progress) {
         if (!foldShadow || !seamShadow) return;
         const absP = Math.min(1, Math.abs(progress));
-        // Cap opacity shadow (tidak sampai 1 penuh) supaya efeknya tetap terlihat tapi jauh lebih halus
-        const shadeP = absP * 0.65;
+        // Kurva "bell": shadow membesar di pertengahan drag, lalu MENGECIL LAGI saat halaman
+        // sudah hampir edge-on (menghadap sisi/atas). Ini meniru kertas fisik yang bayangannya
+        // makin tipis begitu nyaris tak terlihat dari depan, dan yang lebih penting: dengan ini
+        // shadow sudah otomatis mendekati 0 SEBELUM animasi commit selesai, jadi tidak ada lagi
+        // efek "kedip/pop" saat halaman di-swap instan di akhir animasi.
+        const bell = Math.sin(absP * Math.PI); // 0 di awal → puncak di tengah → 0 lagi di akhir
+        const shadeP = bell * 0.65;
         foldShadow.style.opacity = shadeP.toFixed(2);
         seamShadow.style.opacity = shadeP.toFixed(2);
         // Box-shadow dinamis di pageStage: kesan kertas terangkat dari permukaan (depth cue),
-        // versi lebih tipis/soft dibanding sebelumnya
+        // ikut kurva bell yang sama supaya menghilang mulus, bukan dipotong tiba-tiba
         if (pageStage) {
-            pageStage.style.boxShadow = `0 ${4 + absP * 10}px ${10 + absP * 20}px rgba(0,0,0,${(0.08 + absP * 0.12).toFixed(2)})`;
+            pageStage.style.boxShadow = `0 ${4 + bell * 10}px ${10 + bell * 20}px rgba(0,0,0,${(0.08 + bell * 0.12).toFixed(2)})`;
         }
         if (progress < 0) {
             // ditarik ke kiri → pivot kanan, seam nempel di canvas-next (kanan)
@@ -3437,29 +3446,60 @@ function initCanvasGestures() {
                         } else if (pageStage) {
                             pageStage.style.transform = `translate(-${window.innerWidth}px, 0px) scale(1)`;
                         }
-                        setTimeout(() => {
-                            const cnNext = document.getElementById('canvas-next');
-                            const cnCurr = document.getElementById('pdf-canvas');
-                            if (cnNext && cnNext.width > 1 && cnCurr) {
-                                cnCurr.width        = cnNext.width;
-                                cnCurr.height       = cnNext.height;
-                                cnCurr.style.width  = cnNext.style.width;
-                                cnCurr.style.height = cnNext.style.height;
-                                const ctxCurr = cnCurr.getContext('2d');
-                                ctxCurr.imageSmoothingEnabled = false;
-                                ctxCurr.drawImage(cnNext, 0, 0);
-                                _canvasAlreadyCopied = true;
-                            }
+
+                        let _swapped = false;
+                        const _doSwap = () => {
+                            if (_swapped) return; _swapped = true;
+                            const finishSwap = () => {
+                                const cnNext = document.getElementById('canvas-next');
+                                const cnCurr = document.getElementById('pdf-canvas');
+                                if (cnNext && cnNext.width > 1 && cnCurr) {
+                                    cnCurr.width        = cnNext.width;
+                                    cnCurr.height       = cnNext.height;
+                                    cnCurr.style.width  = cnNext.style.width;
+                                    cnCurr.style.height = cnNext.style.height;
+                                    const ctxCurr = cnCurr.getContext('2d');
+                                    ctxCurr.imageSmoothingEnabled = false;
+                                    ctxCurr.drawImage(cnNext, 0, 0);
+                                    _canvasAlreadyCopied = true;
+                                }
+                                if (pageStage) {
+                                    pageStage.style.transition = 'none';
+                                    pageStage.style.transform  = 'translate(0px, 0px) scale(1)';
+                                    pageStage.style.transformOrigin = 'center center';
+                                }
+                                _resetTurnShade();
+                                currentCanvasPage++;
+                                _resetCanvasTransform();
+                                renderCanvasPage(currentCanvasPage);
+                                // Fade-in balik halaman baru — di-reflow dulu biar transisi opacity kepakai
+                                if (pageStage) {
+                                    void pageStage.offsetHeight;
+                                    requestAnimationFrame(() => {
+                                        pageStage.style.transition = 'opacity 0.12s ease';
+                                        pageStage.style.opacity = '1';
+                                    });
+                                }
+                            };
+                            // Halaman sudah nyaris tak kasat mata (di luar layar + shadow sudah 0 lewat
+                            // kurva bell) — sembunyikan sekejap dulu (fade super cepat) sebelum reset
+                            // transform instan, supaya "loncatan" potongan animasi tidak kelihatan mata.
                             if (pageStage) {
-                                pageStage.style.transition = 'none';
-                                pageStage.style.transform  = 'translate(0px, 0px) scale(1)';
-                                pageStage.style.transformOrigin = 'center center';
+                                pageStage.style.transition = 'opacity 0.08s linear';
+                                pageStage.style.opacity = '0';
+                                setTimeout(finishSwap, 80);
+                            } else {
+                                finishSwap();
                             }
-                            _resetTurnShade();
-                            currentCanvasPage++;
-                            _resetCanvasTransform();
-                            renderCanvasPage(currentCanvasPage);
-                        }, 300);
+                        };
+                        if (pageStage) {
+                            pageStage.addEventListener('transitionend', function _te(ev) {
+                                if (ev.target !== pageStage || ev.propertyName !== 'transform') return;
+                                pageStage.removeEventListener('transitionend', _te);
+                                _doSwap();
+                            });
+                        }
+                        setTimeout(_doSwap, 340); // fallback jika transitionend tidak fire
                     } else {
                         _snapSliderToCenter();
                     }
@@ -3477,29 +3517,56 @@ function initCanvasGestures() {
                         } else if (pageStage) {
                             pageStage.style.transform = `translate(${window.innerWidth}px, 0px) scale(1)`;
                         }
-                        setTimeout(() => {
-                            const cnPrev = document.getElementById('canvas-prev');
-                            const cnCurr = document.getElementById('pdf-canvas');
-                            if (cnPrev && cnPrev.width > 1 && cnCurr) {
-                                cnCurr.width        = cnPrev.width;
-                                cnCurr.height       = cnPrev.height;
-                                cnCurr.style.width  = cnPrev.style.width;
-                                cnCurr.style.height = cnPrev.style.height;
-                                const ctxCurr = cnCurr.getContext('2d');
-                                ctxCurr.imageSmoothingEnabled = false;
-                                ctxCurr.drawImage(cnPrev, 0, 0);
-                                _canvasAlreadyCopied = true;
-                            }
+
+                        let _swapped = false;
+                        const _doSwap = () => {
+                            if (_swapped) return; _swapped = true;
+                            const finishSwap = () => {
+                                const cnPrev = document.getElementById('canvas-prev');
+                                const cnCurr = document.getElementById('pdf-canvas');
+                                if (cnPrev && cnPrev.width > 1 && cnCurr) {
+                                    cnCurr.width        = cnPrev.width;
+                                    cnCurr.height       = cnPrev.height;
+                                    cnCurr.style.width  = cnPrev.style.width;
+                                    cnCurr.style.height = cnPrev.style.height;
+                                    const ctxCurr = cnCurr.getContext('2d');
+                                    ctxCurr.imageSmoothingEnabled = false;
+                                    ctxCurr.drawImage(cnPrev, 0, 0);
+                                    _canvasAlreadyCopied = true;
+                                }
+                                if (pageStage) {
+                                    pageStage.style.transition = 'none';
+                                    pageStage.style.transform  = 'translate(0px, 0px) scale(1)';
+                                    pageStage.style.transformOrigin = 'center center';
+                                }
+                                _resetTurnShade();
+                                currentCanvasPage--;
+                                _resetCanvasTransform();
+                                renderCanvasPage(currentCanvasPage);
+                                if (pageStage) {
+                                    void pageStage.offsetHeight;
+                                    requestAnimationFrame(() => {
+                                        pageStage.style.transition = 'opacity 0.12s ease';
+                                        pageStage.style.opacity = '1';
+                                    });
+                                }
+                            };
                             if (pageStage) {
-                                pageStage.style.transition = 'none';
-                                pageStage.style.transform  = 'translate(0px, 0px) scale(1)';
-                                pageStage.style.transformOrigin = 'center center';
+                                pageStage.style.transition = 'opacity 0.08s linear';
+                                pageStage.style.opacity = '0';
+                                setTimeout(finishSwap, 80);
+                            } else {
+                                finishSwap();
                             }
-                            _resetTurnShade();
-                            currentCanvasPage--;
-                            _resetCanvasTransform();
-                            renderCanvasPage(currentCanvasPage);
-                        }, 300);
+                        };
+                        if (pageStage) {
+                            pageStage.addEventListener('transitionend', function _te(ev) {
+                                if (ev.target !== pageStage || ev.propertyName !== 'transform') return;
+                                pageStage.removeEventListener('transitionend', _te);
+                                _doSwap();
+                            });
+                        }
+                        setTimeout(_doSwap, 340); // fallback jika transitionend tidak fire
                     } else {
                         _snapSliderToCenter();
                     }
