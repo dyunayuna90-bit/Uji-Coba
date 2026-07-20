@@ -58,35 +58,29 @@
     <!-- VIEW: LIBRARY -->
     <div id="library-view" class="absolute inset-0 flex flex-col overflow-hidden transition-transform duration-500 origin-bottom bg-m3-bg z-10 w-full">
         
-        <header id="main-header" class="flex-none sticky top-0 z-40 bg-m3-bg pt-[calc(env(safe-area-inset-top,32px)+0.75rem)] pb-2 px-5 transition-all duration-300">
+        <header id="main-header" class="relative flex-none sticky top-0 z-40 bg-m3-bg pt-[calc(env(safe-area-inset-top,48px)+1rem)] pb-2 px-5 transition-all duration-300">
             <div class="flex items-center gap-3 w-full" id="search-nav-row">
-                <button onclick="toggleLayoutMode()" id="layout-btn" class="w-10 h-10 shrink-0 flex items-center justify-center text-m3-onBg bg-m3-surfaceVariant/50 rounded-full btn-morph outline-none">
-                    <i data-lucide="layout-grid"></i>
+                <button onclick="toggleLayoutMode()" id="layout-btn" class="btn-settings w-10 h-10 shrink-0 flex items-center justify-center text-m3-onBg bg-m3-surfaceVariant/50 rounded-full btn-morph outline-none">
+                    <i data-lucide="grid-2x2"></i>
                 </button>
                 <div id="search-container" class="flex-1">
-                    <div id="search-capsule" onclick="openSearchMode()" class="bg-m3-surfaceVariant text-m3-onSurfaceVariant p-1 rounded-full flex items-center h-12 w-full cursor-pointer transition-all btn-morph shadow-sm border-none">
-                        <i data-lucide="search" class="w-5 h-5 ml-3 opacity-70 shrink-0"></i>
-                        <span class="ml-3 font-bold opacity-60 text-sm truncate" id="search-dummy-text">Cari...</span>
+                    <div id="search-capsule" class="bg-m3-surfaceVariant text-m3-onSurfaceVariant p-1 rounded-full flex items-center h-12 w-full transition-all btn-morph shadow-sm border-none">
+                        <i data-lucide="search" class="w-5 h-5 ml-3 opacity-70 shrink-0 pointer-events-none"></i>
+                        <input type="text" id="global-search" placeholder="Cari..." class="flex-1 bg-transparent border-none outline-none py-2 pl-3 pr-2 font-bold placeholder:opacity-60 text-sm" autocomplete="off" onfocus="openSearchMode()">
+                        <button id="search-clear-btn" onclick="clearSearchInput()" class="w-8 h-8 mr-1 rounded-full bg-m3-onSurface/10 flex items-center justify-center hidden shrink-0 btn-morph"><i data-lucide="x" class="w-4 h-4"></i></button>
                     </div>
                 </div>
-                <button onclick="openModal('global-settings-modal', 'global-settings-sheet', false)" id="settings-btn" class="w-10 h-10 shrink-0 flex items-center justify-center text-m3-onBg bg-m3-surfaceVariant/50 rounded-full btn-morph outline-none">
-                    <i data-lucide="settings"></i>
+                <button onclick="openModal('global-settings-modal', 'global-settings-sheet', false)" id="settings-btn" class="btn-settings w-10 h-10 shrink-0 flex items-center justify-center text-m3-onBg bg-m3-surfaceVariant/50 rounded-full btn-morph outline-none">
+                    <i data-lucide="menu"></i>
                 </button>
             </div>
-        </header>
-        <!-- MORPHING FULLSCREEN SEARCH MODAL -->
-        <div id="search-fullscreen-modal" class="fixed inset-0 z-[100] bg-m3-bg flex-col hidden opacity-0 transition-all duration-300 scale-95 origin-top">
-            <div class="flex items-center px-2 pt-[calc(env(safe-area-inset-top,32px)+0.75rem)] pb-3 bg-m3-surface border-b border-m3-onSurface/10 shrink-0 shadow-sm">
-                <button onclick="closeSearchMode()" class="w-12 h-12 flex items-center justify-center rounded-full text-m3-onSurface shrink-0 btn-morph"><i data-lucide="arrow-left"></i></button>
-                <input type="text" id="global-search" class="flex-1 bg-transparent border-none outline-none font-bold text-m3-onSurface text-base px-2" autocomplete="off">
-                <button id="search-clear-btn" onclick="clearSearchInput()" class="w-12 h-12 flex items-center justify-center rounded-full text-m3-onSurfaceVariant shrink-0 hidden btn-morph"><i data-lucide="x" class="w-5 h-5"></i></button>
-            </div>
-            <div id="search-results-wrapper" class="flex-1 overflow-y-auto w-full relative bg-m3-bg pt-2 pb-20">
+            <!-- MORPHING SEARCH RESULTS DROPDOWN -->
+            <div id="search-results-wrapper" class="absolute left-0 right-0 top-full z-[100] overflow-y-auto bg-m3-bg pt-2 pb-20 hidden" style="max-height: calc(100vh - 90px);">
                 <!-- Hasil pencarian lokal -->
                 <div id="local-search-results" class="grid grid-cols-2 gap-4 px-5 py-4 w-full hidden"></div>
                 <!-- Archive Panel akan numpang ke sini saat aktif -->
             </div>
-        </div>
+        </header>
 
         <div id="library-content-scroll" class="flex-1 overflow-y-auto overflow-x-hidden w-full pb-[150px] relative">
 
@@ -103,7 +97,7 @@
             <!-- TAB 1: HOME — Jelajahi Arsip (Internet Archive dashboard) -->
             <div id="tab-home" class="w-full px-0 transition-opacity duration-300">
                 <div class="px-5 mb-4 flex justify-between items-center mt-2">
-                    <h2 class="text-2xl font-black tracking-tight text-m3-onBg">Jelajahi Arsip</h2>
+                    <h2 id="str-explore-archive" class="text-2xl font-black tracking-tight text-m3-onBg">Jelajahi Arsip</h2>
                     <button onclick="loadArchivePlayBooksStyle()" class="w-9 h-9 flex items-center justify-center rounded-full bg-m3-surfaceVariant text-m3-onSurfaceVariant btn-morph"><i data-lucide="refresh-cw" class="w-4 h-4"></i></button>
                 </div>
                 <section id="statistics-section" class="mb-8 mt-1 px-5 transition-all duration-300 origin-top overflow-hidden">
