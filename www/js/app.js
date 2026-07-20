@@ -484,7 +484,6 @@ window.addEventListener('popstate', (e) => {
     else if (!document.getElementById('search-fullscreen-modal').classList.contains('hidden')) { window.closeSearchMode(true); }
     else if (isBatchDeleteMode) { window.toggleBatchDelete(true); }
     else if (activePanel) { _closeSidePanelsAction(true); } 
-    else if (document.getElementById('search-area').classList.contains('search-active')) { closeSearch(true); }
     else if (document.getElementById('reader-bottom-bar') && document.getElementById('reader-bottom-bar').classList.contains('hidden')) { window.toggleFullscreenReading(true); }
     else if (DOM.readView && !DOM.readView.classList.contains('translate-y-full')) { _closeReaderAction(true); }
 });
