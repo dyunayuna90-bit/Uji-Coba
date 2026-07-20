@@ -1370,16 +1370,34 @@ async function saveFileNativeOrWebBlob(blob, filename) {
 
     if (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.Filesystem) {
         try {
-            const reader = new FileReader();
-            reader.readAsDataURL(blob);
-            reader.onloadend = async function() {
-                const base64data = reader.result.split(',')[1];
-                await window.Capacitor.Plugins.Filesystem.writeFile({
-                    path: filename, data: base64data, directory: 'DOCUMENTS'
+            // PENTING: Filesystem.writeFile Capacitor crash/overflow memori di Android kalau
+            // base64 yang dikirim sekali jalan > ~26MB (bug dikenal di Capacitor core).
+            // Backup ZIP buku gampang lebih besar dari itu, jadi apa pun kompresinya tetap
+            // force-close kalau ditulis sekaligus. Solusi: potong jadi chunk kecil (4MB),
+            // tulis pakai writeFile untuk potongan pertama lalu appendFile untuk sisanya.
+            const FS = window.Capacitor.Plugins.Filesystem;
+            try { await FS.deleteFile({ path: filename, directory: 'DOCUMENTS' }); } catch(_) {} // jaga-jaga sisa file gagal sebelumnya
+            const CHUNK_SIZE = 4 * 1024 * 1024; // 4MB per potongan — jauh di bawah batas crash
+            let offset = 0;
+            let isFirstChunk = true;
+            while (offset < blob.size) {
+                const slice = blob.slice(offset, offset + CHUNK_SIZE);
+                const base64Chunk = await new Promise((resolve, reject) => {
+                    const r = new FileReader();
+                    r.onloadend = () => resolve(r.result.split(',')[1]);
+                    r.onerror = reject;
+                    r.readAsDataURL(slice);
                 });
-                window.closeDialog();
-                setTimeout(() => showDialog(successTitle, `${successDesc}\n\nDocuments:\n${filename}`, "check-circle", [{text: btnOk, primary: true}]), 400);
+                if (isFirstChunk) {
+                    await FS.writeFile({ path: filename, data: base64Chunk, directory: 'DOCUMENTS' });
+                    isFirstChunk = false;
+                } else {
+                    await FS.appendFile({ path: filename, data: base64Chunk, directory: 'DOCUMENTS' });
+                }
+                offset += CHUNK_SIZE;
             }
+            window.closeDialog();
+            setTimeout(() => showDialog(successTitle, `${successDesc}\n\nDocuments:\n${filename}`, "check-circle", [{text: btnOk, primary: true}]), 400);
             return;
         } catch (e) { console.log("Capacitor write blob gagal", e); }
     }
