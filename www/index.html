@@ -58,27 +58,35 @@
     <!-- VIEW: LIBRARY -->
     <div id="library-view" class="absolute inset-0 flex flex-col overflow-hidden transition-transform duration-500 origin-bottom bg-m3-bg z-10 w-full">
         
-        <header id="main-header" class="flex-none sticky top-0 z-50 bg-m3-bg pt-[calc(env(safe-area-inset-top,0px)+0.5rem)] pb-2 px-4 transition-all duration-300">
-            <div class="flex items-center gap-2 w-full relative z-[60]" id="search-nav-row">
-                <button onclick="toggleLayoutMode()" id="layout-btn" class="w-10 h-10 shrink-0 flex items-center justify-center text-m3-onBg outline-none">
+        <header id="main-header" class="flex-none sticky top-0 z-40 bg-m3-bg pt-[calc(env(safe-area-inset-top,32px)+0.75rem)] pb-2 px-5 transition-all duration-300">
+            <div class="flex items-center gap-3 w-full" id="search-nav-row">
+                <button onclick="toggleLayoutMode()" id="layout-btn" class="w-10 h-10 shrink-0 flex items-center justify-center text-m3-onBg bg-m3-surfaceVariant/50 rounded-full btn-morph outline-none">
                     <i data-lucide="layout-grid"></i>
                 </button>
-                <div id="search-container" class="flex-1 transition-all duration-300">
-                    <div id="search-capsule" class="bg-m3-surfaceVariant text-m3-onSurfaceVariant p-1 rounded-full flex items-center h-12 w-full relative overflow-hidden transition-all duration-300">
-                        <i data-lucide="search" class="w-5 h-5 ml-3 opacity-70 shrink-0 pointer-events-none"></i>
-                        <input type="text" id="global-search" placeholder="Cari..." class="w-full bg-transparent border-none outline-none py-2 pl-3 pr-4 font-bold placeholder:opacity-60 text-sm">
-                        <button id="search-back-btn" onclick="closeSearch()" class="absolute right-2 w-8 h-8 rounded-full bg-m3-onSurface/10 flex items-center justify-center hidden">
-                            <i data-lucide="x" class="w-4 h-4"></i>
-                        </button>
+                <div id="search-container" class="flex-1">
+                    <div id="search-capsule" onclick="openSearchMode()" class="bg-m3-surfaceVariant text-m3-onSurfaceVariant p-1 rounded-full flex items-center h-12 w-full cursor-pointer transition-all btn-morph shadow-sm border-none">
+                        <i data-lucide="search" class="w-5 h-5 ml-3 opacity-70 shrink-0"></i>
+                        <span class="ml-3 font-bold opacity-60 text-sm truncate" id="search-dummy-text">Cari...</span>
                     </div>
                 </div>
-                <button onclick="openModal('global-settings-modal', 'global-settings-sheet', false)" id="settings-btn" class="w-10 h-10 shrink-0 flex items-center justify-center text-m3-onBg outline-none">
+                <button onclick="openModal('global-settings-modal', 'global-settings-sheet', false)" id="settings-btn" class="w-10 h-10 shrink-0 flex items-center justify-center text-m3-onBg bg-m3-surfaceVariant/50 rounded-full btn-morph outline-none">
                     <i data-lucide="settings"></i>
                 </button>
             </div>
         </header>
-        <!-- Overlay Morphing Full Page -->
-        <div id="search-overlay-bg" class="absolute top-[70px] bottom-[70px] left-0 right-0 bg-m3-bg z-[45] hidden opacity-0 transition-opacity duration-300"></div>
+        <!-- MORPHING FULLSCREEN SEARCH MODAL -->
+        <div id="search-fullscreen-modal" class="fixed inset-0 z-[100] bg-m3-bg flex-col hidden opacity-0 transition-all duration-300 scale-95 origin-top">
+            <div class="flex items-center px-2 pt-[calc(env(safe-area-inset-top,32px)+0.75rem)] pb-3 bg-m3-surface border-b border-m3-onSurface/10 shrink-0 shadow-sm">
+                <button onclick="closeSearchMode()" class="w-12 h-12 flex items-center justify-center rounded-full text-m3-onSurface shrink-0 btn-morph"><i data-lucide="arrow-left"></i></button>
+                <input type="text" id="global-search" class="flex-1 bg-transparent border-none outline-none font-bold text-m3-onSurface text-base px-2" autocomplete="off">
+                <button id="search-clear-btn" onclick="clearSearchInput()" class="w-12 h-12 flex items-center justify-center rounded-full text-m3-onSurfaceVariant shrink-0 hidden btn-morph"><i data-lucide="x" class="w-5 h-5"></i></button>
+            </div>
+            <div id="search-results-wrapper" class="flex-1 overflow-y-auto w-full relative bg-m3-bg pt-2 pb-20">
+                <!-- Hasil pencarian lokal -->
+                <div id="local-search-results" class="grid grid-cols-2 gap-4 px-5 py-4 w-full hidden"></div>
+                <!-- Archive Panel akan numpang ke sini saat aktif -->
+            </div>
+        </div>
 
         <div id="library-content-scroll" class="flex-1 overflow-y-auto overflow-x-hidden w-full pb-[150px] relative">
 
@@ -93,87 +101,31 @@
             </div>
 
             <!-- TAB 1: HOME — Jelajahi Arsip (Internet Archive dashboard) -->
-            <div id="tab-home" class="w-full px-5 transition-opacity duration-300">
-                <div class="flex justify-between items-center mt-1 mb-4">
-                    <h2 class="text-xl font-black tracking-tight text-m3-onBg" id="str-archive-title">Jelajahi Arsip</h2>
-                    <button onclick="loadArchivePlayBooksStyle()" class="w-9 h-9 flex items-center justify-center rounded-full bg-m3-surfaceVariant text-m3-onSurfaceVariant btn-morph shrink-0">
-                        <i data-lucide="refresh-cw" class="w-4 h-4"></i>
-                    </button>
+            <div id="tab-home" class="w-full px-0 transition-opacity duration-300">
+                <div class="px-5 mb-4 flex justify-between items-center mt-2">
+                    <h2 class="text-2xl font-black tracking-tight text-m3-onBg">Jelajahi Arsip</h2>
+                    <button onclick="loadArchivePlayBooksStyle()" class="w-9 h-9 flex items-center justify-center rounded-full bg-m3-surfaceVariant text-m3-onSurfaceVariant btn-morph"><i data-lucide="refresh-cw" class="w-4 h-4"></i></button>
                 </div>
-
-                <!-- STATISTIK USER (M3 Expressive Card - Compact) -->
-                <section id="statistics-section" class="mb-8 mt-1 transition-all duration-300 origin-top overflow-hidden">
+                <section id="statistics-section" class="mb-8 mt-1 px-5 transition-all duration-300 origin-top overflow-hidden">
                     <div class="bg-m3-secondaryContainer text-m3-onSecondaryContainer rounded-[28px] p-4 shadow-sm relative flex flex-col justify-center min-h-[100px]">
-                        <!-- Ornamen background M3 Expressive -->
-                        <i data-lucide="asterisk" class="absolute -right-4 -bottom-6 w-32 h-32 text-m3-onSecondaryContainer opacity-[0.04] transform rotate-45 pointer-events-none"></i>
-                        <div class="absolute -left-8 -top-8 w-24 h-24 bg-m3-onSecondaryContainer/5 rounded-full pointer-events-none"></div>
-
                         <div class="flex items-center justify-between mb-3 relative z-10">
                             <div class="flex items-center gap-2">
                                 <div class="w-1.5 h-4 bg-m3-primary rounded-full"></div>
                                 <h2 class="text-xs font-black uppercase tracking-[0.15em] text-m3-onSecondaryContainer" id="str-stat-title">Statistik</h2>
                             </div>
-                            <button id="stat-expand-btn" onclick="toggleStatChart()" class="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-m3-onSecondaryContainer/10 hover:bg-m3-onSecondaryContainer/20 transition-colors btn-morph">
-                                <i data-lucide="bar-chart-2" class="w-3.5 h-3.5 text-m3-onSecondaryContainer" id="stat-expand-icon"></i>
-                                <span class="text-[10px] font-bold text-m3-onSecondaryContainer" id="str-stat-expand">Lihat Grafik</span>
-                            </button>
+                            <button id="stat-expand-btn" onclick="toggleStatChart()" class="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-m3-onSecondaryContainer/10 btn-morph"><i data-lucide="bar-chart-2" class="w-3.5 h-3.5 text-m3-onSecondaryContainer" id="stat-expand-icon"></i><span class="text-[10px] font-bold text-m3-onSecondaryContainer" id="str-stat-expand">Lihat Grafik</span></button>
                         </div>
-
                         <div class="grid grid-cols-4 gap-2 relative z-10">
-                            <div class="flex flex-col items-center justify-center">
-                                <span class="text-2xl font-black text-m3-onSecondaryContainer tracking-tighter" id="stat-val-total">0</span>
-                                <span class="text-[9px] font-bold uppercase tracking-widest opacity-70 mt-0.5" id="str-stat-total">Koleksi</span>
-                            </div>
-                            <div class="flex flex-col items-center justify-center">
-                                <span class="text-2xl font-black text-m3-onSecondaryContainer tracking-tighter" id="stat-val-reading">0</span>
-                                <span class="text-[9px] font-bold uppercase tracking-widest opacity-70 mt-0.5" id="str-stat-reading">Dibaca</span>
-                            </div>
-                            <div class="flex flex-col items-center justify-center">
-                                <span class="text-2xl font-black text-m3-onSecondaryContainer tracking-tighter" id="stat-val-completed">0</span>
-                                <span class="text-[9px] font-bold uppercase tracking-widest opacity-70 mt-0.5" id="str-stat-completed">Selesai</span>
-                            </div>
-                            <div class="flex flex-col items-center justify-center">
-                                <span class="text-2xl font-black text-m3-onSecondaryContainer tracking-tighter" id="stat-val-notes">0</span>
-                                <span class="text-[9px] font-bold uppercase tracking-widest opacity-70 mt-0.5" id="str-stat-notes">Catatan</span>
-                            </div>
+                            <div class="flex flex-col items-center justify-center"><span class="text-2xl font-black text-m3-onSecondaryContainer tracking-tighter" id="stat-val-total">0</span><span class="text-[9px] font-bold uppercase tracking-widest opacity-70 mt-0.5" id="str-stat-total">Koleksi</span></div>
+                            <div class="flex flex-col items-center justify-center"><span class="text-2xl font-black text-m3-onSecondaryContainer tracking-tighter" id="stat-val-reading">0</span><span class="text-[9px] font-bold uppercase tracking-widest opacity-70 mt-0.5" id="str-stat-reading">Dibaca</span></div>
+                            <div class="flex flex-col items-center justify-center"><span class="text-2xl font-black text-m3-onSecondaryContainer tracking-tighter" id="stat-val-completed">0</span><span class="text-[9px] font-bold uppercase tracking-widest opacity-70 mt-0.5" id="str-stat-completed">Selesai</span></div>
+                            <div class="flex flex-col items-center justify-center"><span class="text-2xl font-black text-m3-onSecondaryContainer tracking-tighter" id="stat-val-notes">0</span><span class="text-[9px] font-bold uppercase tracking-widest opacity-70 mt-0.5" id="str-stat-notes">Catatan</span></div>
                         </div>
-
-                        <!-- Chart Area — collapsed by default -->
-                        <div id="stat-chart-area" class="overflow-hidden" style="height:0px; opacity:0;">
-                            <div class="mt-5 pt-4 border-t border-m3-onSecondaryContainer/15 relative z-10">
-                                <div class="flex items-center justify-between mb-3">
-                                    <span class="text-[10px] font-black uppercase tracking-widest opacity-60" id="str-stat-chart-title">Aktivitas Membaca</span>
-                                    <span class="text-[9px] opacity-50 font-bold" id="str-stat-chart-days">7 hari terakhir</span>
-                                </div>
-                                <canvas id="stat-chart-canvas" height="120" class="w-full rounded-2xl"></canvas>
-                                <p id="stat-chart-empty" class="hidden text-center text-[10px] opacity-50 font-bold py-6">Belum ada data aktivitas membaca.</p>
-                            </div>
-                        </div>
+                        <div id="stat-chart-area" class="overflow-hidden" style="height:0px; opacity:0;"><div class="mt-5 pt-4 border-t border-m3-onSecondaryContainer/15 relative z-10"><canvas id="stat-chart-canvas" height="120" class="w-full rounded-2xl"></canvas></div></div>
                     </div>
                 </section>
-
-                <div id="archive-dashboard" class="flex flex-col gap-6 -mx-5 pb-2 w-full"></div>
-
-                <!-- ARCHIVE SEARCH RESULTS PANEL — muncul saat mengetik di search bar pada tab Home -->
-                <div id="archive-results-panel" class="hidden mb-6 flex flex-col gap-2.5 overflow-y-auto pb-2">
-                    <div id="archive-state-loading" class="hidden flex items-center justify-center gap-3 py-8">
-                        <div class="w-6 h-6 border-[3px] border-m3-primary border-t-transparent rounded-full animate-spin shrink-0"></div>
-                        <span class="text-xs font-bold text-m3-onBg opacity-60">Mencari di arsip...</span>
-                    </div>
-                    <div id="archive-state-offline" class="hidden flex flex-col items-center justify-center py-8 gap-2 opacity-50">
-                        <i data-lucide="wifi-off" class="w-10 h-10 text-m3-onBg"></i>
-                        <span class="text-xs font-bold text-m3-onBg text-center">Tidak ada koneksi internet.</span>
-                    </div>
-                    <div id="archive-state-empty" class="hidden flex flex-col items-center justify-center py-8 gap-2 opacity-50">
-                        <i data-lucide="search-x" class="w-10 h-10 text-m3-onBg"></i>
-                        <span class="text-xs font-bold text-m3-onBg">Tidak ada hasil. Coba kata lain.</span>
-                    </div>
-                    <div id="archive-state-error" class="hidden flex flex-col items-center justify-center py-8 gap-2 opacity-50">
-                        <i data-lucide="alert-circle" class="w-10 h-10 text-m3-onBg"></i>
-                        <span id="archive-error-text" class="text-xs font-bold text-m3-onBg text-center">Gagal mencari.</span>
-                    </div>
-                    <div id="archive-cards" class="flex flex-col gap-2.5"></div>
-                </div>
+                <div id="archive-dashboard" class="flex flex-col gap-6 w-full"></div>
+                <div id="archive-results-panel" class="hidden flex flex-col gap-2.5 overflow-y-auto pb-6 w-full"></div>
             </div>
 
             <!-- TAB 2: SCROLL — Rak lokal mode Scroll (teks dinamis) -->
@@ -521,11 +473,11 @@
     <!-- Global Settings Modal -->
     <div id="global-settings-modal" onclick="if(event.target === this) history.back()" class="hidden fixed inset-0 bg-m3-surface z-[200] flex flex-col opacity-0 transition-opacity duration-300">
         <div class="w-full h-full flex flex-col transform translate-x-full transition-transform duration-300 ease-[cubic-bezier(0.34,1.56,0.64,1)] bg-m3-surface" id="global-settings-sheet">
-            <div class="flex items-center px-4 pt-[calc(env(safe-area-inset-top,0px)+2.5rem)] pb-4 border-b border-m3-onSurface/10 shrink-0">
-                <button onclick="history.back()" class="w-10 h-10 flex items-center justify-center rounded-full text-m3-onSurface"><i data-lucide="arrow-left"></i></button>
+            <div class="flex items-center px-4 pt-[calc(env(safe-area-inset-top,32px)+1rem)] pb-4 border-b border-m3-onSurface/10 shrink-0">
+                <button onclick="history.back()" class="w-10 h-10 flex items-center justify-center rounded-full bg-transparent text-m3-onSurface btn-morph outline-none"><i data-lucide="arrow-left"></i></button>
                 <div class="ml-2 flex-1 flex items-center gap-2">
                     <h1 class="text-2xl font-black tracking-tighter text-m3-onSurface" style="font-family: 'Outfit', sans-serif;">Baca.</h1>
-                    <h3 id="str-set-main-title" class="text-xs font-bold text-m3-onSurfaceVariant opacity-70 mt-1 uppercase tracking-wider">Pengaturan</h3>
+                    <h3 id="str-set-main-title" class="text-[10px] font-bold text-m3-onSurfaceVariant opacity-70 mt-1 uppercase tracking-wider bg-m3-onSurface/5 px-2 py-0.5 rounded-full">Pengaturan</h3>
                 </div>
             </div>
             <div class="flex-1 overflow-y-auto p-6 pb-32 hide-scroll">
