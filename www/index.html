@@ -75,7 +75,7 @@
             </div>
         </header>
         <!-- MORPHING FULLSCREEN SEARCH MODAL -->
-        <div id="search-fullscreen-modal" class="fixed inset-0 z-[100] bg-m3-bg flex-col justify-start hidden opacity-0 transition-all duration-300 ease-[cubic-bezier(0.34,1.56,0.64,1)] scale-95 -translate-y-10 origin-top">
+        <div id="search-fullscreen-modal" class="fixed z-[100] bg-m3-bg flex-col justify-start hidden opacity-0 search-morph" style="top:0; left:0; width:100vw; height:100vh; border-radius:0px; overflow:hidden;">
             <div class="flex items-center px-2 pt-[calc(env(safe-area-inset-top,0px)+3rem)] pb-3 bg-m3-surface border-b border-m3-onSurface/10 shrink-0 shadow-sm">
                 <button onclick="closeSearchMode()" class="w-12 h-12 flex items-center justify-center rounded-full text-m3-onSurface shrink-0 btn-morph"><i data-lucide="arrow-left"></i></button>
                 <input type="text" id="global-search" class="flex-1 bg-transparent border-none outline-none font-bold text-m3-onSurface text-base px-2" autocomplete="off">
@@ -103,7 +103,7 @@
             <!-- TAB 1: HOME — Jelajahi Arsip (Internet Archive dashboard) -->
             <div id="tab-home" class="w-full px-0 transition-opacity duration-300">
                 <div class="px-5 mb-4 flex justify-between items-center mt-2">
-                    <h2 class="text-2xl font-black tracking-tight text-m3-onBg">Jelajahi Arsip</h2>
+                    <h2 id="str-jelajah-arsip" class="text-2xl font-black tracking-tight text-m3-onBg">Jelajahi Arsip</h2>
                     <button onclick="loadArchivePlayBooksStyle()" class="w-9 h-9 flex items-center justify-center rounded-full bg-m3-surfaceVariant text-m3-onSurfaceVariant btn-morph"><i data-lucide="refresh-cw" class="w-4 h-4"></i></button>
                 </div>
                 <section id="statistics-section" class="mb-8 mt-1 px-5 transition-all duration-300 origin-top overflow-hidden">
@@ -459,10 +459,13 @@
     </div>
 
     <!-- Welcome Modal -->
-    <div id="welcome-modal" onclick="if(event.target === this) closeWelcome()" class="hidden modal-overlay fixed inset-0 bg-black/60 z-[200] flex items-center justify-center p-4 opacity-0">
-        <div class="modal-content bg-m3-surface w-full max-w-md rounded-[48px] overflow-hidden flex flex-col scale-75 translate-y-12 border-none" id="welcome-sheet">
-            <div class="p-8 overflow-y-auto max-h-[75vh]">
-                <h2 id="str-wel-title" class="text-3xl font-bold text-m3-onSurface mb-2 tracking-tight">Selamat Datang di Baca.</h2>
+    <div id="welcome-modal" class="hidden fixed inset-0 w-full h-full z-[220] bg-m3-bg opacity-0 transition-opacity">
+        <div class="modal-content bg-m3-surface w-full h-full flex flex-col translate-y-full border-none" id="welcome-sheet">
+            <div class="p-8 overflow-y-auto flex-1">
+                <div class="flex items-center justify-between mb-2">
+                    <h2 id="str-wel-title" class="text-3xl font-bold text-m3-onSurface tracking-tight">Selamat Datang di Baca.</h2>
+                    <button onclick="closeWelcome()" class="w-10 h-10 shrink-0 flex items-center justify-center rounded-full bg-m3-surfaceVariant text-m3-onSurfaceVariant btn-morph"><i data-lucide="x" class="w-5 h-5"></i></button>
+                </div>
                 <p id="str-wel-desc" class="text-m3-onSurfaceVariant mb-8 font-medium">Harap baca instruksi berikut untuk pengalaman membaca yang optimal.</p>
                 <div class="flex flex-col gap-4">
                     <div class="bg-m3-surfaceVariant p-5 rounded-3xl pb-6 border-l-4 border-m3-primary">
@@ -495,7 +498,7 @@
 
     <!-- Global Settings Modal -->
     <div id="global-settings-modal" onclick="if(event.target === this) history.back()" class="hidden fixed inset-0 bg-m3-surface z-[200] flex flex-col opacity-0 transition-opacity duration-300">
-        <div class="w-full h-full flex flex-col transform translate-x-full transition-transform duration-300 ease-[cubic-bezier(0.34,1.56,0.64,1)] bg-m3-surface" id="global-settings-sheet">
+        <div class="w-full h-full flex flex-col transform translate-x-full transition-transform duration-300 ease-out bg-m3-surface" id="global-settings-sheet">
             <div class="flex items-center px-4 pt-[calc(env(safe-area-inset-top,0px)+3rem)] pb-4 shrink-0">
                 <button onclick="history.back()" class="w-10 h-10 flex items-center justify-center rounded-full bg-transparent text-m3-onSurface btn-morph outline-none"><i data-lucide="arrow-left"></i></button>
                 <div class="ml-2 flex-1 flex items-center gap-2">
@@ -505,17 +508,10 @@
             <div class="flex-1 overflow-y-auto p-6 pb-32 hide-scroll">
             
 <!-- Toggle Mode Ekspresif -->
-            <div id="expressive-toggle-container" class="flex items-center justify-between mb-2 bg-m3-surfaceVariant p-2 pl-5 rounded-full cursor-pointer btn-morph" onclick="toggleExpressive()">
+            <div id="expressive-toggle-container" class="flex items-center justify-between mb-6 bg-m3-surfaceVariant p-2 pl-5 rounded-full cursor-pointer btn-morph" onclick="toggleExpressive()">
                 <span class="font-bold text-sm tracking-wide opacity-80" id="str-expressive-label">Mode Ekspresif</span>
-                <div class="relative w-16 h-8 rounded-full transition-colors bg-m3-onSurfaceVariant/20" id="expressive-switch-bg">
+                <div class="relative w-16 h-8 rounded-full transition-colors bg-gray-500/40" id="expressive-switch-bg">
                     <div id="expressive-switch-knob" class="absolute top-[2px] left-[2px] w-6 h-6 rounded-full bg-m3-onSurface transition-transform duration-300 ease-out"></div>
-                </div>
-            </div>
-            <!-- Toggle Sembunyikan Judul Buku -->
-            <div id="hide-titles-toggle-container" class="flex items-center justify-between mb-6 bg-m3-surfaceVariant p-2 pl-5 rounded-full cursor-pointer btn-morph" onclick="toggleHideTitles()">
-                <span class="font-bold text-sm tracking-wide opacity-80" id="str-hide-titles-label">Sembunyikan Judul Buku</span>
-                <div class="relative w-16 h-8 rounded-full transition-colors bg-m3-onSurfaceVariant/20" id="hide-titles-switch-bg">
-                    <div id="hide-titles-switch-knob" class="absolute top-[2px] left-[2px] w-6 h-6 rounded-full bg-m3-onSurface transition-transform duration-300 ease-out"></div>
                 </div>
             </div>
 
@@ -689,7 +685,7 @@
 
     <!-- Edit Book Data Modal -->
     <div id="edit-modal" onclick="if(event.target === this) history.back()" class="hidden modal-overlay fixed inset-0 bg-black/60 z-[120] flex items-center justify-center opacity-0 p-4">
-        <div class="modal-content bg-m3-surface w-full max-w-sm rounded-[48px] p-8 transform scale-75 translate-y-12 border-none" id="edit-sheet">
+        <div class="modal-content bg-m3-surface w-full max-w-sm rounded-[48px] p-8 transform translate-y-full border-none" id="edit-sheet">
             <h3 id="str-edit-title" class="text-xl font-bold mb-6 text-m3-onSurface">Edit Detail</h3>
             <input type="hidden" id="edit-book-id">
             
@@ -740,7 +736,7 @@
 
     <!-- Bookmark Create/Edit Modal -->
     <div id="bookmark-modal" onclick="if(event.target === this) history.back()" class="hidden modal-overlay fixed inset-0 bg-black/60 z-[120] flex items-center justify-center opacity-0 p-4">
-        <div class="modal-content bg-m3-surface w-full max-w-sm rounded-[48px] p-6 transform scale-75 translate-y-12 border-none" id="bookmark-sheet">
+        <div class="modal-content bg-m3-surface w-full max-w-sm rounded-[48px] p-6 transform translate-y-full border-none" id="bookmark-sheet">
             <h3 id="str-bookmark-modal-title" class="text-lg font-bold mb-5 text-m3-onSurface flex items-center gap-2"><i data-lucide="bookmark" class="w-5 h-5"></i> Bookmark</h3>
             
             <input type="text" id="bookmark-input-title" class="w-full bg-m3-surfaceVariant text-m3-onSurfaceVariant p-4 rounded-t-2xl font-bold outline-none border-b border-m3-surface focus:border-m3-primary text-sm" placeholder="Judul Bookmark...">
