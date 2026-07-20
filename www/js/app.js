@@ -77,8 +77,10 @@ document.addEventListener("DOMContentLoaded", () => {
         mainHeader: document.getElementById('main-header'),
         grid: document.getElementById('book-grid'), 
         empty: document.getElementById('empty-state'),
-        topSection: document.getElementById('continue-reading-section'), 
-        topSlider: document.getElementById('top-books-slider'),
+        scrollTopSection: document.getElementById('scroll-continue-section'), 
+        scrollTopSlider: document.getElementById('scroll-top-slider'),
+        canvasTopSection: document.getElementById('canvas-continue-section'), 
+        canvasTopSlider: document.getElementById('canvas-top-slider'),
         load: document.getElementById('loading-state'), 
         loadTxt: document.getElementById('loading-text'), 
         loadBar: document.getElementById('loading-bar'), 
@@ -493,7 +495,7 @@ function pushAppHistory(stateName) { history.pushState({ state: stateName }, '',
 // 4. SEARCH & I18N
 function _hideRacksForSearch(hide) {
     // Menyembunyikan semua rak buku saat mode archive search aktif
-    const rackIds = ['continue-reading-section', 'pinned-books-section', 'scroll-collection-section', 'canvas-collection-section'];
+    const rackIds = ['scroll-continue-section', 'canvas-continue-section', 'pinned-books-section', 'scroll-collection-section', 'canvas-collection-section'];
     rackIds.forEach(id => {
         const el = document.getElementById(id);
         if (!el) return;
@@ -535,6 +537,7 @@ function setupSearchListeners() {
                     localPanel.innerHTML = '<div class="col-span-full text-center text-xs opacity-50 mt-10">Tidak ditemukan.</div>';
                 } else {
                     matchedBooks.forEach((book, idx) => { localPanel.appendChild(createBookCard(book, false, idx)); });
+                    initCoverObserver();
                 }
             }
         });
@@ -552,7 +555,8 @@ window.openSearchMode = function() {
     modal.classList.remove('hidden');
     modal.classList.add('flex');
     requestAnimationFrame(() => {
-        modal.classList.remove('opacity-0', 'scale-95');
+        modal.classList.remove('opacity-0', 'scale-95', '-translate-y-10');
+        modal.classList.add('translate-y-0', 'scale-100');
         searchInput.focus();
     });
     const wrapper = document.getElementById('search-results-wrapper');
@@ -579,18 +583,21 @@ window.closeSearchMode = function(fromHistory = false) {
     const modal = document.getElementById('search-fullscreen-modal');
     const searchInput = document.getElementById('global-search');
     if(searchInput) searchInput.blur();
-    modal.classList.add('opacity-0', 'scale-95');
+    modal.classList.add('opacity-0', 'scale-95', '-translate-y-10');
+    modal.classList.remove('translate-y-0', 'scale-100');
     // Pastikan semua rak (Scroll, Canvas, dll) selalu dikembalikan, apapun mode search terakhir
     _hideRacksForSearch(false);
     setTimeout(() => {
         modal.classList.add('hidden');
         modal.classList.remove('flex');
-        // Kembalikan archive panel ke tempat asal
+        // Kembalikan archive panel ke tempat asal, lalu sembunyikan agar Tab Home balik ke dashboard
         const tabHome = document.getElementById('tab-home');
         const archivePanel = document.getElementById('archive-results-panel');
         if(tabHome && archivePanel) tabHome.appendChild(archivePanel);
+        if(archivePanel) archivePanel.classList.add('hidden');
+        const archiveDashboard = document.getElementById('archive-dashboard'); if (archiveDashboard) archiveDashboard.classList.remove('hidden');
         // Validasi ekstra: hapus paksa sisa inline style yang mungkin masih nyangkut
-        ['continue-reading-section', 'pinned-books-section', 'scroll-collection-section', 'canvas-collection-section'].forEach(id => {
+        ['scroll-continue-section', 'canvas-continue-section', 'pinned-books-section', 'scroll-collection-section', 'canvas-collection-section'].forEach(id => {
             const el = document.getElementById(id);
             if (!el) return;
             el.style.maxHeight = '';
@@ -755,6 +762,7 @@ function applyLanguage() {
     if (!Object.keys(d).length) return;
 
     setElementText('str-lib-empty', d.libEmpty); setElementText('str-continue-reading', d.continueReading);
+    setElementText('str-continue-reading-canvas', d.continueReading);
     setElementText('btn-batch-cancel', d.cancel); setElementText('btn-batch-exec', d.delete);
     setElementText('str-opt-select', d.optSelect); setElementText('str-opt-edit', d.optEdit);
     setElementText('str-opt-delete', d.optDelete); setElementText('str-opt-cancel', d.optCancel);
@@ -1519,13 +1527,14 @@ async function loadLibrary() {
 }
 
 function renderLibrary(filterText = "") {
-    if(!DOM.grid || !DOM.topSlider) return;
+    if(!DOM.grid || !DOM.scrollTopSlider || !DOM.canvasTopSlider) return;
     
     // Clear penampung dynamic grids
     if(DOM.scrollGrid) DOM.scrollGrid.innerHTML = '';
     if(DOM.canvasGrid) DOM.canvasGrid.innerHTML = '';
     if(DOM.grid) DOM.grid.innerHTML = ''; 
-    if(DOM.topSlider) DOM.topSlider.innerHTML = '';
+    if(DOM.scrollTopSlider) DOM.scrollTopSlider.innerHTML = '';
+    if(DOM.canvasTopSlider) DOM.canvasTopSlider.innerHTML = '';
     
     const pinnedGrid = document.getElementById('pinned-book-grid');
     if(pinnedGrid) pinnedGrid.innerHTML = '';
@@ -1550,13 +1559,27 @@ function renderLibrary(filterText = "") {
     const pinnedBooks = filteredLib.filter(b => b.isPinned);
     const regularBooks = filteredLib.filter(b => !b.isPinned);
 
-    let topBooks = [];
-    if (!filterText) { topBooks = library.filter(b => b.progressPct > 0).sort((a,b) => b.progressPct - a.progressPct).slice(0, 4); }
-    if (topBooks.length > 0) {
-        DOM.topSection.classList.remove('hidden');
-        topBooks.forEach((book, idx) => { DOM.topSlider.appendChild(createBookCard(book, true, idx)); });
-        const spacer = document.createElement('div'); spacer.className = "w-2 shrink-0 snap-align-none"; DOM.topSlider.appendChild(spacer);
-    } else { DOM.topSection.classList.add('hidden'); }
+    // Pilah Regular Books menjadi 2 Rak: Scroll Mode & Canvas Mode
+    const scrollBooks = regularBooks.filter(b => b.pdfMode !== 'canvas');
+    const canvasBooks = regularBooks.filter(b => b.pdfMode === 'canvas');
+
+    // "Lanjutkan Membaca" dipisah per-tab: masing-masing hanya menampilkan buku dari raknya sendiri
+    let scrollTopBooks = [], canvasTopBooks = [];
+    if (!filterText) {
+        scrollTopBooks = scrollBooks.filter(b => b.progressPct > 0).sort((a,b) => b.progressPct - a.progressPct).slice(0, 4);
+        canvasTopBooks = canvasBooks.filter(b => b.progressPct > 0).sort((a,b) => b.progressPct - a.progressPct).slice(0, 4);
+    }
+    if (scrollTopBooks.length > 0 && DOM.scrollTopSection) {
+        DOM.scrollTopSection.classList.remove('hidden');
+        scrollTopBooks.forEach((book, idx) => { DOM.scrollTopSlider.appendChild(createBookCard(book, true, idx)); });
+        const spacer = document.createElement('div'); spacer.className = "w-2 shrink-0 snap-align-none"; DOM.scrollTopSlider.appendChild(spacer);
+    } else if (DOM.scrollTopSection) { DOM.scrollTopSection.classList.add('hidden'); }
+
+    if (canvasTopBooks.length > 0 && DOM.canvasTopSection) {
+        DOM.canvasTopSection.classList.remove('hidden');
+        canvasTopBooks.forEach((book, idx) => { DOM.canvasTopSlider.appendChild(createBookCard(book, true, idx)); });
+        const spacer = document.createElement('div'); spacer.className = "w-2 shrink-0 snap-align-none"; DOM.canvasTopSlider.appendChild(spacer);
+    } else if (DOM.canvasTopSection) { DOM.canvasTopSection.classList.add('hidden'); }
     
     const pinnedSection = document.getElementById('pinned-books-section');
     if (pinnedBooks.length > 0) {
@@ -1565,10 +1588,6 @@ function renderLibrary(filterText = "") {
     } else {
         if(pinnedSection) pinnedSection.classList.add('hidden');
     }
-
-    // Pilah Regular Books menjadi 2 Rak: Scroll Mode & Canvas Mode
-    const scrollBooks = regularBooks.filter(b => b.pdfMode !== 'canvas');
-    const canvasBooks = regularBooks.filter(b => b.pdfMode === 'canvas');
 
     if (scrollBooks.length === 0) {
         if(DOM.scrollSection) DOM.scrollSection.classList.add('hidden');
