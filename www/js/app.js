@@ -129,10 +129,6 @@ document.addEventListener("DOMContentLoaded", () => {
         tabContainer.addEventListener('touchstart', (e) => {
             if (currentTab === 'canvas') return;
             if (window.getSelection().toString().trim().length > 0) return;
-            // Guard: sentuhan yang dimulai di dalam slider horizontal (mis. rak rekomendasi
-            // buku) tidak boleh memicu swipe pindah tab — biarkan slider itu sendiri yang
-            // menangani scroll horizontalnya.
-            if (e.target.closest('.overflow-x-auto') || e.target.closest('.hide-scroll')) return;
             const touch = e.touches[0];
             tabSwipeStartX = touch.clientX;
             tabSwipeStartY = touch.clientY;
@@ -141,22 +137,17 @@ document.addEventListener("DOMContentLoaded", () => {
             tabSwipeDeltaX = 0;
             tabSwipeDirection = null;
             swipeActiveTabIndex = getTabIndex(currentTab);
+            prepareTabsForSwipe();
             document.querySelectorAll('#tab-home, #tab-scroll, #tab-canvas').forEach(el => {
                 if (el) {
                     el.style.transition = 'none';
                     el.style.willChange = 'transform';
-                    // Buka semua tab (hapus 'hidden') selama gesture swipe berlangsung,
-                    // supaya tab tetangga yang sedang di-drag masuk ikut kelihatan.
-                    // 'hidden' akan dipasang lagi otomatis oleh resetTabPositions()
-                    // begitu swipe selesai dan tab final sudah ditentukan.
-                    el.classList.remove('hidden');
                 }
             });
         }, { passive: true });
 
         tabContainer.addEventListener('touchmove', (e) => {
             if (currentTab === 'canvas') return;
-            if (!isSwipingTab && (e.target.closest('.overflow-x-auto') || e.target.closest('.hide-scroll'))) return;
             const touch = e.touches[0];
             const deltaX = touch.clientX - tabSwipeStartX;
             const deltaY = Math.abs(touch.clientY - tabSwipeStartY);
@@ -204,6 +195,7 @@ document.addEventListener("DOMContentLoaded", () => {
                             el.style.willChange = '';
                         }
                     });
+                    finalizeTabsAfterSwipe();
                 }, 300);
             } else {
                 setTimeout(() => {
@@ -215,6 +207,7 @@ document.addEventListener("DOMContentLoaded", () => {
                             el.style.willChange = '';
                         }
                     });
+                    finalizeTabsAfterSwipe();
                 }, 300);
             }
             isSwipingTab = false;
@@ -588,7 +581,6 @@ window.addEventListener('popstate', (e) => {
     else if (!document.getElementById('backup-type-modal').classList.contains('opacity-0')) { _closeModalAction('backup-type-modal', 'backup-type-sheet', true, true); }
     else if (!document.getElementById('pdf-mode-modal').classList.contains('opacity-0')) { _closeModalAction('pdf-mode-modal', 'pdf-mode-sheet', true, true); }
     else if (!document.getElementById('global-settings-modal').classList.contains('opacity-0')) { _closeModalAction('global-settings-modal', 'global-settings-sheet', false, true); }
-    else if (!document.getElementById('archive-modal').classList.contains('opacity-0')) { _closeModalAction('archive-modal', 'archive-sheet', false, true); }
     else if (!document.getElementById('search-fullscreen-modal').classList.contains('hidden')) { window.closeSearchMode(true); }
     else if (isBatchDeleteMode) { window.toggleBatchDelete(true); }
     else if (activePanel) { _closeSidePanelsAction(true); } 
@@ -629,22 +621,26 @@ function setupSearchListeners() {
         searchInput.addEventListener('input', (e) => {
             const val = e.target.value;
             if(clearBtn) clearBtn.classList.toggle('hidden', val.length === 0);
-            const query = val.toLowerCase().trim();
-            const localPanel = document.getElementById('local-search-results');
-            localPanel.innerHTML = '';
-            if(query.length === 0) {
-                localPanel.innerHTML = '<div class="col-span-full text-center text-xs opacity-50 mt-10">Ketik judul buku...</div>';
-                return;
-            }
-            const matchedBooks = library.filter(b => b.title.toLowerCase().includes(query));
-            if(matchedBooks.length === 0) {
-                localPanel.innerHTML = '<div class="col-span-full text-center text-xs opacity-50 mt-10">Tidak ditemukan.</div>';
+            if (_archiveMode) {
+                _archiveOnInput(val);
             } else {
-                matchedBooks.forEach((book, idx) => {
-                    const card = layoutMode === 'list' ? createBookListItem(book, idx, true) : createBookCard(book, false, idx, true);
-                    localPanel.appendChild(card);
-                });
-                initCoverObserver();
+                const query = val.toLowerCase().trim();
+                const localPanel = document.getElementById('local-search-results');
+                localPanel.innerHTML = '';
+                if(query.length === 0) {
+                    localPanel.innerHTML = '<div class="col-span-full text-center text-xs opacity-50 mt-10">Ketik judul buku...</div>';
+                    return;
+                }
+                const matchedBooks = library.filter(b => b.title.toLowerCase().includes(query));
+                if(matchedBooks.length === 0) {
+                    localPanel.innerHTML = '<div class="col-span-full text-center text-xs opacity-50 mt-10">Tidak ditemukan.</div>';
+                } else {
+                    matchedBooks.forEach((book, idx) => {
+                        const card = layoutMode === 'list' ? createBookListItem(book, idx, true) : createBookCard(book, false, idx, true);
+                        localPanel.appendChild(card);
+                    });
+                    initCoverObserver();
+                }
             }
         });
     }
@@ -699,18 +695,22 @@ window.openSearchMode = function() {
         }, 100);
     });
 
+    const archivePanel = document.getElementById('archive-results-panel');
     const localPanel = document.getElementById('local-search-results');
-    localPanel.classList.remove('hidden');
-    localPanel.className = layoutMode === 'list' ? 'flex flex-col gap-4 px-5 py-4 w-full' : 'grid grid-cols-2 gap-4 px-5 py-4 w-full';
-    localPanel.innerHTML = '<div class="col-span-full text-center text-xs opacity-50 mt-10">Ketik judul buku...</div>';
-};
-
-// --- ARCHIVE MODAL: pencarian Internet Archive kini modal M3 full-page tersendiri ---
-window.openArchiveModal = function() {
-    openModal('archive-modal', 'archive-sheet', false);
-    const input = document.getElementById('archive-search-input');
-    if (input) { input.value = ''; input.focus(); }
-    _archiveShowState('empty');
+    if(_archiveMode) {
+        if(archivePanel) {
+            modalResults.appendChild(archivePanel);
+            archivePanel.classList.remove('hidden');
+            archivePanel.classList.add('px-5');
+        }
+        localPanel.classList.add('hidden');
+        _archiveShowState('empty');
+    } else {
+        if(archivePanel) archivePanel.classList.add('hidden');
+        localPanel.classList.remove('hidden');
+        localPanel.className = layoutMode === 'list' ? 'flex flex-col gap-4 px-5 py-4 w-full' : 'grid grid-cols-2 gap-4 px-5 py-4 w-full';
+        localPanel.innerHTML = '<div class="col-span-full text-center text-xs opacity-50 mt-10">Ketik judul buku...</div>';
+    }
 };
 
 window.closeSearchMode = function(fromHistory = false) {
@@ -753,6 +753,10 @@ window.closeSearchMode = function(fromHistory = false) {
         modal.style.top = '0px'; modal.style.left = '0px';
         modal.style.width = '100vw'; modal.style.height = '100vh';
         modal.style.borderRadius = '0px';
+        const tabHome = document.getElementById('tab-home');
+        const archivePanel = document.getElementById('archive-results-panel');
+        if(tabHome && archivePanel) tabHome.appendChild(archivePanel);
+        if(archivePanel) archivePanel.classList.add('hidden');
         const archiveDashboard = document.getElementById('archive-dashboard'); if (archiveDashboard) archiveDashboard.classList.remove('hidden');
         ['scroll-continue-section', 'canvas-continue-section', 'pinned-books-section', 'scroll-collection-section', 'canvas-collection-section'].forEach(id => {
             const el = document.getElementById(id);
@@ -790,6 +794,38 @@ function getTabElement(tabId) {
 }
 function getTabContainer() {
     return document.getElementById('library-content-scroll');
+}
+
+// [FIX] Tab non-aktif punya class "hidden" (display:none) dari HTML.
+// Sebelum animasi/swipe jalan, semua tab harus di-unhide + diposisikan
+// absolute (numpuk) biar ke-render & bisa digeser bareng. Setelah animasi
+// selesai, tab non-aktif di-hidden lagi & tab aktif dikembalikan ke posisi
+// normal (biar scroll container-nya ngukur tinggi dari tab aktif aja).
+function prepareTabsForSwipe() {
+    ['home', 'scroll', 'canvas'].forEach(id => {
+        const el = getTabElement(id);
+        if (!el) return;
+        el.classList.remove('hidden');
+        el.style.position = 'absolute';
+        el.style.top = '0';
+        el.style.left = '0';
+        el.style.width = '100%';
+    });
+}
+function finalizeTabsAfterSwipe() {
+    ['home', 'scroll', 'canvas'].forEach(id => {
+        const el = getTabElement(id);
+        if (!el) return;
+        el.style.position = '';
+        el.style.top = '';
+        el.style.left = '';
+        el.style.width = '';
+        if (id !== currentTab) {
+            el.classList.add('hidden');
+        } else {
+            el.classList.remove('hidden');
+        }
+    });
 }
 
 function updateTabPositions(deltaX) {
@@ -830,7 +866,6 @@ function updateTabPositions(deltaX) {
 
 function resetTabPositions(withAnimation = false) {
     const tabs = ['home', 'scroll', 'canvas'];
-    const activeIdx = getTabIndex(currentTab);
     tabs.forEach((tabId, idx) => {
         const el = getTabElement(tabId);
         if (el) {
@@ -839,14 +874,11 @@ function resetTabPositions(withAnimation = false) {
             } else {
                 el.style.transition = 'none';
             }
-            if (idx === activeIdx) {
-                // Tab aktif harus lepas dari 'hidden' (display:none) SEBELUM transisi
-                // opacity/transform berjalan, kalau tidak elemen tetap tak terlihat.
-                el.classList.remove('hidden');
+            if (idx === getTabIndex(currentTab)) {
                 el.style.transform = 'translate3d(0, 0, 0) scale(1)';
                 el.style.opacity = '1';
                 el.style.pointerEvents = 'auto';
-            } else if (idx < activeIdx) {
+            } else if (idx < getTabIndex(currentTab)) {
                 el.style.transform = 'translate3d(-25%, 0, 0) scale(0.95)';
                 el.style.opacity = '0';
                 el.style.pointerEvents = 'none';
@@ -857,18 +889,6 @@ function resetTabPositions(withAnimation = false) {
             }
         }
     });
-    // Pasang kembali 'hidden' ke tab non-aktif setelah transisi opacity/transform
-    // selesai (300ms), supaya kontennya benar-benar lepas dari layout & interaksi.
-    // Tanpa ini tab lama tetap "hidup" (opacity:0 doang) walau sudah tak terlihat.
-    const hideDelay = withAnimation ? 300 : 0;
-    setTimeout(() => {
-        tabs.forEach((tabId, idx) => {
-            if (idx !== getTabIndex(currentTab)) {
-                const el = getTabElement(tabId);
-                if (el) el.classList.add('hidden');
-            }
-        });
-    }, hideDelay);
 }
 
 // --- TAB SYSTEM: Home (Archive) / Scroll / Canvas ---
@@ -880,7 +900,9 @@ window.switchTab = function(tabId) {
     }
     const previousTab = currentTab;
     currentTab = tabId;
+    prepareTabsForSwipe();
     resetTabPositions(true);
+    setTimeout(finalizeTabsAfterSwipe, 320);
     ['home', 'scroll', 'canvas'].forEach(id => {
         const btn = document.getElementById('nav-tab-' + id);
         if (!btn) return;
@@ -900,7 +922,9 @@ window.switchTab = function(tabId) {
         const _dTab = typeof i18n !== 'undefined' ? (i18n[wikiLang] || i18n['id']) : {};
         DOM.globalSearch.placeholder = _archiveMode ? _dTab.searchArchive : _dTab.searchLocal;
     }
+    const archivePanel = document.getElementById('archive-results-panel');
     const archiveDashboard = document.getElementById('archive-dashboard');
+    if (archivePanel) archivePanel.classList.add('hidden');
     if (archiveDashboard) archiveDashboard.classList.remove('hidden');
     if (tabId === 'home' && archiveDashboard && archiveDashboard.innerHTML.trim() === '') {
         loadArchivePlayBooksStyle();
@@ -4571,6 +4595,10 @@ window.setSearchMode = function(mode) {
 
 function _archiveOnInput(query) {
     clearTimeout(_archiveSearchTimeout);
+    const archivePanel = document.getElementById('archive-results-panel');
+    if (!archivePanel) return;
+    archivePanel.classList.remove('hidden');
+    _hideRacksForSearch(true);
     if (query.trim().length < 2) {
         _archiveShowState('empty');
         return;
