@@ -514,106 +514,61 @@ function _hideRacksForSearch(hide) {
 }
 
 function setupSearchListeners() {
-    const searchArea = document.getElementById('search-area');
-    const searchCapsule = document.querySelector('.search-capsule');
-    
-    document.addEventListener('click', (e) => {
-        if (searchArea && searchArea.classList.contains('search-active') && !searchArea.contains(e.target)) {
-            const archivePanel = document.getElementById('archive-results-panel');
-            const archiveFmtOverlay = document.getElementById('archive-fmt-overlay');
-            const archiveDlOverlay = document.getElementById('archive-dl-overlay');
-            if (archivePanel && archivePanel.contains(e.target)) return;
-            if ((archiveFmtOverlay && archiveFmtOverlay.contains(e.target)) || (archiveDlOverlay && archiveDlOverlay.contains(e.target))) return;
-            window.closeSearch(false);
-        }
-    });
-
-    if(DOM.globalSearch) {
-        DOM.globalSearch.addEventListener('focus', () => {
-            if (!searchArea.classList.contains('search-active')) {
-                searchArea.classList.add('search-active');
-                if (window.location.hash !== '#search') pushAppHistory('search');
+    const searchInput = document.getElementById('global-search');
+    const searchContainer = document.getElementById('search-container');
+    const capsule = document.getElementById('search-capsule');
+    const overlay = document.getElementById('search-overlay-bg');
+    const backBtn = document.getElementById('search-back-btn');
+    if(searchInput) {
+        searchInput.addEventListener('focus', () => {
+            searchContainer.classList.add('fixed', 'top-3', 'left-4', 'right-4', 'z-[70]', 'w-auto');
+            capsule.classList.remove('bg-m3-surfaceVariant');
+            capsule.classList.add('bg-m3-surface', 'shadow-md');
+            overlay.classList.remove('hidden');
+            backBtn.classList.remove('hidden');
+            document.getElementById('library-content-scroll').style.overflow = 'hidden';
+            requestAnimationFrame(() => overlay.classList.remove('opacity-0'));
+            if(_archiveMode) {
+                document.getElementById('archive-dashboard').classList.add('hidden');
+                document.getElementById('archive-results-panel').classList.remove('hidden');
             }
-            _syncOfflineBadge();
         });
-        DOM.globalSearch.addEventListener('input', (e) => {
-            const statSection = document.getElementById('statistics-section');
-            if(statSection) {
-                if(e.target.value.trim().length > 0) {
-                    statSection.style.height = '0px';
-                    statSection.style.opacity = '0';
-                    statSection.style.marginBottom = '0px';
-                } else {
-                    statSection.style.height = '';
-                    statSection.style.opacity = '1';
-                    statSection.style.marginBottom = '';
-                }
-            }
+        searchInput.addEventListener('input', (e) => {
             if (_archiveMode) {
-                const q = e.target.value;
-                if (q.trim().length === 0) {
-                    // Balik ke dashboard kurasi saat kolom pencarian dikosongkan
-                    const archivePanel = document.getElementById('archive-results-panel');
-                    const dashboard = document.getElementById('archive-dashboard');
-                    if (archivePanel) archivePanel.classList.add('hidden');
-                    if (dashboard) dashboard.classList.remove('hidden');
-                    return;
-                }
-                _archiveOnInput(q);
+                _archiveOnInput(e.target.value);
             } else {
                 const query = e.target.value.toLowerCase().trim();
-                document.querySelectorAll('.card-morph').forEach(card => {
-                    const titleEl = card.querySelector('h3, .book-title-text');
-                    if (titleEl) {
-                        card.style.display = titleEl.textContent.toLowerCase().includes(query) ? '' : 'none';
-                    }
+                document.querySelectorAll('.card-morph, .lazy-cover').forEach(card => {
+                    const titleEl = card.querySelector('.book-title-text');
+                    if (titleEl) card.style.display = titleEl.textContent.toLowerCase().includes(query) ? '' : 'none';
                 });
             }
         });
     }
-
-    if(searchCapsule) {
-        searchCapsule.addEventListener('click', (e) => {
-            if (searchArea.classList.contains('search-active')) {
-                if (e.target !== DOM.globalSearch) { window.closeSearch(false); }
-            } else {
-                searchArea.classList.add('search-active');
-                if (window.location.hash !== '#search') pushAppHistory('search');
-                _syncOfflineBadge();
-            }
-        });
-    }
-
-    window.addEventListener('online', _syncOfflineBadge);
-    window.addEventListener('offline', _syncOfflineBadge);
 }
 
 window.closeSearch = function(fromHistory = false) {
-    const searchArea = document.getElementById('search-area');
-    const statSection = document.getElementById('statistics-section');
-
-    if (searchArea && searchArea.classList.contains('search-active')) {
-        searchArea.classList.remove('search-active');
-        DOM.globalSearch.blur(); DOM.globalSearch.value = ''; 
-        
-        if(statSection) {
-             statSection.style.height = '';
-             statSection.style.opacity = '1';
-             statSection.style.marginBottom = '';
-        }
-
-        // Reset panel pencarian archive; mode archive tetap mengikuti tab aktif (Home = archive)
-        _archiveMode = (currentTab === 'home');
-        _archiveLastQuery = '';
-        const archivePanel = document.getElementById('archive-results-panel');
-        const archiveDashboard = document.getElementById('archive-dashboard');
-        if (archivePanel) archivePanel.classList.add('hidden');
-        if (archiveDashboard) archiveDashboard.classList.remove('hidden');
-        _hideRacksForSearch(false);
-
-        // Reset filter CSS Display, hindari renderLibrary() agar tidak kedip
-        document.querySelectorAll('.card-morph').forEach(card => card.style.display = '');
-        if (!fromHistory && window.location.hash === '#search') history.back();
+    const searchInput = document.getElementById('global-search');
+    const searchContainer = document.getElementById('search-container');
+    const capsule = document.getElementById('search-capsule');
+    const overlay = document.getElementById('search-overlay-bg');
+    const backBtn = document.getElementById('search-back-btn');
+    if(!searchInput) return;
+    searchInput.blur();
+    searchInput.value = '';
+    searchContainer.classList.remove('fixed', 'top-3', 'left-4', 'right-4', 'z-[70]', 'w-auto');
+    capsule.classList.add('bg-m3-surfaceVariant');
+    capsule.classList.remove('bg-m3-surface', 'shadow-md');
+    overlay.classList.add('opacity-0');
+    backBtn.classList.add('hidden');
+    document.getElementById('library-content-scroll').style.overflow = 'auto';
+    setTimeout(() => overlay.classList.add('hidden'), 300);
+    if(_archiveMode) {
+        document.getElementById('archive-dashboard').classList.remove('hidden');
+        document.getElementById('archive-results-panel').classList.add('hidden');
+        _archiveShowState('empty');
+    } else {
+        document.querySelectorAll('.card-morph, .lazy-cover').forEach(card => card.style.display = '');
     }
 };
 
@@ -669,68 +624,84 @@ window.toggleLayoutMode = function() {
     layoutMode = layoutMode === 'grid' ? 'list' : 'grid';
     localStorage.setItem('layout_mode', layoutMode);
     const icon = document.querySelector('#layout-btn i');
-    if (icon) {
+    if(icon) {
         icon.setAttribute('data-lucide', layoutMode === 'grid' ? 'layout-grid' : 'list');
-        if (window.lucide) window.lucide.createIcons({ nodes: [icon] });
+        if(window.lucide) window.lucide.createIcons({nodes: [icon]});
     }
-    renderLibrary(DOM.globalSearch ? DOM.globalSearch.value : '');
+    if (currentTab === 'home') loadArchivePlayBooksStyle();
+    renderLibrary(document.getElementById('global-search') ? document.getElementById('global-search').value : '');
 };
 
 // --- HOME TAB: Dashboard kurasi Internet Archive (gaya Play Books) ---
 window.loadArchivePlayBooksStyle = async function() {
     const container = document.getElementById('archive-dashboard');
-    if (!container) return;
-    container.innerHTML = '<div class="flex justify-center py-10 w-full"><div class="w-8 h-8 border-4 border-m3-primary border-t-transparent rounded-full animate-spin"></div></div>';
-
+    if(!container) return;
+    const d = i18n[wikiLang] || i18n['id'];
+    const isList = layoutMode === 'list';
+    container.innerHTML = `<div class="flex justify-center py-10 w-full"><div class="w-8 h-8 border-4 border-m3-primary border-t-transparent rounded-full animate-spin"></div></div>`;
     if (!navigator.onLine) {
-        container.innerHTML = '<p class="text-center text-xs opacity-50 p-5 w-full">Tidak ada koneksi internet.</p>';
+        container.innerHTML = `<p class="text-center text-xs opacity-50 p-5 w-full">${d.noInternet || 'Tidak ada koneksi internet.'}</p>`;
         return;
     }
-
     const queries = [
-        { title: 'Fiksi Populer', q: 'subject:"fiction" AND mediatype:texts' },
-        { title: 'Sains & Ilmu Pengetahuan', q: 'subject:"science" AND mediatype:texts' },
-        { title: 'Sejarah Dunia', q: 'subject:"history" AND mediatype:texts' }
+        { title: d.archiveFic || "Fiksi Populer", q: 'subject:"fiction" AND mediatype:texts' },
+        { title: d.archiveSci || "Sains & Ilmu Pengetahuan", q: 'subject:"science" AND mediatype:texts' },
+        { title: d.archiveHis || "Sejarah Dunia", q: 'subject:"history" AND mediatype:texts' }
     ];
-
     try {
         let html = '';
-        for (let item of queries) {
+        for(let item of queries) {
             const page = Math.floor(Math.random() * 5) + 1;
             const url = `https://archive.org/advancedsearch.php?q=${encodeURIComponent(item.q)}&fl[]=identifier,title,creator,downloads&sort[]=downloads+desc&rows=8&page=${page}&output=json`;
             const res = await fetch(url, { signal: AbortSignal.timeout(10000) });
             if (!res.ok) continue;
             const data = await res.json();
-            const docs = (data.response && data.response.docs) || [];
-            if (docs.length === 0) continue;
-
-            const cardsHtml = docs.map(doc => {
-                const id = doc.identifier;
-                const title = doc.title || 'Untitled';
-                const creator = Array.isArray(doc.creator) ? doc.creator[0] : (doc.creator || 'Unknown');
-                return `
-                    <div class="flex flex-col w-[112px] shrink-0 snap-start cursor-pointer btn-morph outline-none" onclick="window.archiveDownload('${_esc(id)}', '${_esc(title.replace(/'/g, "\\'").replace(/"/g, '&quot;'))}')">
-                        <div class="w-full aspect-[2/3] bg-m3-surfaceVariant rounded-xl overflow-hidden shadow-sm mb-2 relative">
-                            <img src="https://archive.org/services/img/${id}" class="w-full h-full object-cover" loading="lazy" onerror="this.style.display='none'">
-                            <div class="absolute inset-0 bg-black/5 pointer-events-none"></div>
+            const docs = data.response?.docs || [];
+            if(docs.length > 0) {
+                let cardsHtml = docs.map(doc => {
+                    const id = doc.identifier;
+                    const title = doc.title || 'Untitled';
+                    const creator = Array.isArray(doc.creator) ? doc.creator[0] : (doc.creator || 'Unknown');
+                    if (isList) {
+                        return `
+                            <div class="flex gap-4 items-center w-full mb-4 cursor-pointer outline-none" onclick="window.archiveDownload('${_esc(id)}', '${_esc(title.replace(/'/g, "\\'").replace(/"/g, '&quot;'))}')">
+                                <div class="w-[72px] aspect-[2/3] bg-m3-surfaceVariant rounded-xl overflow-hidden shadow-sm shrink-0 relative">
+                                    <img src="https://archive.org/services/img/${id}" class="w-full h-full object-cover" loading="lazy" onerror="this.style.display='none'">
+                                    <div class="absolute inset-0 bg-black/5 pointer-events-none"></div>
+                                </div>
+                                <div class="flex-1 min-w-0">
+                                    <h4 class="text-sm font-bold text-m3-onSurface line-clamp-2 leading-tight">${_esc(title)}</h4>
+                                    <p class="text-[10px] text-m3-onSurfaceVariant opacity-70 truncate mt-1">${_esc(creator)}</p>
+                                </div>
+                            </div>
+                        `;
+                    } else {
+                        return `
+                            <div class="flex flex-col w-[112px] shrink-0 snap-start cursor-pointer outline-none" onclick="window.archiveDownload('${_esc(id)}', '${_esc(title.replace(/'/g, "\\'").replace(/"/g, '&quot;'))}')">
+                                <div class="w-full aspect-[2/3] bg-m3-surfaceVariant rounded-xl overflow-hidden shadow-sm mb-2 relative">
+                                    <img src="https://archive.org/services/img/${id}" class="w-full h-full object-cover" loading="lazy" onerror="this.style.display='none'">
+                                    <div class="absolute inset-0 bg-black/5 pointer-events-none"></div>
+                                </div>
+                                <h4 class="text-xs font-bold text-m3-onSurface line-clamp-2 leading-tight">${_esc(title)}</h4>
+                                <p class="text-[10px] text-m3-onSurfaceVariant opacity-70 truncate mt-1">${_esc(creator)}</p>
+                            </div>
+                        `;
+                    }
+                }).join('');
+                html += `
+                    <div class="w-full px-5 mb-2">
+                        <h3 class="text-sm font-bold text-m3-onSurface mb-3 tracking-wide">${_esc(item.title)}</h3>
+                        <div class="${isList ? 'flex flex-col' : 'flex gap-4 overflow-x-auto snap-x snap-proximity hide-scroll -mx-5 px-5 pb-2'}">
+                            ${cardsHtml}
+                            ${!isList ? '<div class="w-1 shrink-0"></div>' : ''}
                         </div>
-                        <h4 class="text-xs font-bold text-m3-onSurface line-clamp-2 leading-tight">${_esc(title)}</h4>
-                        <p class="text-[10px] text-m3-onSurfaceVariant opacity-70 truncate mt-1">${_esc(creator)}</p>
                     </div>
                 `;
-            }).join('');
-
-            html += `
-                <div class="w-full px-5">
-                    <h3 class="text-sm font-bold text-m3-onSurface mb-3 tracking-wide">${_esc(item.title)}</h3>
-                    <div class="flex gap-4 overflow-x-auto snap-x snap-proximity hide-scroll -mx-5 px-5 pb-2">${cardsHtml}</div>
-                </div>
-            `;
+            }
         }
-        container.innerHTML = html || '<p class="text-center text-xs opacity-50 p-5 w-full">Gagal memuat rekomendasi.</p>';
-        if (window.lucide) window.lucide.createIcons();
-    } catch (e) {
-        container.innerHTML = '<p class="text-center text-xs opacity-50 p-5 w-full">Gagal memuat rekomendasi.</p>';
+        container.innerHTML = html || `<p class="text-center text-xs opacity-50 p-5 w-full">${d.archiveFailed || 'Gagal memuat rekomendasi.'}</p>`;
+    } catch(e) {
+        container.innerHTML = `<p class="text-center text-xs opacity-50 p-5 w-full">${d.archiveFailed || 'Gagal memuat rekomendasi.'}</p>`;
     }
 };
 
@@ -1518,7 +1489,7 @@ function renderLibrary(filterText = "") {
 
     // Terapkan class kontainer sesuai mode Grid / List
     const isListMode = layoutMode === 'list';
-    const gridClass = 'grid grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 w-full';
+    const gridClass = 'grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 w-full';
     const listClass = 'flex flex-col gap-3 w-full';
     [DOM.scrollGrid, DOM.canvasGrid, pinnedGrid].forEach(el => {
         if (!el) return;
@@ -1675,83 +1646,55 @@ function initCoverObserver() {
 }
 
 function createBookCard(book, isSlider = false, index = 0) {
-    const progress = book.progressPct || 0; 
+    const progress = book.progressPct || 0;
     const card = document.createElement('div');
-    
-    let shapeClass = book.shape === 'rounded' ? 'rounded-[24px]' : (book.shape === 'square' ? 'rounded-xl' : (index % 2 === 0 ? 'rounded-tl-[32px] rounded-br-[32px] rounded-tr-lg rounded-bl-lg' : 'rounded-tr-[32px] rounded-bl-[32px] rounded-tl-lg rounded-br-lg'));
-
-    const colors = [
-        'bg-m3-primaryContainer text-m3-onPrimaryContainer', 
-        'bg-m3-secondaryContainer text-m3-onSecondaryContainer', 
-        'bg-m3-tertiaryContainer text-m3-onTertiaryContainer',
-        'bg-m3-surfaceVariant text-m3-onSurfaceVariant'
-    ];
-    let baseClass = colors[index % colors.length];
-    const dimensionClass = isSlider ? "w-64 h-40 shrink-0 snap-start" : "aspect-[3/4.5] w-full shadow-md hover:shadow-xl transition-shadow";
-
-    card.className = `${baseClass} ${shapeClass} ${dimensionClass} p-4 relative cursor-pointer card-morph lazy-cover flex flex-col justify-between overflow-hidden border-none outline-none ring-0`;
+    const isList = !isSlider && layoutMode === 'list';
+    const widthClass = isSlider ? 'w-[110px] sm:w-[130px] snap-start' : 'w-full';
+    card.className = `${isSlider ? '' : 'card-morph'} lazy-cover outline-none ring-0 relative ${isList ? 'flex gap-4 items-center w-full mb-4' : `flex flex-col ${widthClass} shrink-0`}`;
     card.dataset.coverId = book.id;
-    card.dataset.baseClass = baseClass;
-
+    let badgeText = book.type === 'pdf' ? 'PDF' : book.type.toUpperCase();
     let batchOverlayHTML = !isSlider ? `
-        <div class="batch-overlay absolute inset-0 z-20 transition-all duration-300 pointer-events-none rounded-inherit" data-book-id="${book.id}" style="display: none; opacity: 0; background-color: transparent;">
-            <div class="batch-icon-box absolute top-3 left-3 w-7 h-7 rounded-full flex items-center justify-center transition-colors"></div>
+        <div class="batch-overlay absolute inset-0 z-20 transition-all duration-300 pointer-events-none rounded-xl" data-book-id="${book.id}" style="display: none; opacity: 0; background-color: transparent;">
+            <div class="batch-icon-box absolute top-2 left-2 w-6 h-6 rounded-full flex items-center justify-center transition-colors"></div>
         </div>
     ` : '';
-
-    // Badge: PDF ya PDF saja, tidak perlu label mode
-    const d = i18n[wikiLang] || i18n['id'];
-    let badgeText = book.type.toUpperCase();
-    if (book.type === 'pdf') badgeText = 'PDF';
-
     card.innerHTML = `
         ${batchOverlayHTML}
-        <div class="absolute inset-x-0 bottom-0 h-[80%] bg-gradient-to-t from-black via-black/40 to-transparent pointer-events-none z-0 rounded-b-inherit border-none outline-none hidden" id="overlay-${book.id}"></div>
-        
-        <div class="relative z-10 flex flex-col h-full justify-between pointer-events-none border-none">
-            <div class="flex ${isSlider ? 'justify-between items-start' : 'justify-between items-center gap-1'} w-full drop-shadow-md" id="top-icons-${book.id}">
-                <span class="book-badge inline-block text-[0.55rem] font-black px-2 py-0.5 bg-black/40 rounded-full text-white uppercase tracking-wider">${badgeText}</span>
-                ${book.isPinned ? `<i data-lucide="pin" class="w-3.5 h-3.5 opacity-90 fill-current text-white"></i>` : ''}
+        <div class="relative overflow-hidden shadow-sm bg-m3-surfaceVariant rounded-xl flex-shrink-0" style="${isList ? 'width: 80px; aspect-ratio: 2/3;' : 'width: 100%; aspect-ratio: 2/3;'}">
+            <div id="cover-img-${book.id}" class="absolute inset-0 bg-cover bg-center transition-opacity duration-300 opacity-0"></div>
+            <div class="absolute inset-0 bg-black/5 pointer-events-none"></div>
+            <div class="absolute top-2 left-2 flex gap-1 z-10">
+                <span class="text-[9px] font-black px-1.5 py-0.5 bg-m3-primary/90 rounded-md text-m3-onPrimary shadow-sm">${badgeText}</span>
+                ${book.isPinned ? `<div class="bg-m3-secondaryContainer/90 rounded-md p-0.5 shadow-sm"><i data-lucide="pin" class="w-3 h-3 text-m3-onSecondaryContainer"></i></div>` : ''}
             </div>
-            <div class="mt-auto flex flex-col border-none">
-                ${!isSlider ? `<i data-lucide="book" class="w-6 h-6 mb-2 opacity-80" id="book-icon-${book.id}"></i>` : ''}
-                <h3 class="font-bold ${isSlider ? 'text-sm line-clamp-1' : 'text-[13px] mt-1 line-clamp-2 mb-1'} leading-tight drop-shadow-md" id="title-${book.id}">${book.title}</h3>
-                <div class="w-full ${isSlider ? 'mt-2' : 'mt-2'} border-none">
-                    <div class="flex justify-between text-[${isSlider ? '0.65rem' : '0.6rem'}] font-bold opacity-90 mb-1" id="pct-${book.id}"><span>${progress}%</span></div>
-                    <div class="h-1.5 w-full bg-black/20 dark:bg-white/20 rounded-full overflow-hidden border-none">
-                        <div class="h-full bg-m3-primary dark:bg-m3-primaryContainer rounded-full border-none" style="width: ${progress}%" id="bar-${book.id}"></div>
-                    </div>
-                </div>
-            </div>
+            ${isList ? `<div class="absolute bottom-0 left-0 right-0 h-1 bg-black/20"><div class="h-full bg-m3-primary" style="width: ${progress}%"></div></div>` : ''}
+        </div>
+        <div class="flex flex-col justify-start ${isList ? 'flex-1 min-w-0' : 'mt-2 w-full'}">
+            <h3 class="font-bold text-m3-onSurface leading-tight line-clamp-2 book-title-text ${isList ? 'text-sm' : 'text-xs'}">${book.title}</h3>
+            ${!isList ? `<div class="w-full mt-2 h-1 bg-m3-surfaceVariant rounded-full overflow-hidden"><div class="h-full bg-m3-primary" style="width: ${progress}%"></div></div>` : ''}
+            <div class="text-[10px] font-bold text-m3-onSurfaceVariant opacity-70 mt-1">${progress}% Dibaca</div>
         </div>
     `;
-
-    // Cover gambar di-lazy-load lewat coverObserver (lihat initCoverObserver) agar tidak
-    // membebani memori dengan localforage.getItem sinkron untuk semua buku sekaligus.
-
     let pressTimer = null; let isPressing = false; let hasLongPressed = false;
     const handleStart = (e) => {
         hasLongPressed = false;
-        if (isBatchDeleteMode || isSlider) return; // Tambahkan isSlider di sini
+        if(isBatchDeleteMode || isSlider) return;
         isPressing = true;
-        pressTimer = setTimeout(() => { if (isPressing) { hasLongPressed = true; window.openBookOptions(book.id); } }, 400);
+        pressTimer = setTimeout(() => { if(isPressing){ hasLongPressed = true; window.openBookOptions(book.id); }}, 400);
     };
     const handleEnd = () => { isPressing = false; clearTimeout(pressTimer); };
     const handleMove = () => { isPressing = false; clearTimeout(pressTimer); };
-
     card.addEventListener('mousedown', handleStart); card.addEventListener('touchstart', handleStart, {passive: true});
     card.addEventListener('mouseup', handleEnd); card.addEventListener('touchend', handleEnd);
     card.addEventListener('mouseleave', handleMove); card.addEventListener('touchmove', handleMove, {passive: true});
-    
-    card.addEventListener('click', (e) => { 
-        if (hasLongPressed) { hasLongPressed = false; e.preventDefault(); e.stopPropagation(); return; } 
+    card.addEventListener('click', (e) => {
+        if (hasLongPressed) { e.preventDefault(); e.stopPropagation(); return; }
         if (isBatchDeleteMode && !isSlider) {
             e.preventDefault(); e.stopPropagation();
             const strId = String(book.id);
             const idx = selectedForDelete.findIndex(id => String(id) === strId);
             if (idx > -1) {
                 selectedForDelete.splice(idx, 1);
-                // Auto-exit jika tidak ada buku tersisa
                 if (selectedForDelete.length === 0) {
                     window.toggleBatchDelete();
                     return;
@@ -1762,9 +1705,8 @@ function createBookCard(book, isSlider = false, index = 0) {
             window.updateBatchSelectionUI();
             return;
         }
-        window.openBook(book); 
+        window.openBook(book);
     });
-
     return card;
 }
 
@@ -1898,11 +1840,11 @@ window.toggleBatchDelete = function(isFromHistory = false, initialSelectId = nul
     
     if (isBatchDeleteMode) {
         if(!isFromHistory) pushAppHistory('batch-delete');
-        bar.classList.remove('translate-y-32');
+        bar.classList.remove('translate-y-48', 'opacity-0', 'pointer-events-none');
         fab.classList.add('translate-y-32', 'opacity-0');
     } else {
         if(!isFromHistory && window.location.hash === '#batch-delete') history.back();
-        bar.classList.add('translate-y-32');
+        bar.classList.add('translate-y-48', 'opacity-0', 'pointer-events-none');
         fab.classList.remove('translate-y-32', 'opacity-0');
     }
     
