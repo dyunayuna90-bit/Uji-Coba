@@ -64,7 +64,7 @@
                     <i data-lucide="layout-grid"></i>
                 </button>
                 <div id="search-container" class="flex-1">
-                    <div id="search-capsule" onclick="openSearchMode()" class="bg-m3-surfaceVariant text-m3-onSurfaceVariant p-1 rounded-full flex items-center h-12 w-full cursor-pointer transition-all btn-morph shadow-sm border-none">
+                    <div id="search-capsule" onclick="openSearchMode()" class="bg-m3-surfaceVariant text-m3-onSurfaceVariant p-1 rounded-full flex items-center h-12 w-full cursor-pointer transition-all duration-300 shadow-sm border-none select-none">
                         <i data-lucide="search" class="w-5 h-5 ml-3 opacity-70 shrink-0"></i>
                         <span class="ml-3 font-bold opacity-60 text-sm truncate" id="search-dummy-text">Cari...</span>
                     </div>
@@ -75,13 +75,13 @@
             </div>
         </header>
         <!-- MORPHING FULLSCREEN SEARCH MODAL -->
-        <div id="search-fullscreen-modal" class="fixed z-[100] bg-m3-bg flex-col justify-start hidden opacity-0 search-morph" style="top:0; left:0; width:100vw; height:100vh; border-radius:0px; overflow:hidden;">
-            <div class="flex items-center px-2 pt-[calc(env(safe-area-inset-top,0px)+3rem)] pb-3 bg-m3-surface border-b border-m3-onSurface/10 shrink-0 shadow-sm">
+        <div id="search-fullscreen-modal" class="fixed z-[100] bg-m3-surfaceVariant flex-col justify-start hidden opacity-0 search-morph" style="top:0; left:0; width:100vw; height:100vh; border-radius:0px; overflow:hidden;">
+            <div class="flex items-center px-2 pt-[calc(env(safe-area-inset-top,0px)+3rem)] pb-3 bg-transparent shrink-0">
                 <button onclick="closeSearchMode()" class="w-12 h-12 flex items-center justify-center rounded-full text-m3-onSurface shrink-0 btn-morph"><i data-lucide="arrow-left"></i></button>
                 <input type="text" id="global-search" class="flex-1 bg-transparent border-none outline-none font-bold text-m3-onSurface text-base px-2" autocomplete="off">
                 <button id="search-clear-btn" onclick="clearSearchInput()" class="w-12 h-12 flex items-center justify-center rounded-full text-m3-onSurfaceVariant shrink-0 hidden btn-morph"><i data-lucide="x" class="w-5 h-5"></i></button>
             </div>
-            <div id="search-results-wrapper" class="flex-1 overflow-y-auto w-full relative bg-m3-bg pt-2 pb-20">
+            <div id="search-results-wrapper" class="flex-1 overflow-y-auto w-full relative bg-transparent pt-2 pb-20">
                 <!-- Hasil pencarian lokal -->
                 <div id="local-search-results" class="grid grid-cols-2 gap-4 px-5 py-4 w-full hidden"></div>
                 <!-- Archive Panel akan numpang ke sini saat aktif -->
@@ -461,7 +461,7 @@
     <!-- Welcome Modal -->
     <div id="welcome-modal" class="hidden fixed inset-0 w-full h-full z-[220] bg-m3-bg opacity-0 transition-opacity">
         <div class="modal-content bg-m3-surface w-full h-full flex flex-col translate-y-full border-none" id="welcome-sheet">
-            <div class="p-8 overflow-y-auto flex-1">
+            <div class="px-8 pb-8 pt-[calc(env(safe-area-inset-top,0px)+3rem)] overflow-y-auto flex-1">
                 <div class="flex items-center justify-between mb-2">
                     <h2 id="str-wel-title" class="text-3xl font-bold text-m3-onSurface tracking-tight">Selamat Datang di Baca.</h2>
                     <button onclick="closeWelcome()" class="w-10 h-10 shrink-0 flex items-center justify-center rounded-full bg-m3-surfaceVariant text-m3-onSurfaceVariant btn-morph"><i data-lucide="x" class="w-5 h-5"></i></button>
@@ -587,7 +587,7 @@
             </button>
 
             <h4 id="str-set-info" class="text-xs font-bold opacity-70 mb-3 px-1 mt-6 uppercase tracking-wider">Info & Dukungan</h4>
-            <button onclick="openModal('welcome-modal', 'welcome-sheet', true)" class="flex items-center justify-center gap-2 w-full p-4 bg-m3-secondaryContainer text-m3-onSecondaryContainer rounded-2xl font-bold btn-morph mb-3 mt-8">
+            <button onclick="openModal('welcome-modal', 'welcome-sheet', true)" class="flex items-center justify-center gap-2 w-full p-4 bg-m3-secondaryContainer text-m3-onSecondaryContainer rounded-2xl font-bold btn-morph mb-3">
                 <i data-lucide="info"></i> <span id="str-btn-info">Lihat Instruksi</span>
             </button>
             
