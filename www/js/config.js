@@ -272,11 +272,11 @@ const i18n = {
         archiveFilterEpub: "EPUB",
         archiveResultCount: "{n} hasil ditemukan",
         archiveSectionTitle: "Temukan & Unduh Buku",
-
-        // --- HOME DASHBOARD: KATEGORI KURASI ---
-        homeFiction: "Fiksi Populer",
-        homeScience: "Sains",
-        homeHistory: "Sejarah Dunia",
+        archiveFic: "Fiksi Populer",
+        archiveSci: "Sains & Ilmu Pengetahuan",
+        archiveHis: "Sejarah Dunia",
+        archiveLoading: "Memuat rekomendasi...",
+        archiveFailed: "Gagal memuat rekomendasi.",
 
         // --- ARCHIVE DOWNLOAD RESULT TOASTS ---
         toastBookAdded: "Buku berhasil ditambah!",
@@ -435,11 +435,11 @@ const i18n = {
         archiveFilterEpub: "EPUB",
         archiveResultCount: "{n} results found",
         archiveSectionTitle: "Discover & Download Books",
-
-        // --- HOME DASHBOARD: CURATED CATEGORIES ---
-        homeFiction: "Popular Fiction",
-        homeScience: "Science",
-        homeHistory: "World History",
+        archiveFic: "Popular Fiction",
+        archiveSci: "Science & Knowledge",
+        archiveHis: "World History",
+        archiveLoading: "Loading recommendations...",
+        archiveFailed: "Failed to load recommendations.",
 
         // --- ARCHIVE DOWNLOAD RESULT TOASTS ---
         toastBookAdded: "Book added successfully!",
@@ -598,11 +598,11 @@ const i18n = {
         archiveFilterEpub: "EPUB",
         archiveResultCount: "{n} resultados encontrados",
         archiveSectionTitle: "Descubrir y Descargar Libros",
-
-        // --- HOME DASHBOARD: CATEGORÍAS CURADAS ---
-        homeFiction: "Ficción Popular",
-        homeScience: "Ciencia",
-        homeHistory: "Historia Mundial",
+        archiveFic: "Ficción Popular",
+        archiveSci: "Ciencia y Conocimiento",
+        archiveHis: "Historia Mundial",
+        archiveLoading: "Cargando recomendaciones...",
+        archiveFailed: "Error al cargar recomendaciones.",
 
         // --- ARCHIVE DOWNLOAD RESULT TOASTS ---
         toastBookAdded: "¡Libro añadido con éxito!",
