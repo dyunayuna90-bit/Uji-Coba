@@ -147,13 +147,8 @@ html, body {
 /* Hapus delay border-radius dari transisi biar pas ditarik bawah ga keliatan aneh/delay */
 .modal-content { transition: transform 0.3s cubic-bezier(0.2, 0, 0, 1); transform-origin: bottom; }
 .search-morph {
-    /* Fix: dulu nganimasiin top/left/width/height bareng (4 properti layout),
-       jarak tempuh tiap properti beda jauh (top geser dikit, height geser jauh)
-       jadi gampang "kepeleset" antar sisi tiap frame reflow.
-       Sekarang cuma nganimasiin transform (translate+scale) + border-radius:
-       1 properti, GPU-composited, dijamin semua sisi gerak bareng di frame yang sama. */
-    transition: transform 0.4s cubic-bezier(0.4, 0, 0.2, 1), border-radius 0.4s cubic-bezier(0.4, 0, 0.2, 1);
-    will-change: transform, border-radius;
+    transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+    will-change: width, height, top, left, border-radius;
 }
 
 /* ===================================================================
