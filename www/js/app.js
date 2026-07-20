@@ -1834,9 +1834,9 @@ function createBookCard(book, isSlider = false, index = 0, isSearch = false) {
             ${isList ? `<div class="absolute bottom-0 left-0 right-0 h-1 bg-black/20"><div class="h-full bg-m3-primary" style="width: ${progress}%"></div></div>` : ''}
         </div>
         <div class="flex flex-col justify-start ${isList ? 'flex-1 min-w-0' : 'mt-2 w-full'}">
-            <div class="${isList ? '' : 'min-h-[2.5rem]'}"><h3 class="font-bold text-m3-onSurface leading-tight line-clamp-2 book-title-text ${isList ? 'text-sm' : 'text-xs'}">${book.title}</h3></div>
+            <div class="${isList ? '' : 'min-h-[2.5rem]'}"><h3 class="font-bold text-m3-onSurface leading-tight line-clamp-2 text-ellipsis overflow-hidden book-title-text ${isList ? 'text-sm' : 'text-xs text-center'}">${book.title}</h3></div>
             ${!isList ? `<div class="w-full mt-2 h-1 bg-m3-surfaceVariant rounded-full overflow-hidden"><div class="h-full bg-m3-primary" style="width: ${progress}%"></div></div>` : ''}
-            <div class="text-[10px] font-bold text-m3-onSurfaceVariant opacity-70 mt-1">${progress}% Dibaca</div>
+            <div class="text-[10px] font-bold text-m3-onSurfaceVariant opacity-70 mt-1">${progress}% ${(typeof i18n !== 'undefined' ? (i18n[wikiLang] || i18n['id']) : {}).readProgressText || 'dibaca'}</div>
         </div>
     `;
     let pressTimer = null; let isPressing = false; let hasLongPressed = false;
