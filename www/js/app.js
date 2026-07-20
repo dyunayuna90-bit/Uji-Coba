@@ -3174,6 +3174,16 @@ function initCanvasGestures() {
     const pageStage  = document.getElementById('page-stage');
     const foldShadow = document.getElementById('fold-shadow');
     const seamShadow = document.getElementById('seam-shadow');
+    const canvasNextEl = document.getElementById('canvas-next');
+    const canvasPrevEl = document.getElementById('canvas-prev');
+
+    // z-index toggle: pastikan halaman statis yang SEDANG dibuka (sesuai arah drag)
+    // ada DI ATAS halaman statis satunya, karena sekarang keduanya numpuk di posisi yang sama.
+    function _setRevealDirection(deltaX) {
+        if (!canvasNextEl || !canvasPrevEl) return;
+        if (deltaX < 0) { canvasNextEl.style.zIndex = 2; canvasPrevEl.style.zIndex = 1; }
+        else if (deltaX > 0) { canvasPrevEl.style.zIndex = 2; canvasNextEl.style.zIndex = 1; }
+    }
 
     // Update shading dinamis: fold-shadow (di atas halaman yg ditarik, biar kesan lengkung)
     // + seam-shadow (jatuh di halaman statis di baliknya, biar kesan halaman aktif "terangkat")
@@ -3342,8 +3352,10 @@ function initCanvasGestures() {
             _applyCanvasTransform(wrapper);
 
         } else if (isSwipingPage && e.touches.length === 1) {
-            // [LAYOUT ABSOLUT] Geser wrapper langsung — canvas-prev/next (absolute) ikut otomatis
+            // [LAYOUT NUMPUK] Geser page-stage saja — canvas-prev/next statis, numpuk PAS di posisi
+            // yang sama di belakang (bukan di samping lagi), jadi otomatis kebuka tanpa celah.
             const deltaX = e.touches[0].clientX - swipeStartX;
+            _setRevealDirection(deltaX);
             if (pageTurnAnimEnabled && pageStage) {
                 // Tilt 3D ala Play Books: makin jauh drag, makin miring & sedikit mengecil.
                 // HANYA pageStage yang gerak — canvas-prev/next diam total di belakang.
@@ -3411,6 +3423,7 @@ function initCanvasGestures() {
                 } else if (deltaX < -80) {
                     // SWIPE KIRI → halaman berikutnya
                     if (currentPdfDoc && currentCanvasPage < currentPdfDoc.numPages) {
+                        _setRevealDirection(-1);
                         if (pageStage) pageStage.style.transition = 'transform 0.3s cubic-bezier(0.2, 0, 0, 1), box-shadow 0.3s ease';
                         if (pageTurnAnimEnabled && pageStage) {
                             pageStage.style.transformOrigin = 'right center';
@@ -3450,6 +3463,7 @@ function initCanvasGestures() {
                 } else if (deltaX > 80) {
                     // SWIPE KANAN → halaman sebelumnya
                     if (currentPdfDoc && currentCanvasPage > 1) {
+                        _setRevealDirection(1);
                         if (pageStage) pageStage.style.transition = 'transform 0.3s cubic-bezier(0.2, 0, 0, 1), box-shadow 0.3s ease';
                         if (pageTurnAnimEnabled && pageStage) {
                             pageStage.style.transformOrigin = 'left center';
