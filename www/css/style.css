@@ -147,10 +147,10 @@ html, body {
 /* Hapus delay border-radius dari transisi biar pas ditarik bawah ga keliatan aneh/delay */
 .modal-content { transition: transform 0.3s cubic-bezier(0.2, 0, 0, 1); transform-origin: bottom; }
 .search-morph {
-    transition: width 0.4s cubic-bezier(0.2, 0, 0, 1), height 0.4s cubic-bezier(0.2, 0, 0, 1),
-                top 0.4s cubic-bezier(0.2, 0, 0, 1), left 0.4s cubic-bezier(0.2, 0, 0, 1),
-                border-radius 0.4s cubic-bezier(0.2, 0, 0, 1), opacity 0.25s ease;
-    will-change: width, height, top, left, border-radius, opacity;
+    transition: width 0.4s cubic-bezier(0.3, 0, 0, 1), height 0.4s cubic-bezier(0.3, 0, 0, 1),
+                top 0.4s cubic-bezier(0.3, 0, 0, 0.9), left 0.4s cubic-bezier(0.3, 0, 0, 1),
+                border-radius 0.4s cubic-bezier(0.3, 0, 0, 1);
+    will-change: width, height, top, left, border-radius;
 }
 
 /* ===================================================================
