@@ -1,4 +1,4 @@
-window.APP_VERSION = "2.0.7";
+window.APP_VERSION = "2.1.2";
 window.UPDATE_URL = "https://raw.githubusercontent.com/dyunayuna90-bit/baca./main/package.json";
 window.RELEASES_URL = "https://github.com/dyunayuna90-bit/baca./releases/latest";
 
@@ -30,47 +30,91 @@ window.tailwind.config = {
     }
 };
 
-// Data Palet Warna Material 3
-const M3_PALETTES = {
-    orchid: { // Sunset Orchid
-        light: `--md-sys-color-primary:#A855F7;--md-sys-color-on-primary:#FFFFFF;--md-sys-color-primary-container:#FED7AA;--md-sys-color-on-primary-container:#7C2D12;--md-sys-color-secondary-container:#FCE7F3;--md-sys-color-on-secondary-container:#831843;--md-sys-color-tertiary-container:#FCE7F3;--md-sys-color-on-tertiary-container:#701A75;--md-sys-color-background:#F5F0FB;--md-sys-color-on-background:#1F003C;--md-sys-color-surface:#FFFFFF;--md-sys-color-on-surface:#120024;--md-sys-color-surface-variant:#F3E8FF;--md-sys-color-on-surface-variant:#6B21A8;`,
+// Data Palet Warna Material 3 - Mode Ekspresif (Tabrak Warna / Vibrant)
+const EXPRESSIVE_PALETTES = {
+    orchid: { 
+        light: `--md-sys-color-background:#F3E8FF;--md-sys-color-on-background:#3B0764;--md-sys-color-surface:#FAF5FF;--md-sys-color-on-surface:#3B0764;--md-sys-color-primary:#9333EA;--md-sys-color-on-primary:#FFFFFF;--md-sys-color-primary-container:#EA580C;--md-sys-color-on-primary-container:#FFFFFF;--md-sys-color-secondary-container:#E11D48;--md-sys-color-on-secondary-container:#FFFFFF;--md-sys-color-tertiary-container:#A855F7;--md-sys-color-on-tertiary-container:#FFFFFF;--md-sys-color-surface-variant:#6B21A8;--md-sys-color-on-surface-variant:#FFFFFF;`,
         dark: `--md-sys-color-primary:#C084FC;--md-sys-color-on-primary:#3B0764;--md-sys-color-primary-container:#C2410C;--md-sys-color-on-primary-container:#FFEDD5;--md-sys-color-secondary-container:#831843;--md-sys-color-on-secondary-container:#FCE7F3;--md-sys-color-tertiary-container:#4A044E;--md-sys-color-on-tertiary-container:#FCE7F3;--md-sys-color-background:#0A0314;--md-sys-color-on-background:#F5E0FF;--md-sys-color-surface:#12091F;--md-sys-color-on-surface:#F3E8FF;--md-sys-color-surface-variant:#3B0764;--md-sys-color-on-surface-variant:#F5D0FE;`
     },
-    olive: { // Organic Olive Green
-        light: `--md-sys-color-primary:#3F6212;--md-sys-color-on-primary:#FFFFFF;--md-sys-color-primary-container:#FDBA74;--md-sys-color-on-primary-container:#431407;--md-sys-color-secondary-container:#D1FAE5;--md-sys-color-on-secondary-container:#064E3B;--md-sys-color-tertiary-container:#FEF9C3;--md-sys-color-on-tertiary-container:#451A03;--md-sys-color-background:#F3F4ED;--md-sys-color-on-background:#1A2E05;--md-sys-color-surface:#FBFDF9;--md-sys-color-on-surface:#152B05;--md-sys-color-surface-variant:#E1EAD8;--md-sys-color-on-surface-variant:#3F5231;`, 
+    olive: { 
+        light: `--md-sys-color-background:#F7FEE7;--md-sys-color-on-background:#1A2E05;--md-sys-color-surface:#F3F4ED;--md-sys-color-on-surface:#1A2E05;--md-sys-color-primary:#65A30D;--md-sys-color-on-primary:#FFFFFF;--md-sys-color-primary-container:#C2410C;--md-sys-color-on-primary-container:#FFFFFF;--md-sys-color-secondary-container:#0F766E;--md-sys-color-on-secondary-container:#FFFFFF;--md-sys-color-tertiary-container:#9A3412;--md-sys-color-on-tertiary-container:#FFFFFF;--md-sys-color-surface-variant:#3F6212;--md-sys-color-on-surface-variant:#FFFFFF;`, 
         dark: `--md-sys-color-primary:#A1C986;--md-sys-color-on-primary:#183803;--md-sys-color-primary-container:#7C2D12;--md-sys-color-on-primary-container:#FFEDD5;--md-sys-color-secondary-container:#064E3B;--md-sys-color-on-secondary-container:#D1FAE5;--md-sys-color-tertiary-container:#422006;--md-sys-color-on-tertiary-container:#FEF9C3;--md-sys-color-background:#0B1107;--md-sys-color-on-background:#ECFCCB;--md-sys-color-surface:#11180D;--md-sys-color-on-surface:#ECFCCB;--md-sys-color-surface-variant:#232E1C;--md-sys-color-on-surface-variant:#CCD8C2;` 
     },
-    coral: { // Terracotta Coral
-        light: `--md-sys-color-primary:#C2410C;--md-sys-color-on-primary:#FFFFFF;--md-sys-color-primary-container:#CCFBF1;--md-sys-color-on-primary-container:#032F30;--md-sys-color-secondary-container:#FCE7F3;--md-sys-color-on-secondary-container:#500724;--md-sys-color-tertiary-container:#E2E8F0;--md-sys-color-on-tertiary-container:#0F172A;--md-sys-color-background:#FFF7F5;--md-sys-color-on-background:#3E0E00;--md-sys-color-surface:#FFFBFA;--md-sys-color-on-surface:#3E0E00;--md-sys-color-surface-variant:#FFD9D1;--md-sys-color-on-surface-variant:#7C3526;`,
+    coral: { 
+        light: `--md-sys-color-background:#FFF7ED;--md-sys-color-on-background:#431407;--md-sys-color-surface:#FFFBFA;--md-sys-color-on-surface:#431407;--md-sys-color-primary:#EA580C;--md-sys-color-on-primary:#FFFFFF;--md-sys-color-primary-container:#0D9488;--md-sys-color-on-primary-container:#FFFFFF;--md-sys-color-secondary-container:#BE123C;--md-sys-color-on-secondary-container:#FFFFFF;--md-sys-color-tertiary-container:#475569;--md-sys-color-on-tertiary-container:#FFFFFF;--md-sys-color-surface-variant:#9A3412;--md-sys-color-on-surface-variant:#FFFFFF;`,
         dark: `--md-sys-color-primary:#FFB5A5;--md-sys-color-on-primary:#5F1605;--md-sys-color-primary-container:#032F30;--md-sys-color-on-primary-container:#CCFBF1;--md-sys-color-secondary-container:#500724;--md-sys-color-on-secondary-container:#FCE7F3;--md-sys-color-tertiary-container:#1E293B;--md-sys-color-on-tertiary-container:#F1F5F9;--md-sys-color-background:#180C08;--md-sys-color-on-background:#FFD9D4;--md-sys-color-surface:#20120E;--md-sys-color-on-surface:#FFD9D4;--md-sys-color-surface-variant:#533F3A;--md-sys-color-on-surface-variant:#FFB5A5;`
     },
-    teal: { // Oceanic Teal
-        light: `--md-sys-color-primary:#0F766E;--md-sys-color-on-primary:#FFFFFF;--md-sys-color-primary-container:#FCE7F3;--md-sys-color-on-primary-container:#500724;--md-sys-color-secondary-container:#FEF08A;--md-sys-color-on-secondary-container:#422006;--md-sys-color-tertiary-container:#F0FDFA;--md-sys-color-on-tertiary-container:#0F172A;--md-sys-color-background:#F0FDFA;--md-sys-color-on-background:#002026;--md-sys-color-surface:#FFFFFF;--md-sys-color-on-surface:#002026;--md-sys-color-surface-variant:#CCE7EC;--md-sys-color-on-surface-variant:#004F5D;`,
+    teal: { 
+        light: `--md-sys-color-background:#F0FDFA;--md-sys-color-on-background:#042F2E;--md-sys-color-surface:#FFFFFF;--md-sys-color-on-surface:#042F2E;--md-sys-color-primary:#0D9488;--md-sys-color-on-primary:#FFFFFF;--md-sys-color-primary-container:#BE123C;--md-sys-color-on-primary-container:#FFFFFF;--md-sys-color-secondary-container:#92400E;--md-sys-color-on-secondary-container:#FFFFFF;--md-sys-color-tertiary-container:#0F766E;--md-sys-color-on-tertiary-container:#FFFFFF;--md-sys-color-surface-variant:#0F766E;--md-sys-color-on-surface-variant:#FFFFFF;`,
         dark: `--md-sys-color-primary:#5CD5EC;--md-sys-color-on-primary:#003640;--md-sys-color-primary-container:#500724;--md-sys-color-on-primary-container:#FCE7F3;--md-sys-color-secondary-container:#422006;--md-sys-color-on-secondary-container:#FEF08A;--md-sys-color-tertiary-container:#115E59;--md-sys-color-on-tertiary-container:#F0FDFA;--md-sys-color-background:#031417;--md-sys-color-on-background:#B6F0FC;--md-sys-color-surface:#061C20;--md-sys-color-on-surface:#B6F0FC;--md-sys-color-surface-variant:#304D54;--md-sys-color-on-surface-variant:#B6F0FC;`
     },
-    lavender: { // Regal Lavender
-        light: `--md-sys-color-primary:#6D28D9;--md-sys-color-on-primary:#FFFFFF;--md-sys-color-primary-container:#ECFCCB;--md-sys-color-on-primary-container:#1E293B;--md-sys-color-secondary-container:#FFE4E6;--md-sys-color-on-secondary-container:#4C0519;--md-sys-color-tertiary-container:#FDF4FF;--md-sys-color-on-tertiary-container:#3B0764;--md-sys-color-background:#FAF5FF;--md-sys-color-on-background:#1D0061;--md-sys-color-surface:#FCFAFF;--md-sys-color-on-surface:#1D0061;--md-sys-color-surface-variant:#E8DFFF;--md-sys-color-on-surface-variant:#5E17EB;`,
+    lavender: { 
+        light: `--md-sys-color-background:#EEF2FF;--md-sys-color-on-background:#1E1B4B;--md-sys-color-surface:#FCFAFF;--md-sys-color-on-surface:#1E1B4B;--md-sys-color-primary:#4F46E5;--md-sys-color-on-primary:#FFFFFF;--md-sys-color-primary-container:#334155;--md-sys-color-on-primary-container:#FFFFFF;--md-sys-color-secondary-container:#9F1239;--md-sys-color-on-secondary-container:#FFFFFF;--md-sys-color-tertiary-container:#6B21A8;--md-sys-color-on-tertiary-container:#FFFFFF;--md-sys-color-surface-variant:#3730A3;--md-sys-color-on-surface-variant:#FFFFFF;`,
         dark: `--md-sys-color-primary:#C4B5FD;--md-sys-color-on-primary:#2E1065;--md-sys-color-primary-container:#2D3748;--md-sys-color-on-primary-container:#ECFCCB;--md-sys-color-secondary-container:#4C0519;--md-sys-color-on-secondary-container:#FFE4E6;--md-sys-color-tertiary-container:#3B0764;--md-sys-color-on-tertiary-container:#FDF4FF;--md-sys-color-background:#090412;--md-sys-color-on-background:#EDE9FE;--md-sys-color-surface:#110A1E;--md-sys-color-on-surface:#EDE9FE;--md-sys-color-surface-variant:#3C00A6;--md-sys-color-on-surface-variant:#E8DFFF;`
     },
-    rose: { // Crimson Rosewood
-        light: `--md-sys-color-primary:#BE123C;--md-sys-color-on-primary:#FFFFFF;--md-sys-color-primary-container:#FEF08A;--md-sys-color-on-primary-container:#422006;--md-sys-color-secondary-container:#E0F2FE;--md-sys-color-on-secondary-container:#0369A1;--md-sys-color-tertiary-container:#FFF1F2;--md-sys-color-on-tertiary-container:#4C0519;--md-sys-color-background:#FFF5F5;--md-sys-color-on-background:#450A0A;--md-sys-color-surface:#FFFBFB;--md-sys-color-on-surface:#450A0A;--md-sys-color-surface-variant:#FCA5A5;--md-sys-color-on-surface-variant:#B91C1C;`, 
+    rose: { 
+        light: `--md-sys-color-background:#FFF1F2;--md-sys-color-on-background:#4C0519;--md-sys-color-surface:#FFFBFB;--md-sys-color-on-surface:#4C0519;--md-sys-color-primary:#E11D48;--md-sys-color-on-primary:#FFFFFF;--md-sys-color-primary-container:#92400E;--md-sys-color-on-primary-container:#FFFFFF;--md-sys-color-secondary-container:#0284C7;--md-sys-color-on-secondary-container:#FFFFFF;--md-sys-color-tertiary-container:#9F1239;--md-sys-color-on-tertiary-container:#FFFFFF;--md-sys-color-surface-variant:#BE123C;--md-sys-color-on-surface-variant:#FFFFFF;`, 
         dark: `--md-sys-color-primary:#FCA5A5;--md-sys-color-on-primary:#450A0A;--md-sys-color-primary-container:#422006;--md-sys-color-on-primary-container:#FEF08A;--md-sys-color-secondary-container:#0369A1;--md-sys-color-on-secondary-container:#E0F2FE;--md-sys-color-tertiary-container:#4C0519;--md-sys-color-on-tertiary-container:#FFF1F2;--md-sys-color-background:#1F0505;--md-sys-color-on-background:#FEE2E2;--md-sys-color-surface:#260C0C;--md-sys-color-on-surface:#FEE2E2;--md-sys-color-surface-variant:#7F1D1D;--md-sys-color-on-surface-variant:#FCA5A5;` 
     },
-    lime: { // Forest Lime
-        light: `--md-sys-color-primary:#4D7C0F;--md-sys-color-on-primary:#FFFFFF;--md-sys-color-primary-container:#E9D5FF;--md-sys-color-on-primary-container:#3B0764;--md-sys-color-secondary-container:#FCE7F3;--md-sys-color-on-secondary-container:#831843;--md-sys-color-tertiary-container:#F0FDF4;--md-sys-color-on-tertiary-container:#166534;--md-sys-color-background:#F7FEE7;--md-sys-color-on-background:#132000;--md-sys-color-surface:#FCFDF7;--md-sys-color-on-surface:#132000;--md-sys-color-surface-variant:#D1E897;--md-sys-color-on-surface-variant:#4C6A00;`,
+    lime: { 
+        light: `--md-sys-color-background:#F0FDF4;--md-sys-color-on-background:#052E16;--md-sys-color-surface:#FCFDF7;--md-sys-color-on-surface:#052E16;--md-sys-color-primary:#16A34A;--md-sys-color-on-primary:#FFFFFF;--md-sys-color-primary-container:#7E22CE;--md-sys-color-on-primary-container:#FFFFFF;--md-sys-color-secondary-container:#BE123C;--md-sys-color-on-secondary-container:#FFFFFF;--md-sys-color-tertiary-container:#166534;--md-sys-color-on-tertiary-container:#FFFFFF;--md-sys-color-surface-variant:#15803D;--md-sys-color-on-surface-variant:#FFFFFF;`,
         dark: `--md-sys-color-primary:#C5E85C;--md-sys-color-on-primary:#253600;--md-sys-color-primary-container:#3B0764;--md-sys-color-on-primary-container:#E9D5FF;--md-sys-color-secondary-container:#831843;--md-sys-color-on-secondary-container:#FCE7F3;--md-sys-color-tertiary-container:#14532D;--md-sys-color-on-tertiary-container:#F0FDF4;--md-sys-color-background:#0A0E02;--md-sys-color-on-background:#E1FF85;--md-sys-color-surface:#0F1404;--md-sys-color-on-surface:#E1FF85;--md-sys-color-surface-variant:#3A5000;--md-sys-color-on-surface-variant:#C5E85C;`
     },
-    sand: { // Warm Sand
-        light: `--md-sys-color-primary:#78350F;--md-sys-color-on-primary:#FFFFFF;--md-sys-color-primary-container:#DBEAFE;--md-sys-color-on-primary-container:#1E40AF;--md-sys-color-secondary-container:#FCE7F3;--md-sys-color-on-secondary-container:#9D174D;--md-sys-color-tertiary-container:#FFF8E1;--md-sys-color-on-tertiary-container:#6D4C41;--md-sys-color-background:#FDFBF7;--md-sys-color-on-background:#3E2723;--md-sys-color-surface:#FFFDF9;--md-sys-color-on-surface:#3E2723;--md-sys-color-surface-variant:#EFEBE9;--md-sys-color-on-surface-variant:#6D4C41;`,
+    sand: { 
+        light: `--md-sys-color-background:#FFFBEB;--md-sys-color-on-background:#451A03;--md-sys-color-surface:#FFFDF9;--md-sys-color-on-surface:#451A03;--md-sys-color-primary:#D97706;--md-sys-color-on-primary:#FFFFFF;--md-sys-color-primary-container:#1D4ED8;--md-sys-color-on-primary-container:#FFFFFF;--md-sys-color-secondary-container:#BE123C;--md-sys-color-on-secondary-container:#FFFFFF;--md-sys-color-tertiary-container:#451A03;--md-sys-color-on-tertiary-container:#FFFFFF;--md-sys-color-surface-variant:#B45309;--md-sys-color-on-surface-variant:#FFFFFF;`,
         dark: `--md-sys-color-primary:#D7CCC8;--md-sys-color-on-primary:#3E2723;--md-sys-color-primary-container:#1E40AF;--md-sys-color-on-primary-container:#DBEAFE;--md-sys-color-secondary-container:#9D174D;--md-sys-color-on-secondary-container:#FCE7F3;--md-sys-color-tertiary-container:#241A17;--md-sys-color-on-tertiary-container:#FFF8E1;--md-sys-color-background:#130E0C;--md-sys-color-on-background:#FFE0B2;--md-sys-color-surface:#1C1412;--md-sys-color-on-surface:#FFE0B2;--md-sys-color-surface-variant:#4E342E;--md-sys-color-on-surface-variant:#D7CCC8;`
     },
-    monochrome: { // Monochrome Tech
-        light: `--md-sys-color-primary:#1E293B;--md-sys-color-on-primary:#FFFFFF;--md-sys-color-primary-container:#FEF08A;--md-sys-color-on-primary-container:#713F12;--md-sys-color-secondary-container:#E2E8F0;--md-sys-color-on-secondary-container:#0F172A;--md-sys-color-tertiary-container:#F5F5F5;--md-sys-color-on-tertiary-container:#212121;--md-sys-color-background:#F1F5F9;--md-sys-color-on-background:#212121;--md-sys-color-surface:#FAFAFA;--md-sys-color-on-surface:#212121;--md-sys-color-surface-variant:#ECEFF1;--md-sys-color-on-surface-variant:#546E7A;`, 
+    monochrome: { 
+        light: `--md-sys-color-background:#F8FAFC;--md-sys-color-on-background:#0F172A;--md-sys-color-surface:#FAFAFA;--md-sys-color-on-surface:#0F172A;--md-sys-color-primary:#475569;--md-sys-color-on-primary:#FFFFFF;--md-sys-color-primary-container:#A16207;--md-sys-color-on-primary-container:#FFFFFF;--md-sys-color-secondary-container:#1E293B;--md-sys-color-on-secondary-container:#FFFFFF;--md-sys-color-tertiary-container:#171717;--md-sys-color-on-tertiary-container:#FFFFFF;--md-sys-color-surface-variant:#334155;--md-sys-color-on-surface-variant:#FFFFFF;`, 
         dark: `--md-sys-color-primary:#CFD8DC;--md-sys-color-on-primary:#263238;--md-sys-color-primary-container:#713F12;--md-sys-color-on-primary-container:#FEF08A;--md-sys-color-secondary-container:#0F172A;--md-sys-color-on-secondary-container:#E2E8F0;--md-sys-color-tertiary-container:#212121;--md-sys-color-on-tertiary-container:#F5F5F5;--md-sys-color-background:#101416;--md-sys-color-on-background:#ECEFF1;--md-sys-color-surface:#151A1D;--md-sys-color-on-surface:#ECEFF1;--md-sys-color-surface-variant:#37474F;--md-sys-color-on-surface-variant:#CFD8DC;` 
     },
-    blueberry: { // Electric Cobalt
-        light: `--md-sys-color-primary:#1D4ED8;--md-sys-color-on-primary:#FFFFFF;--md-sys-color-primary-container:#FCE7F3;--md-sys-color-on-primary-container:#4C0519;--md-sys-color-secondary-container:#FEF08A;--md-sys-color-on-secondary-container:#422006;--md-sys-color-tertiary-container:#E8EAF6;--md-sys-color-on-tertiary-container:#1A237E;--md-sys-color-background:#EFF6FF;--md-sys-color-on-background:#00153B;--md-sys-color-surface:#F4F9FF;--md-sys-color-on-surface:#00153B;--md-sys-color-surface-variant:#C2ECFF;--md-sys-color-on-surface-variant:#1A237E;`, 
+    blueberry: { 
+        light: `--md-sys-color-background:#EFF6FF;--md-sys-color-on-background:#00153B;--md-sys-color-surface:#F4F9FF;--md-sys-color-on-surface:#00153B;--md-sys-color-primary:#2563EB;--md-sys-color-on-primary:#FFFFFF;--md-sys-color-primary-container:#9F1239;--md-sys-color-on-primary-container:#FFFFFF;--md-sys-color-secondary-container:#92400E;--md-sys-color-on-secondary-container:#FFFFFF;--md-sys-color-tertiary-container:#1E3A8A;--md-sys-color-on-tertiary-container:#FFFFFF;--md-sys-color-surface-variant:#1D4ED8;--md-sys-color-on-surface-variant:#FFFFFF;`, 
         dark: `--md-sys-color-primary:#80CAFF;--md-sys-color-on-primary:#00153B;--md-sys-color-primary-container:#4C0519;--md-sys-color-on-primary-container:#FCE7F3;--md-sys-color-secondary-container:#422006;--md-sys-color-on-secondary-container:#FEF08A;--md-sys-color-tertiary-container:#001E45;--md-sys-color-on-tertiary-container:#E8EAF6;--md-sys-color-background:#040A1A;--md-sys-color-on-background:#C2ECFF;--md-sys-color-surface:#07122E;--md-sys-color-on-surface:#C2ECFF;--md-sys-color-surface-variant:#1A237E;--md-sys-color-on-surface-variant:#80CAFF;` 
+    }
+};
+
+// Data Palet Warna Material 3 - Mode Standar (Monokromatik Solid)
+const STANDARD_PALETTES = {
+    orchid: {
+        light: `--md-sys-color-background:#F3E8FF;--md-sys-color-on-background:#3B0764;--md-sys-color-surface:#FAF5FF;--md-sys-color-on-surface:#3B0764;--md-sys-color-primary:#7C3AED;--md-sys-color-on-primary:#FFFFFF;--md-sys-color-primary-container:#6D28D9;--md-sys-color-on-primary-container:#FFFFFF;--md-sys-color-secondary-container:#5B21B6;--md-sys-color-on-secondary-container:#FFFFFF;--md-sys-color-tertiary-container:#4C1D95;--md-sys-color-on-tertiary-container:#FFFFFF;--md-sys-color-surface-variant:#5B21B6;--md-sys-color-on-surface-variant:#FFFFFF;`,
+        dark: `--md-sys-color-primary:#C084FC;--md-sys-color-on-primary:#3B0764;--md-sys-color-primary-container:#4C1D95;--md-sys-color-on-primary-container:#EDE9FE;--md-sys-color-secondary-container:#5B21B6;--md-sys-color-on-secondary-container:#DDD6FE;--md-sys-color-tertiary-container:#4C1D95;--md-sys-color-on-tertiary-container:#F5F3FF;--md-sys-color-background:#0A0314;--md-sys-color-on-background:#F5E0FF;--md-sys-color-surface:#12091F;--md-sys-color-on-surface:#F3E8FF;--md-sys-color-surface-variant:#3B0764;--md-sys-color-on-surface-variant:#F5D0FE;`
+    },
+    olive: {
+        light: `--md-sys-color-background:#F7FEE7;--md-sys-color-on-background:#1A2E05;--md-sys-color-surface:#F3F4ED;--md-sys-color-on-surface:#1A2E05;--md-sys-color-primary:#4D7C0F;--md-sys-color-on-primary:#FFFFFF;--md-sys-color-primary-container:#3F6212;--md-sys-color-on-primary-container:#FFFFFF;--md-sys-color-secondary-container:#2F480D;--md-sys-color-on-secondary-container:#FFFFFF;--md-sys-color-tertiary-container:#1E3A00;--md-sys-color-on-tertiary-container:#FFFFFF;--md-sys-color-surface-variant:#3F6212;--md-sys-color-on-surface-variant:#FFFFFF;`,
+        dark: `--md-sys-color-primary:#A3E635;--md-sys-color-on-primary:#1A2E05;--md-sys-color-primary-container:#1E3A00;--md-sys-color-on-primary-container:#D9F99D;--md-sys-color-secondary-container:#1E3A00;--md-sys-color-on-secondary-container:#BEF264;--md-sys-color-tertiary-container:#1A2E05;--md-sys-color-on-tertiary-container:#ECFCCB;--md-sys-color-background:#0B1107;--md-sys-color-on-background:#ECFCCB;--md-sys-color-surface:#11180D;--md-sys-color-on-surface:#ECFCCB;--md-sys-color-surface-variant:#232E1C;--md-sys-color-on-surface-variant:#CCD8C2;`
+    },
+    coral: {
+        light: `--md-sys-color-background:#FFF7ED;--md-sys-color-on-background:#431407;--md-sys-color-surface:#FFFBFA;--md-sys-color-on-surface:#431407;--md-sys-color-primary:#DC2626;--md-sys-color-on-primary:#FFFFFF;--md-sys-color-primary-container:#B91C1C;--md-sys-color-on-primary-container:#FFFFFF;--md-sys-color-secondary-container:#991B1B;--md-sys-color-on-secondary-container:#FFFFFF;--md-sys-color-tertiary-container:#7F1D1D;--md-sys-color-on-tertiary-container:#FFFFFF;--md-sys-color-surface-variant:#B91C1C;--md-sys-color-on-surface-variant:#FFFFFF;`,
+        dark: `--md-sys-color-primary:#FCA5A5;--md-sys-color-on-primary:#7F1D1D;--md-sys-color-primary-container:#991B1B;--md-sys-color-on-primary-container:#FEE2E2;--md-sys-color-secondary-container:#7F1D1D;--md-sys-color-on-secondary-container:#FECACA;--md-sys-color-tertiary-container:#450A0A;--md-sys-color-on-tertiary-container:#FEF2F2;--md-sys-color-background:#180C08;--md-sys-color-on-background:#FFD9D4;--md-sys-color-surface:#20120E;--md-sys-color-on-surface:#FFD9D4;--md-sys-color-surface-variant:#533F3A;--md-sys-color-on-surface-variant:#FFB5A5;`
+    },
+    teal: {
+        light: `--md-sys-color-background:#F0FDFA;--md-sys-color-on-background:#042F2E;--md-sys-color-surface:#FFFFFF;--md-sys-color-on-surface:#042F2E;--md-sys-color-primary:#0F766E;--md-sys-color-on-primary:#FFFFFF;--md-sys-color-primary-container:#0D4B46;--md-sys-color-on-primary-container:#FFFFFF;--md-sys-color-secondary-container:#0A3F3B;--md-sys-color-on-secondary-container:#FFFFFF;--md-sys-color-tertiary-container:#002D2A;--md-sys-color-on-tertiary-container:#FFFFFF;--md-sys-color-surface-variant:#0D4B46;--md-sys-color-on-surface-variant:#FFFFFF;`,
+        dark: `--md-sys-color-primary:#5EEAD4;--md-sys-color-on-primary:#003D37;--md-sys-color-primary-container:#115E59;--md-sys-color-on-primary-container:#CCFBF1;--md-sys-color-secondary-container:#134E4A;--md-sys-color-on-secondary-container:#99F6E4;--md-sys-color-tertiary-container:#115E59;--md-sys-color-on-tertiary-container:#F0FDFA;--md-sys-color-background:#031417;--md-sys-color-on-background:#B6F0FC;--md-sys-color-surface:#061C20;--md-sys-color-on-surface:#B6F0FC;--md-sys-color-surface-variant:#304D54;--md-sys-color-on-surface-variant:#B6F0FC;`
+    },
+    lavender: {
+        light: `--md-sys-color-background:#EEF2FF;--md-sys-color-on-background:#1E1B4B;--md-sys-color-surface:#FCFAFF;--md-sys-color-on-surface:#1E1B4B;--md-sys-color-primary:#4338CA;--md-sys-color-on-primary:#FFFFFF;--md-sys-color-primary-container:#3730A3;--md-sys-color-on-primary-container:#FFFFFF;--md-sys-color-secondary-container:#312E81;--md-sys-color-on-secondary-container:#FFFFFF;--md-sys-color-tertiary-container:#1E1B4B;--md-sys-color-on-tertiary-container:#FFFFFF;--md-sys-color-surface-variant:#3730A3;--md-sys-color-on-surface-variant:#FFFFFF;`,
+        dark: `--md-sys-color-primary:#A5B4FC;--md-sys-color-on-primary:#1E1B4B;--md-sys-color-primary-container:#312E81;--md-sys-color-on-primary-container:#E0E7FF;--md-sys-color-secondary-container:#1E1B4B;--md-sys-color-on-secondary-container:#C7D2FE;--md-sys-color-tertiary-container:#1E1B4B;--md-sys-color-on-tertiary-container:#EEF2FF;--md-sys-color-background:#090412;--md-sys-color-on-background:#EDE9FE;--md-sys-color-surface:#110A1E;--md-sys-color-on-surface:#EDE9FE;--md-sys-color-surface-variant:#3C00A6;--md-sys-color-on-surface-variant:#E8DFFF;`
+    },
+    rose: {
+        light: `--md-sys-color-background:#FFF1F2;--md-sys-color-on-background:#4C0519;--md-sys-color-surface:#FFFBFB;--md-sys-color-on-surface:#4C0519;--md-sys-color-primary:#BE123C;--md-sys-color-on-primary:#FFFFFF;--md-sys-color-primary-container:#9F1239;--md-sys-color-on-primary-container:#FFFFFF;--md-sys-color-secondary-container:#881337;--md-sys-color-on-secondary-container:#FFFFFF;--md-sys-color-tertiary-container:#4C0519;--md-sys-color-on-tertiary-container:#FFFFFF;--md-sys-color-surface-variant:#9F1239;--md-sys-color-on-surface-variant:#FFFFFF;`,
+        dark: `--md-sys-color-primary:#FDA4AF;--md-sys-color-on-primary:#881337;--md-sys-color-primary-container:#9F1239;--md-sys-color-on-primary-container:#FFE4E6;--md-sys-color-secondary-container:#7F1D1D;--md-sys-color-on-secondary-container:#FECDD3;--md-sys-color-tertiary-container:#4C0519;--md-sys-color-on-tertiary-container:#FFF1F2;--md-sys-color-background:#1F0505;--md-sys-color-on-background:#FEE2E2;--md-sys-color-surface:#260C0C;--md-sys-color-on-surface:#FEE2E2;--md-sys-color-surface-variant:#7F1D1D;--md-sys-color-on-surface-variant:#FCA5A5;`
+    },
+    lime: {
+        light: `--md-sys-color-background:#F0FDF4;--md-sys-color-on-background:#052E16;--md-sys-color-surface:#FCFDF7;--md-sys-color-on-surface:#052E16;--md-sys-color-primary:#15803D;--md-sys-color-on-primary:#FFFFFF;--md-sys-color-primary-container:#166534;--md-sys-color-on-primary-container:#FFFFFF;--md-sys-color-secondary-container:#14532D;--md-sys-color-on-secondary-container:#FFFFFF;--md-sys-color-tertiary-container:#064E3B;--md-sys-color-on-tertiary-container:#FFFFFF;--md-sys-color-surface-variant:#166534;--md-sys-color-on-surface-variant:#FFFFFF;`,
+        dark: `--md-sys-color-primary:#BEF264;--md-sys-color-on-primary:#1A2E05;--md-sys-color-primary-container:#1E3A00;--md-sys-color-on-primary-container:#ECFCCB;--md-sys-color-secondary-container:#1A2E05;--md-sys-color-on-secondary-container:#D9F99D;--md-sys-color-tertiary-container:#14532D;--md-sys-color-on-tertiary-container:#F0FDF4;--md-sys-color-background:#0A0E02;--md-sys-color-on-background:#E1FF85;--md-sys-color-surface:#0F1404;--md-sys-color-on-surface:#E1FF85;--md-sys-color-surface-variant:#3A5000;--md-sys-color-on-surface-variant:#C5E85C;`
+    },
+    sand: {
+        light: `--md-sys-color-background:#FFFBEB;--md-sys-color-on-background:#451A03;--md-sys-color-surface:#FFFDF9;--md-sys-color-on-surface:#451A03;--md-sys-color-primary:#92400E;--md-sys-color-on-primary:#FFFFFF;--md-sys-color-primary-container:#713F12;--md-sys-color-on-primary-container:#FFFFFF;--md-sys-color-secondary-container:#451A03;--md-sys-color-on-secondary-container:#FFFFFF;--md-sys-color-tertiary-container:#3E2723;--md-sys-color-on-tertiary-container:#FFFFFF;--md-sys-color-surface-variant:#713F12;--md-sys-color-on-surface-variant:#FFFFFF;`,
+        dark: `--md-sys-color-primary:#FCD34D;--md-sys-color-on-primary:#451A03;--md-sys-color-primary-container:#713F12;--md-sys-color-on-primary-container:#FEF3C7;--md-sys-color-secondary-container:#451A03;--md-sys-color-on-secondary-container:#FDE68A;--md-sys-color-tertiary-container:#241A17;--md-sys-color-on-tertiary-container:#FFF8E1;--md-sys-color-background:#130E0C;--md-sys-color-on-background:#FFE0B2;--md-sys-color-surface:#1C1412;--md-sys-color-on-surface:#FFE0B2;--md-sys-color-surface-variant:#4E342E;--md-sys-color-on-surface-variant:#D7CCC8;`
+    },
+    monochrome: {
+        light: `--md-sys-color-background:#F8FAFC;--md-sys-color-on-background:#0F172A;--md-sys-color-surface:#FAFAFA;--md-sys-color-on-surface:#0F172A;--md-sys-color-primary:#334155;--md-sys-color-on-primary:#FFFFFF;--md-sys-color-primary-container:#1E293B;--md-sys-color-on-primary-container:#FFFFFF;--md-sys-color-secondary-container:#0F172A;--md-sys-color-on-secondary-container:#FFFFFF;--md-sys-color-tertiary-container:#020617;--md-sys-color-on-tertiary-container:#FFFFFF;--md-sys-color-surface-variant:#1E293B;--md-sys-color-on-surface-variant:#FFFFFF;`,
+        dark: `--md-sys-color-primary:#CBD5E1;--md-sys-color-on-primary:#0F172A;--md-sys-color-primary-container:#1E293B;--md-sys-color-on-primary-container:#E2E8F0;--md-sys-color-secondary-container:#1E293B;--md-sys-color-on-secondary-container:#CBD5E1;--md-sys-color-tertiary-container:#0F172A;--md-sys-color-on-tertiary-container:#F1F5F9;--md-sys-color-background:#101416;--md-sys-color-on-background:#ECEFF1;--md-sys-color-surface:#151A1D;--md-sys-color-on-surface:#ECEFF1;--md-sys-color-surface-variant:#37474F;--md-sys-color-on-surface-variant:#CFD8DC;`
+    },
+    blueberry: {
+        light: `--md-sys-color-background:#EFF6FF;--md-sys-color-on-background:#00153B;--md-sys-color-surface:#F4F9FF;--md-sys-color-on-surface:#00153B;--md-sys-color-primary:#1D4ED8;--md-sys-color-on-primary:#FFFFFF;--md-sys-color-primary-container:#1E40AF;--md-sys-color-on-primary-container:#FFFFFF;--md-sys-color-secondary-container:#1E3A8A;--md-sys-color-on-secondary-container:#FFFFFF;--md-sys-color-tertiary-container:#172554;--md-sys-color-on-tertiary-container:#FFFFFF;--md-sys-color-surface-variant:#1E40AF;--md-sys-color-on-surface-variant:#FFFFFF;`,
+        dark: `--md-sys-color-primary:#93C5FD;--md-sys-color-on-primary:#1E3A8A;--md-sys-color-primary-container:#1E40AF;--md-sys-color-on-primary-container:#DBEAFE;--md-sys-color-secondary-container:#1E3A8A;--md-sys-color-on-secondary-container:#BFDBFE;--md-sys-color-tertiary-container:#1E3A8A;--md-sys-color-on-tertiary-container:#EFF6FF;--md-sys-color-background:#040A1A;--md-sys-color-on-background:#C2ECFF;--md-sys-color-surface:#07122E;--md-sys-color-on-surface:#C2ECFF;--md-sys-color-surface-variant:#1A237E;--md-sys-color-on-surface-variant:#80CAFF;`
     }
 };
 
@@ -107,7 +151,7 @@ const i18n = {
         welPrivacy: "Privasi Total", welPrivacyDesc: "Semua diproses secara lokal di perangkat lu. Tidak ada data yang dikirim ke server.", welBtn: "Mengerti",
         statExpand: "Lihat Grafik",
         statCollapse: "Tutup Grafik",
-        statChartTitle: "Aktivitas Membaca",
+        statChartTitle: "Aktivitas Membaca (Menit)",
         statChartDays: "hari terakhir",
         statChartEmpty: "Belum ada data aktivitas membaca.",
         statChartPages: "halaman",
@@ -181,6 +225,7 @@ const i18n = {
         pdfModeBtnCanvas: "Mode Canvas (Layout Asli)",
         pdfModeBtnCanvasDesc: "Menampilkan halaman asli dokumen seperti cetakan fisik. Mendukung zoom cubit dengan jari, tapi tidak mendukung ubah font, AI, dan text selection.",
         pdfCanvasWarning: "Fitur tipografi (ukuran font, perataan, dll), AI penjelasan, dan text selection dinonaktifkan pada Mode Canvas.",
+        pdfCanvasImageOnlyWarning: "PDF ini hanya berisi gambar (hasil scan), pencarian kata tidak tersedia karena tidak ada teks yang bisa diekstrak.",
         pdfPageLabel: "Hal",
         pdfTotalPages: "Total Halaman",
         pdfCanvasBadge: "PDF-CANVAS",
@@ -192,6 +237,7 @@ const i18n = {
         // --- PHASE 3 UI UPDATES & NEW MODALS ---
         tocCanvasWarning: "Untuk mode canvas, daftar isi tidak tersedia.",
         setHideTitles: "Sembunyikan Judul Buku di Rak",
+        expressiveLabel: "Ekspresif",
         uploadDuplicateTitle: "Buku Sudah Ada",
         uploadDuplicateDesc: "Buku berikut sudah ada di rakmu. Tambahkan lagi (sebagai file baru) atau lewati saja?",
         btnSkip: "Lewati",
@@ -263,7 +309,7 @@ const i18n = {
         welPrivacy: "Total Privacy", welPrivacyDesc: "Everything is processed locally on your device. No data is ever sent to a server.", welBtn: "Got it",
         statExpand: "View Chart",
         statCollapse: "Close Chart",
-        statChartTitle: "Reading Activity",
+        statChartTitle: "Reading Activity (Minutes)",
         statChartDays: "last days",
         statChartEmpty: "No reading activity data yet.",
         statChartPages: "pages",
@@ -337,6 +383,7 @@ const i18n = {
         pdfModeBtnCanvas: "Canvas Mode (Original Layout)",
         pdfModeBtnCanvasDesc: "Displays the original visual layout of the pages. Supports pinch-to-zoom gestures, but layout/fonts/AI are disabled.",
         pdfCanvasWarning: "Typography, AI definitions, and text selection are disabled in Canvas Mode.",
+        pdfCanvasImageOnlyWarning: "This PDF only contains images (scanned), word search is unavailable because no text could be extracted.",
         pdfPageLabel: "Page",
         pdfTotalPages: "Total Pages",
         pdfCanvasBadge: "PDF-CANVAS",
@@ -348,6 +395,7 @@ const i18n = {
         // --- PHASE 3 UI UPDATES & NEW MODALS ---
         tocCanvasWarning: "Table of contents is not available in canvas mode.",
         setHideTitles: "Hide Book Titles in Shelf",
+        expressiveLabel: "Expressive",
         uploadDuplicateTitle: "Book Already Exists",
         uploadDuplicateDesc: "The following book is already in your shelf. Add anyway (as new) or skip?",
         btnSkip: "Skip",
@@ -419,7 +467,7 @@ const i18n = {
         welPrivacy: "Privacidad total", welPrivacyDesc: "Todo se procesa localmente en tu dispositivo. No se envían datos a ningún servidor.", welBtn: "Entendido",
         statExpand: "Ver gráfico",
         statCollapse: "Cerrar gráfico",
-        statChartTitle: "Actividad de lectura",
+        statChartTitle: "Actividad de lectura (Minutos)",
         statChartDays: "últimos días",
         statChartEmpty: "Aún no hay datos de actividad de lectura.",
         statChartPages: "páginas",
@@ -493,6 +541,7 @@ const i18n = {
         pdfModeBtnCanvas: "Modo Canvas (Diseño Original)",
         pdfModeBtnCanvasDesc: "Muestra el diseño visual original de las páginas. Admite zoom, pero las fuentes y la IA están deshabilitadas.",
         pdfCanvasWarning: "Las opciones de tipografía, definiciones de IA y selección de texto están deshabilitadas en el Modo Canvas.",
+        pdfCanvasImageOnlyWarning: "Este PDF solo contiene imágenes (escaneado), la búsqueda de palabras no está disponible porque no se pudo extraer texto.",
         pdfPageLabel: "Pág",
         pdfTotalPages: "Total de Páginas",
         pdfCanvasBadge: "PDF-CANVAS",
@@ -504,6 +553,7 @@ const i18n = {
         // --- PHASE 3 UI UPDATES & NEW MODALS ---
         tocCanvasWarning: "El índice no está disponible en el modo canvas.",
         setHideTitles: "Ocultar Títulos de Libros en Estante",
+        expressiveLabel: "Expresivo",
         uploadDuplicateTitle: "El Libro Ya Existe",
         uploadDuplicateDesc: "El siguiente libro ya está en tu estante. ¿Añadir de todos modos (nuevo archivo) o saltar?",
         btnSkip: "Saltar",
