@@ -156,8 +156,7 @@ const i18n = {
         statChartEmpty: "Belum ada data aktivitas membaca.",
         statChartPages: "halaman",
         setMainTitle: "Pengaturan", setPalette: "Palet Tema", setLang: "Bahasa", setInfo: "Info & Dukungan",
-        btnInfo: "Lihat Instruksi", btnDonate: "Traktir Kopi (Donasi)", btnClose: "Tutup",
-        btnDonateKoFi: "Donasi di Ko-fi", btnFetchCover: "Cari Sampul dari Internet",
+        btnInfo: "Lihat Instruksi", btnDonate: "Traktir Kopi (Donasi)", btnDonateKofi: "Dukung di Ko-fi", btnClose: "Tutup",
         setData: "Data Aplikasi", btnBackup: "Backup Data", btnRestore: "Pulihkan",
         
         // Teks Sistem Cek Update
@@ -331,8 +330,7 @@ const i18n = {
         statChartEmpty: "No reading activity data yet.",
         statChartPages: "pages",
         setMainTitle: "Settings", setPalette: "Theme Palette", setLang: "Language", setInfo: "Info & Support",
-        btnInfo: "View Instructions", btnDonate: "Buy Me a Coffee", btnClose: "Close",
-        btnDonateKoFi: "Donate on Ko-fi", btnFetchCover: "Fetch Cover from Internet",
+        btnInfo: "View Instructions", btnDonate: "Buy Me a Coffee", btnDonateKofi: "Support on Ko-fi", btnClose: "Close",
         setData: "App Data", btnBackup: "Backup Data", btnRestore: "Restore Data",
         
         // Teks Sistem Cek Update
@@ -506,8 +504,7 @@ const i18n = {
         statChartEmpty: "Aún no hay datos de actividad de lectura.",
         statChartPages: "páginas",
         setMainTitle: "Ajustes", setPalette: "Paleta de temas", setLang: "Idioma", setInfo: "Información y soporte",
-        btnInfo: "Ver instrucciones", btnDonate: "Cómprame un café", btnClose: "Cerrar",
-        btnDonateKoFi: "Donar en Ko-fi", btnFetchCover: "Buscar portada desde Internet",
+        btnInfo: "Ver instrucciones", btnDonate: "Cómprame un café", btnDonateKofi: "Apóyame en Ko-fi", btnClose: "Cerrar",
         setData: "Datos de la app", btnBackup: "Copia de seguridad", btnRestore: "Restaurar datos",
         
         // Teks Sistem Cek Update
