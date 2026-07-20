@@ -4416,6 +4416,7 @@ function _archiveShowState(state, errMsg) {
 
 // --- ARCHIVE FORMAT PICKER (inline overlay, tidak pakai history stack) ---
 function _showArchiveFormatPicker(epubFile, pdfFile, epubSizeMb, pdfSizeMb, onChoose) {
+    const d = i18n[wikiLang] || i18n['id'];
     let overlay = document.getElementById('archive-fmt-overlay');
     if (!overlay) {
         overlay = document.createElement('div');
@@ -4426,9 +4427,9 @@ function _showArchiveFormatPicker(epubFile, pdfFile, epubSizeMb, pdfSizeMb, onCh
     overlay.innerHTML = `
         <div id="archive-fmt-sheet" style="background:var(--md-sys-color-surface);border-radius:28px;padding:24px 20px 20px;max-width:320px;width:90%;display:flex;flex-direction:column;gap:16px;transform:scale(0.85);transition:transform 0.28s cubic-bezier(0.34,1.56,0.64,1);">
             <div style="display:flex;align-items:center;gap:10px;">
-                <span style="font-weight:800;font-size:1rem;color:var(--md-sys-color-on-surface);">Pilih Format</span>
+                <span style="font-weight:800;font-size:1rem;color:var(--md-sys-color-on-surface);">${d.archiveFmtTitle || "Pilih Format"}</span>
             </div>
-            <p style="font-size:0.75rem;color:var(--md-sys-color-on-surface-variant);opacity:0.75;line-height:1.5;margin:0;">Buku ini tersedia dalam dua format. Pilih yang kamu inginkan:</p>
+            <p style="font-size:0.75rem;color:var(--md-sys-color-on-surface-variant);opacity:0.75;line-height:1.5;margin:0;">${d.archiveFmtDesc || "Buku ini tersedia dalam dua format. Pilih yang kamu inginkan:"}</p>
             <div style="display:flex;flex-direction:column;gap:10px;">
                 <button id="archive-fmt-epub" style="padding:14px 20px;background:var(--md-sys-color-secondary-container);color:var(--md-sys-color-on-secondary-container);border:none;border-radius:16px;font-weight:700;font-size:0.85rem;cursor:pointer;">
                     EPUB &nbsp;<span style="opacity:0.6;font-size:0.75rem;font-weight:600;">(${epubSizeMb})</span>
@@ -4436,7 +4437,7 @@ function _showArchiveFormatPicker(epubFile, pdfFile, epubSizeMb, pdfSizeMb, onCh
                 <button id="archive-fmt-pdf" style="padding:14px 20px;background:var(--md-sys-color-primary);color:var(--md-sys-color-on-primary);border:none;border-radius:16px;font-weight:700;font-size:0.85rem;cursor:pointer;">
                     PDF &nbsp;<span style="opacity:0.75;font-size:0.75rem;font-weight:600;">(${pdfSizeMb})</span>
                 </button>
-                <button id="archive-fmt-cancel" style="padding:10px 20px;background:transparent;color:var(--md-sys-color-on-surface-variant);border:none;border-radius:16px;font-weight:700;font-size:0.8rem;cursor:pointer;opacity:0.6;">Batal</button>
+                <button id="archive-fmt-cancel" style="padding:10px 20px;background:transparent;color:var(--md-sys-color-on-surface-variant);border:none;border-radius:16px;font-weight:700;font-size:0.8rem;cursor:pointer;opacity:0.6;">${d.archiveFmtCancel || "Batal"}</button>
             </div>
         </div>`;
 
