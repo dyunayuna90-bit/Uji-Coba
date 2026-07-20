@@ -41,6 +41,7 @@ let archiveAbortController = null;
 // --- CANVAS MODE STATE ---
 let currentPdfDoc = null;
 let currentCanvasPage = 1;
+let pageTurnAnimEnabled = localStorage.getItem('page_turn_anim') === 'true'; // opt-in, default nonaktif
 let currentCanvasScale = 1.0;
 let activeRenderTasks = { main: null, next: null, prev: null };
 window.defaultCanvasScale = parseFloat(localStorage.getItem('default_canvas_scale')) || 1.0;
@@ -941,6 +942,7 @@ function applyLanguage() {
     setElementText('str-set-title', d.setTitle); setElementText('str-set-theme', d.setTheme);
     setElementText('str-set-size', d.setSize); setElementText('str-set-align', d.setAlign);
     setElementText('str-set-font', d.setFont);
+    setElementText('str-set-pageturn', d.setPageturn); setElementText('str-pageturn-on', d.pageturnOn); setElementText('str-pageturn-off', d.pageturnOff);
     
     setElementText('str-ai-title', d.aiTitle); setElementText('str-ai-loading', d.aiLoading);
     
@@ -2233,6 +2235,7 @@ _syncExpressiveUI();
     localStorage.setItem('m3-key', currentThemeKey);
 
     applyReaderThemeToDOM();
+    window.setPageTurnAnim(pageTurnAnimEnabled);
 }
 
 window.setTheme = function(key) { currentThemeKey = key; applyThemeToDOM(); };
@@ -2280,6 +2283,22 @@ window.hideGlobalLoading = function() {
 // ── TEMA KONTEN BUKU (scroll & canvas) — light/dark/amoled ──
 // Terpisah total dari tema UI (yang selalu dark). Diterapkan secara scoped
 // ke #reader-view lewat CSS variable override + atribut data-reader-theme.
+window.setPageTurnAnim = function(enabled) {
+    pageTurnAnimEnabled = !!enabled;
+    localStorage.setItem('page_turn_anim', pageTurnAnimEnabled ? 'true' : 'false');
+    const container = document.getElementById('canvas-container');
+    if (container) container.classList.toggle('page-turn-3d', pageTurnAnimEnabled);
+
+    const onBtn = document.getElementById('pageturn-btn-on');
+    const offBtn = document.getElementById('pageturn-btn-off');
+    if (onBtn && offBtn) {
+        [onBtn, offBtn].forEach(el => { el.classList.remove('bg-m3-primary', 'text-m3-onPrimary'); el.classList.add('text-m3-onSurfaceVariant'); });
+        const active = pageTurnAnimEnabled ? onBtn : offBtn;
+        active.classList.add('bg-m3-primary', 'text-m3-onPrimary');
+        active.classList.remove('text-m3-onSurfaceVariant');
+    }
+};
+
 window.setReaderTheme = function(mode) {
     if (mode !== 'light' && mode !== 'dark' && mode !== 'amoled') mode = 'dark';
     readerTheme = mode;
@@ -3281,7 +3300,16 @@ function initCanvasGestures() {
         } else if (isSwipingPage && e.touches.length === 1) {
             // [LAYOUT ABSOLUT] Geser wrapper langsung — canvas-prev/next (absolute) ikut otomatis
             const deltaX = e.touches[0].clientX - swipeStartX;
-            wrapper.style.transform = `translate(${deltaX}px, 0px) scale(1)`;
+            if (pageTurnAnimEnabled) {
+                // Tilt 3D ala Play Books: makin jauh drag, makin miring & sedikit mengecil
+                const progress = Math.max(-1, Math.min(1, deltaX / window.innerWidth));
+                const rotateY  = -progress * 16; // derajat maksimum
+                const scaleTo  = 1 - Math.abs(progress) * 0.04;
+                wrapper.style.transformOrigin = deltaX < 0 ? 'right center' : 'left center';
+                wrapper.style.transform = `translate(${deltaX}px, 0px) perspective(1400px) rotateY(${rotateY}deg) scale(${scaleTo})`;
+            } else {
+                wrapper.style.transform = `translate(${deltaX}px, 0px) scale(1)`;
+            }
 
         } else if (e.touches.length === 1 && isPanning) {
             e.preventDefault();
@@ -3298,7 +3326,7 @@ function initCanvasGestures() {
     function _snapSliderToCenter() {
         wrapper.style.transition = 'transform 0.28s cubic-bezier(0.2, 0, 0, 1)';
         wrapper.style.transform  = 'translate(0px, 0px) scale(1)';
-        setTimeout(() => { wrapper.style.transition = 'none'; }, 300);
+        setTimeout(() => { wrapper.style.transition = 'none'; wrapper.style.transformOrigin = 'center center'; }, 300);
     }
 
     // ── touchend ──
@@ -3335,7 +3363,12 @@ function initCanvasGestures() {
                     // SWIPE KIRI → halaman berikutnya
                     if (currentPdfDoc && currentCanvasPage < currentPdfDoc.numPages) {
                         wrapper.style.transition = 'transform 0.3s cubic-bezier(0.2, 0, 0, 1)';
-                        wrapper.style.transform = `translate(-${window.innerWidth}px, 0px) scale(1)`;
+                        if (pageTurnAnimEnabled) {
+                            wrapper.style.transformOrigin = 'right center';
+                            wrapper.style.transform = `translate(-${window.innerWidth}px, 0px) perspective(1400px) rotateY(-24deg) scale(0.94)`;
+                        } else {
+                            wrapper.style.transform = `translate(-${window.innerWidth}px, 0px) scale(1)`;
+                        }
                         setTimeout(() => {
                             const cnNext = document.getElementById('canvas-next');
                             const cnCurr = document.getElementById('pdf-canvas');
@@ -3351,6 +3384,7 @@ function initCanvasGestures() {
                             }
                             wrapper.style.transition = 'none';
                             wrapper.style.transform  = 'translate(0px, 0px) scale(1)';
+                            wrapper.style.transformOrigin = 'center center';
                             currentCanvasPage++;
                             _resetCanvasTransform();
                             renderCanvasPage(currentCanvasPage);
@@ -3364,7 +3398,12 @@ function initCanvasGestures() {
                     // SWIPE KANAN → halaman sebelumnya
                     if (currentPdfDoc && currentCanvasPage > 1) {
                         wrapper.style.transition = 'transform 0.3s cubic-bezier(0.2, 0, 0, 1)';
-                        wrapper.style.transform = `translate(${window.innerWidth}px, 0px) scale(1)`;
+                        if (pageTurnAnimEnabled) {
+                            wrapper.style.transformOrigin = 'left center';
+                            wrapper.style.transform = `translate(${window.innerWidth}px, 0px) perspective(1400px) rotateY(24deg) scale(0.94)`;
+                        } else {
+                            wrapper.style.transform = `translate(${window.innerWidth}px, 0px) scale(1)`;
+                        }
                         setTimeout(() => {
                             const cnPrev = document.getElementById('canvas-prev');
                             const cnCurr = document.getElementById('pdf-canvas');
@@ -3380,6 +3419,7 @@ function initCanvasGestures() {
                             }
                             wrapper.style.transition = 'none';
                             wrapper.style.transform  = 'translate(0px, 0px) scale(1)';
+                            wrapper.style.transformOrigin = 'center center';
                             currentCanvasPage--;
                             _resetCanvasTransform();
                             renderCanvasPage(currentCanvasPage);
