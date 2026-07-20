@@ -2779,15 +2779,15 @@ async function renderCanvasPage(pageNum) {
             if (myToken !== _renderToken) return;
         }
 
-        // [FIX HALAMAN PUTIH SAAT DRAG] Mulai render buffer next→prev SEDINI MUNGKIN,
-        // jalan di background TANPA diblokir oleh textLayer/highlight/progress-bar di bawah.
-        // Tetap sequential next-lalu-prev (bukan Promise.all) supaya worker PDF.js tidak bentrok
-        // dengan render utama yang baru saja jalan; tapi karena tidak di-await di sini,
-        // textLayer dkk di bawah tetap jalan concurrent, jadi buffer selesai jauh lebih cepat.
-        (async () => {
-            await renderCanvasBuffer(pageNum + 1, 'canvas-next', myToken, 'next');
-            await renderCanvasBuffer(pageNum - 1, 'canvas-prev', myToken, 'prev');
-        })();
+        // [FIX HALAMAN PUTIH SAAT DRAG] Mulai render buffer next & prev SEDINI MUNGKIN,
+        // PARALEL (Promise.all) — bukan satu-satu lagi. Tetap nunggu render halaman utama
+        // kelar dulu (biar worker PDF.js gak dibebani 3 render bersamaan), tapi setelahnya
+        // next & prev jalan BARENG, jadi 2x lebih cepat siap. Jalan di background,
+        // gak diblokir/blokir textLayer-highlight-progress bar di bawah.
+        Promise.all([
+            renderCanvasBuffer(pageNum + 1, 'canvas-next', myToken, 'next'),
+            renderCanvasBuffer(pageNum - 1, 'canvas-prev', myToken, 'prev')
+        ]);
 
         // --- RENDER TEXTLAYER TRANSPARAN (untuk text selection di Canvas Mode) ---
         const textLayerDiv = document.getElementById('canvas-text-layer');
