@@ -481,6 +481,7 @@ window.addEventListener('popstate', (e) => {
     else if (!document.getElementById('global-settings-modal').classList.contains('opacity-0')) { _closeModalAction('global-settings-modal', 'global-settings-sheet', false, true); }
     else if (!document.getElementById('backup-type-modal').classList.contains('opacity-0')) { _closeModalAction('backup-type-modal', 'backup-type-sheet', true, true); }
     else if (!document.getElementById('pdf-mode-modal').classList.contains('opacity-0')) { _closeModalAction('pdf-mode-modal', 'pdf-mode-sheet', true, true); }
+    else if (!document.getElementById('search-fullscreen-modal').classList.contains('hidden')) { window.closeSearchMode(true); }
     else if (isBatchDeleteMode) { window.toggleBatchDelete(true); }
     else if (activePanel) { _closeSidePanelsAction(true); } 
     else if (document.getElementById('search-area').classList.contains('search-active')) { closeSearch(true); }
@@ -515,61 +516,92 @@ function _hideRacksForSearch(hide) {
 
 function setupSearchListeners() {
     const searchInput = document.getElementById('global-search');
-    const searchContainer = document.getElementById('search-container');
-    const capsule = document.getElementById('search-capsule');
-    const overlay = document.getElementById('search-overlay-bg');
-    const backBtn = document.getElementById('search-back-btn');
+    const clearBtn = document.getElementById('search-clear-btn');
     if(searchInput) {
-        searchInput.addEventListener('focus', () => {
-            searchContainer.classList.add('fixed', 'top-3', 'left-4', 'right-4', 'z-[70]', 'w-auto');
-            capsule.classList.remove('bg-m3-surfaceVariant');
-            capsule.classList.add('bg-m3-surface', 'shadow-md');
-            overlay.classList.remove('hidden');
-            backBtn.classList.remove('hidden');
-            document.getElementById('library-content-scroll').style.overflow = 'hidden';
-            requestAnimationFrame(() => overlay.classList.remove('opacity-0'));
-            if(_archiveMode) {
-                document.getElementById('archive-dashboard').classList.add('hidden');
-                document.getElementById('archive-results-panel').classList.remove('hidden');
-            }
-        });
         searchInput.addEventListener('input', (e) => {
+            const val = e.target.value;
+            if(clearBtn) clearBtn.classList.toggle('hidden', val.length === 0);
             if (_archiveMode) {
-                _archiveOnInput(e.target.value);
+                _archiveOnInput(val);
             } else {
-                const query = e.target.value.toLowerCase().trim();
-                document.querySelectorAll('.card-morph, .lazy-cover').forEach(card => {
-                    const titleEl = card.querySelector('.book-title-text');
-                    if (titleEl) card.style.display = titleEl.textContent.toLowerCase().includes(query) ? '' : 'none';
-                });
+                const query = val.toLowerCase().trim();
+                const localPanel = document.getElementById('local-search-results');
+                localPanel.innerHTML = '';
+                if(query.length === 0) {
+                    localPanel.innerHTML = '<div class="col-span-full text-center text-xs opacity-50 mt-10">Ketik judul buku...</div>';
+                    return;
+                }
+                const matchedBooks = library.filter(b => b.title.toLowerCase().includes(query));
+                if(matchedBooks.length === 0) {
+                    localPanel.innerHTML = '<div class="col-span-full text-center text-xs opacity-50 mt-10">Tidak ditemukan.</div>';
+                } else {
+                    matchedBooks.forEach((book, idx) => { localPanel.appendChild(createBookCard(book, false, idx)); });
+                }
             }
         });
     }
 }
 
-window.closeSearch = function(fromHistory = false) {
+window.openSearchMode = function() {
+    pushAppHistory('search');
+    const modal = document.getElementById('search-fullscreen-modal');
     const searchInput = document.getElementById('global-search');
-    const searchContainer = document.getElementById('search-container');
-    const capsule = document.getElementById('search-capsule');
-    const overlay = document.getElementById('search-overlay-bg');
-    const backBtn = document.getElementById('search-back-btn');
-    if(!searchInput) return;
-    searchInput.blur();
+    const dummyText = document.getElementById('search-dummy-text');
+    searchInput.placeholder = _archiveMode ? "Cari di Internet Archive..." : "Cari di rak lokal...";
     searchInput.value = '';
-    searchContainer.classList.remove('fixed', 'top-3', 'left-4', 'right-4', 'z-[70]', 'w-auto');
-    capsule.classList.add('bg-m3-surfaceVariant');
-    capsule.classList.remove('bg-m3-surface', 'shadow-md');
-    overlay.classList.add('opacity-0');
-    backBtn.classList.add('hidden');
-    document.getElementById('library-content-scroll').style.overflow = 'auto';
-    setTimeout(() => overlay.classList.add('hidden'), 300);
+    document.getElementById('search-clear-btn').classList.add('hidden');
+    modal.classList.remove('hidden', 'flex-col');
+    modal.classList.add('flex');
+    requestAnimationFrame(() => {
+        modal.classList.remove('opacity-0', 'scale-95');
+        searchInput.focus();
+    });
+    const wrapper = document.getElementById('search-results-wrapper');
+    const archivePanel = document.getElementById('archive-results-panel');
+    const localPanel = document.getElementById('local-search-results');
     if(_archiveMode) {
-        document.getElementById('archive-dashboard').classList.remove('hidden');
-        document.getElementById('archive-results-panel').classList.add('hidden');
+        if(archivePanel) {
+            wrapper.appendChild(archivePanel);
+            archivePanel.classList.remove('hidden');
+            archivePanel.classList.add('px-5');
+        }
+        localPanel.classList.add('hidden');
         _archiveShowState('empty');
     } else {
-        document.querySelectorAll('.card-morph, .lazy-cover').forEach(card => card.style.display = '');
+        if(archivePanel) archivePanel.classList.add('hidden');
+        localPanel.classList.remove('hidden');
+        localPanel.className = layoutMode === 'list' ? 'flex flex-col gap-4 px-5 py-4 w-full' : 'grid grid-cols-2 gap-4 px-5 py-4 w-full';
+        localPanel.innerHTML = '<div class="col-span-full text-center text-xs opacity-50 mt-10">Ketik judul buku...</div>';
     }
+};
+
+window.closeSearchMode = function(fromHistory = false) {
+    if (!fromHistory) history.back();
+    const modal = document.getElementById('search-fullscreen-modal');
+    const searchInput = document.getElementById('global-search');
+    if(searchInput) searchInput.blur();
+    modal.classList.add('opacity-0', 'scale-95');
+    setTimeout(() => {
+        modal.classList.add('hidden');
+        modal.classList.remove('flex');
+        // Kembalikan archive panel ke tempat asal
+        const tabHome = document.getElementById('tab-home');
+        const archivePanel = document.getElementById('archive-results-panel');
+        if(tabHome && archivePanel) tabHome.appendChild(archivePanel);
+    }, 300);
+};
+
+window.clearSearchInput = function() {
+    const input = document.getElementById('global-search');
+    if(input) {
+        input.value = '';
+        input.dispatchEvent(new Event('input'));
+        input.focus();
+    }
+};
+
+window.closeSearch = function(fromHistory = false) {
+    window.closeSearchMode(fromHistory); // Proxy fungsi lama agar aman
 };
 
 // --- TAB SYSTEM: Home (Archive) / Scroll / Canvas ---
@@ -689,11 +721,11 @@ window.loadArchivePlayBooksStyle = async function() {
                     }
                 }).join('');
                 html += `
-                    <div class="w-full px-5 mb-2">
-                        <h3 class="text-sm font-bold text-m3-onSurface mb-3 tracking-wide">${_esc(item.title)}</h3>
-                        <div class="${isList ? 'flex flex-col' : 'flex gap-4 overflow-x-auto snap-x snap-proximity hide-scroll -mx-5 px-5 pb-2'}">
+                    <div class="w-full mb-6">
+                        <h3 class="text-[15px] px-5 font-bold text-m3-onSurface mb-3 tracking-wide">${_esc(item.title)}</h3>
+                        <div class="${isList ? 'flex flex-col px-5' : 'flex gap-4 overflow-x-auto snap-x snap-proximity hide-scroll px-5 pb-2'}">
                             ${cardsHtml}
-                            ${!isList ? '<div class="w-1 shrink-0"></div>' : ''}
+                            ${!isList ? '<div class="w-2 shrink-0 snap-align-none"></div>' : ''}
                         </div>
                     </div>
                 `;
@@ -1489,8 +1521,8 @@ function renderLibrary(filterText = "") {
 
     // Terapkan class kontainer sesuai mode Grid / List
     const isListMode = layoutMode === 'list';
-    const gridClass = 'grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 w-full';
-    const listClass = 'flex flex-col gap-3 w-full';
+    const gridClass = 'grid grid-cols-2 gap-4 w-full';
+    const listClass = 'flex flex-col gap-4 w-full';
     [DOM.scrollGrid, DOM.canvasGrid, pinnedGrid].forEach(el => {
         if (!el) return;
         el.className = isListMode ? listClass : gridClass;
