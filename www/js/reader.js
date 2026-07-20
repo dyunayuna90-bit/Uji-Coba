@@ -47,24 +47,43 @@ document.addEventListener("DOMContentLoaded", () => {
         searchInputEl.addEventListener('input', (e) => {
             clearTimeout(inbookSearchTimeout);
             const val = e.target.value.trim().toLowerCase();
-            if (!val || val.length < 2) { 
+    if (!val || val.length < 2) { 
                 if(searchResEl) searchResEl.classList.add('hidden'); 
                 clearSearchHighlights();
+                window.activeCanvasSearchKeyword = "";
                 return; 
-            }
-            
+            }            
             inbookSearchTimeout = setTimeout(() => {
                 const lib = typeof library !== 'undefined' ? library : [];
                 const currentBookId = typeof activeBookId !== 'undefined' ? activeBookId : null;
                 const book = lib.find(b => b.id === currentBookId);
                 if (!book) return;
 
-                // Jika buku adalah Mode Canvas, hentikan fitur pencarian teks dinamis
+// Canvas Mode: cari di data teks yang sudah diekstrak per halaman
                 if (book.pdfMode === 'canvas') {
-                    if(searchResEl) {
-                        searchResEl.innerHTML = `<div class="p-4 text-center text-xs opacity-60 font-bold">${i18n[wikiLang].pdfCanvasWarning}</div>`;
-                        searchResEl.classList.remove('hidden');
-                    }
+                    localforage.getItem('content_' + book.id).then(pageTextData => {
+                        if (!pageTextData || !Array.isArray(pageTextData)) {
+                            if(searchResEl) {
+                                searchResEl.innerHTML = `<div class="p-4 text-center text-xs opacity-60 font-bold">${i18n[wikiLang].pdfCanvasWarning}</div>`;
+                                searchResEl.classList.remove('hidden');
+                            }
+                            return;
+                        }
+                        const canvasResults = [];
+                        const regex = new RegExp(`(${val.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi');
+                        pageTextData.forEach(({ page, text }) => {
+                            if (!text || !text.toLowerCase().includes(val)) return;
+                            const matchIdx = text.toLowerCase().indexOf(val);
+                            let start = Math.max(0, matchIdx - 50);
+                            let end = Math.min(text.length, matchIdx + val.length + 50);
+                            let preview = text.substring(start, end);
+                            if (start > 0) preview = "..." + preview;
+                            if (end < text.length) preview += "...";
+                            preview = preview.replace(regex, '<mark class="bg-m3-primary text-m3-onPrimary rounded px-0.5">$1</mark>');
+                            canvasResults.push({ page, preview });
+                        });
+                        renderCanvasSearchResults(canvasResults, val);
+                    });
                     return;
                 }
 
@@ -120,7 +139,7 @@ async function processMultipleFiles(files) {
 
     // Helper: ambil ID asli buku dari nama file (sama dengan yang dipakai saat import)
     function _getBookId(file) {
-        return btoa(unescape(encodeURIComponent(file.name))).replace(/[^a-zA-Z0-9]/g, '').substring(0, 32);
+        return btoa(unescape(encodeURIComponent(file.name))).replace(/[^a-zA-Z0-9]/g, '').substring(0, 150);
     }
 
     // Helper: cek mode yang sudah ada di library untuk ID buku tertentu
@@ -561,7 +580,7 @@ async function handleTxt(file, bookTitle) {
     if (parsedNodes.length === 0) throw new Error("File TXT kosong atau tidak bisa dibaca.");
 
     // ID PERMANEN + CEK DUPLIKAT
-    let bookId = btoa(unescape(encodeURIComponent(file.name))).replace(/[^a-zA-Z0-9]/g, '').substring(0, 32);
+    let bookId = btoa(unescape(encodeURIComponent(file.name))).replace(/[^a-zA-Z0-9]/g, '').substring(0, 150);
     if (file._isDuplicate) {
         bookId = bookId.substring(0, 20) + Date.now().toString(36);
         bookTitle = bookTitle + " (Copy)";
@@ -636,7 +655,7 @@ async function handleMd(file, bookTitle) {
     if (parsedNodes.length === 0) throw new Error("File MD kosong atau tidak valid.");
 
     // ID PERMANEN + CEK DUPLIKAT
-    let bookId = btoa(unescape(encodeURIComponent(file.name))).replace(/[^a-zA-Z0-9]/g, '').substring(0, 32);
+    let bookId = btoa(unescape(encodeURIComponent(file.name))).replace(/[^a-zA-Z0-9]/g, '').substring(0, 150);
     if (file._isDuplicate) {
         bookId = bookId.substring(0, 20) + Date.now().toString(36);
         bookTitle = bookTitle + " (Copy)";
@@ -675,20 +694,62 @@ function clearSearchHighlights() {
     });
 }
 
-function renderSearchResults(results, keyword) {
+function renderCanvasSearchResults(results, keyword) {
     const searchResEl = document.getElementById('search-results-panel');
-    const readContentEl = document.getElementById('reader-content');
-    if(!searchResEl) return;
+    if (!searchResEl) return;
     searchResEl.innerHTML = '';
-    const lang = typeof wikiLang !== 'undefined' ? wikiLang : 'id';
-    const d = (typeof i18n !== 'undefined' ? (i18n[lang] || i18n['id']) : {});
-    
-    if(results.length === 0) {
-        searchResEl.innerHTML = `<div class="p-6 text-center text-sm opacity-60 font-medium">${d.searchNotFound || 'Tidak ditemukan'}</div>`;
+
+    if (results.length === 0) {
+        const lang = typeof wikiLang !== 'undefined' ? wikiLang : 'id';
+        const noResultMsg = lang === 'id' ? 'Tidak ditemukan.' : (lang === 'es' ? 'No encontrado.' : 'No results found.');
+        searchResEl.innerHTML = `<div class="p-4 text-center text-xs opacity-60 font-bold">${noResultMsg}</div>`;
         searchResEl.classList.remove('hidden');
         return;
     }
-    
+
+    const countHeader = document.createElement('div');
+    countHeader.className = "px-4 pt-3 pb-2 text-xs font-bold uppercase tracking-wider text-m3-primary/80 border-b border-m3-surfaceVariant";
+    countHeader.textContent = `${results.length} Found`;
+    searchResEl.appendChild(countHeader);
+
+    results.forEach(res => {
+        const item = document.createElement('div');
+        item.className = 'p-3 mb-2 bg-m3-surfaceVariant rounded-2xl cursor-pointer btn-morph';
+        item.innerHTML = `
+            <div class="text-[10px] font-bold text-m3-primary mb-1 uppercase tracking-widest">Halaman ${res.page}</div>
+            <div class="text-sm text-m3-onSurface leading-relaxed line-clamp-3">${res.preview}</div>
+        `;
+        item.onclick = () => {
+            searchResEl.classList.add('hidden');
+            // Set keyword aktif untuk highlight di Canvas
+            if (typeof activeCanvasSearchKeyword !== 'undefined') {
+                window.activeCanvasSearchKeyword = keyword;
+            }
+            // Navigasi ke halaman tersebut
+            if (typeof currentCanvasPage !== 'undefined' && typeof renderCanvasPage === 'function') {
+                currentCanvasPage = res.page;
+                renderCanvasPage(res.page);
+            }
+        };
+        searchResEl.appendChild(item);
+    });
+    searchResEl.classList.remove('hidden');
+}
+
+// Pencarian untuk Scroll Mode (buku EPUB/TXT/MD/PDF-scroll dengan nodes)
+function renderSearchResults(results, keyword) {
+    const searchResEl = document.getElementById('search-results-panel');
+    if (!searchResEl) return;
+    searchResEl.innerHTML = '';
+
+    if (results.length === 0) {
+        const lang = typeof wikiLang !== 'undefined' ? wikiLang : 'id';
+        const noResultMsg = lang === 'id' ? 'Tidak ditemukan.' : (lang === 'es' ? 'No encontrado.' : 'No results found.');
+        searchResEl.innerHTML = `<div class="p-4 text-center text-xs opacity-60 font-bold">${noResultMsg}</div>`;
+        searchResEl.classList.remove('hidden');
+        return;
+    }
+
     const countHeader = document.createElement('div');
     countHeader.className = "px-4 pt-3 pb-2 text-xs font-bold uppercase tracking-wider text-m3-primary/80 border-b border-m3-surfaceVariant";
     countHeader.textContent = `${results.length} Found`;
@@ -701,27 +762,27 @@ function renderSearchResults(results, keyword) {
             <div class="text-[10px] font-bold text-m3-primary mb-1 uppercase tracking-widest">${res.context}</div>
             <div class="text-sm text-m3-onSurface leading-relaxed line-clamp-3">${res.preview}</div>
         `;
-        
+
         item.onclick = () => {
             const lib = typeof library !== 'undefined' ? library : [];
             const currentBookId = typeof activeBookId !== 'undefined' ? activeBookId : null;
             const book = lib.find(b => b.id === currentBookId);
             if(!book) return;
-            
+
             searchResEl.classList.add('hidden');
             const targetEl = document.getElementById(`node-${res.nodeIdx}`);
             const container = readContentEl;
-            
+
             if(targetEl && container) {
                 clearSearchHighlights();
-                
+
                 const regex = new RegExp(`(${keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi');
-                
+
                 const walker = document.createTreeWalker(targetEl, NodeFilter.SHOW_TEXT, null, false);
                 const textNodes = [];
                 let n;
                 while(n = walker.nextNode()) textNodes.push(n);
-                
+
                 textNodes.forEach(node => {
                     const text = node.nodeValue;
                     if(regex.test(text)) {
@@ -734,9 +795,9 @@ function renderSearchResults(results, keyword) {
                 const cRect = container.getBoundingClientRect();
                 const tRect = targetEl.getBoundingClientRect();
                 const offset = tRect.top - cRect.top + container.scrollTop - (cRect.height / 2) + (tRect.height / 2);
-                
+
                 container.scrollTo({ top: offset, behavior: 'smooth' });
-                
+
                 setTimeout(() => {
                     const marks = targetEl.querySelectorAll('mark.search-hl');
                     marks.forEach(m => {
@@ -747,13 +808,13 @@ function renderSearchResults(results, keyword) {
                 }, 2000);
             }
         };
-        
+
         searchResEl.appendChild(item);
     });
     searchResEl.classList.remove('hidden');
 }
 
-// 2. FUNGSI EKSTRAK PDF DENGAN LOGIKA PENUH
+
 async function processPdfDirect(file, bookTitle, finalMode, total) {
     const arrayBuffer = await file.arrayBuffer();
     const pdf = await pdfjsLib.getDocument({ data: arrayBuffer.slice(0) }).promise;
@@ -771,7 +832,7 @@ async function processPdfDirect(file, bookTitle, finalMode, total) {
         coverBlob = await new Promise(resolve => coverCanvas.toBlob(resolve, 'image/jpeg', 0.8));
     } catch(e) { console.error("Gagal cover PDF", e); }
 
-    let newBookId = btoa(unescape(encodeURIComponent(file.name))).replace(/[^a-zA-Z0-9]/g, '').substring(0, 32);
+    let newBookId = btoa(unescape(encodeURIComponent(file.name))).replace(/[^a-zA-Z0-9]/g, '').substring(0, 150);
     if (file._isDuplicate) {
         newBookId = newBookId.substring(0, 20) + Date.now().toString(36);
         bookTitle = bookTitle + " (Copy)";
@@ -782,10 +843,23 @@ async function processPdfDirect(file, bookTitle, finalMode, total) {
         DOM.loadBar.style.width = '50%';
         if(DOM.loadPct) DOM.loadPct.textContent = '50%';
         
-        const pdfBlob = new Blob([arrayBuffer], { type: 'application/pdf' });
+const pdfBlob = new Blob([arrayBuffer], { type: 'application/pdf' });
         await localforage.setItem('rawpdf_' + newBookId, pdfBlob);
         if(coverBlob) await localforage.setItem('cover_' + newBookId, coverBlob);
 
+        // Ekstrak teks per halaman untuk fitur pencarian Canvas Mode
+        try {
+            const pageTextData = [];
+            for (let pi = 1; pi <= total; pi++) {
+                const pg = await pdf.getPage(pi);
+                const tc = await pg.getTextContent();
+                const pageText = tc.items.map(item => item.str).join(' ').replace(/\s+/g, ' ').trim();
+                pageTextData.push({ page: pi, text: pageText });
+            }
+            await localforage.setItem('content_' + newBookId, pageTextData);
+        } catch(textErr) {
+            console.warn('Canvas text extraction failed:', textErr);
+        }
         const existingIndex = library.findIndex(b => b.id === newBookId);
         if (existingIndex === -1) {
             library.push({
@@ -1331,7 +1405,7 @@ async function handleEpub(file, bookTitle) {
     }
     
     // ID PERMANEN + CEK DUPLIKAT
-    let newBookId = btoa(unescape(encodeURIComponent(file.name))).replace(/[^a-zA-Z0-9]/g, '').substring(0, 32);
+    let newBookId = btoa(unescape(encodeURIComponent(file.name))).replace(/[^a-zA-Z0-9]/g, '').substring(0, 150);
     if (file._isDuplicate) {
         newBookId = newBookId.substring(0, 20) + Date.now().toString(36);
         bookTitle = bookTitle + " (Copy)";
