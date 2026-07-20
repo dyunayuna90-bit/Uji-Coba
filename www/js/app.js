@@ -654,8 +654,6 @@ window.closeSearchMode = function(fromHistory = false) {
             el.style.overflow = '';
             el.style.marginBottom = '';
         });
-        // Force full re-render without active search query
-        renderLibrary('');
     }, 400);
 };
 
@@ -763,6 +761,11 @@ window.toggleLayoutMode = function() {
     if(icon) {
         icon.setAttribute('data-lucide', layoutMode === 'grid' ? 'layout-grid' : 'layout-list');
         if(window.lucide) window.lucide.createIcons({nodes: [icon]});
+    }
+    // Tampilkan toast feedback
+    const modeName = layoutMode === 'grid' ? 'Grid' : 'Baris';
+    if (typeof window.showPersistentToast === 'function') {
+        window.showPersistentToast(`Layout: Mode ${modeName}`, 'success', 1500);
     }
     if (currentTab === 'home') loadArchivePlayBooksStyle();
     renderLibrary(document.getElementById('global-search') ? document.getElementById('global-search').value : '');
@@ -4357,7 +4360,7 @@ function _archiveRenderCards(docs) {
         const badge = hasPdf && hasEpub ? 'PDF + EPUB' : hasPdf ? 'PDF' : hasEpub ? 'EPUB' : '?';
         const downloads = doc.downloads ? parseInt(doc.downloads).toLocaleString('id') : '—';
         const card = document.createElement('div');
-        card.className = 'flex items-start gap-3 bg-m3-surfaceVariant rounded-[20px] p-3';
+        card.className = 'flex items-start gap-3 bg-m3-surface rounded-[20px] p-3 shadow-sm';
         card.innerHTML = `
             <img src="https://archive.org/services/img/${id}" alt="" class="w-9 h-12 object-cover rounded-xl shrink-0 bg-m3-surface" onerror="this.style.display='none'" loading="lazy">
             <div class="flex-1 min-w-0">
