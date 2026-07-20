@@ -123,8 +123,9 @@ document.addEventListener("DOMContentLoaded", () => {
     applyThemeToDOM();
 
     // Terapkan ikon layout tersimpan (grid/list) sebelum render pertama
+    // Ikon menandakan aksi berikutnya (kebalikan dari mode aktif saat ini)
     const layoutIcon = document.querySelector('#layout-btn i');
-    if (layoutIcon) layoutIcon.setAttribute('data-lucide', layoutMode === 'grid' ? 'layout-grid' : 'layout-list');
+    if (layoutIcon) layoutIcon.setAttribute('data-lucide', layoutMode === 'grid' ? 'layout-list' : 'layout-grid');
 
     loadLibrary().finally(() => {
         // Sembunyikan splash screen setelah library siap
@@ -636,7 +637,14 @@ window.closeSearchMode = function(fromHistory = false) {
     setTimeout(() => {
         modal.classList.add('hidden');
         modal.classList.remove('flex');
-        if (capsule) capsule.style.opacity = '1'; // Restore original capsule
+        if (capsule) {
+            // Matikan transition sesaat agar capsule muncul INSTAN (bukan fade pelan)
+            // biar pas persis dengan hilangnya modal, tidak ada jeda/kedip
+            capsule.style.transition = 'none';
+            capsule.style.opacity = '1'; // Restore original capsule
+            void capsule.offsetWidth; // Force reflow biar transition:none diterapkan dulu
+            capsule.style.transition = '';
+        }
         // Reset modal constraints for next use
         modal.style.top = '0px'; modal.style.left = '0px';
         modal.style.width = '100vw'; modal.style.height = '100vh';
@@ -759,15 +767,12 @@ window.toggleLayoutMode = function() {
     localStorage.setItem('layout_mode', layoutMode);
     const icon = document.querySelector('#layout-btn i');
     if(icon) {
-        icon.setAttribute('data-lucide', layoutMode === 'grid' ? 'layout-grid' : 'layout-list');
+        // Ikon menandakan aksi berikutnya (kebalikan dari mode aktif saat ini)
+        icon.setAttribute('data-lucide', layoutMode === 'grid' ? 'layout-list' : 'layout-grid');
         if(window.lucide) window.lucide.createIcons({nodes: [icon]});
     }
-    // Tampilkan toast feedback
-    const modeName = layoutMode === 'grid' ? 'Grid' : 'Baris';
-    if (typeof window.showPersistentToast === 'function') {
-        window.showPersistentToast(`Layout: Mode ${modeName}`, 'success', 1500);
-    }
-    if (currentTab === 'home') loadArchivePlayBooksStyle();
+    // Sinkronkan seluruh rak buku (Beranda/Archive & Scroll/Canvas) secara serentak
+    loadArchivePlayBooksStyle();
     renderLibrary(document.getElementById('global-search') ? document.getElementById('global-search').value : '');
 };
 
