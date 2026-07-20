@@ -236,7 +236,6 @@ const i18n = {
 
         // --- PHASE 3 UI UPDATES & NEW MODALS ---
         tocCanvasWarning: "Untuk mode canvas, daftar isi tidak tersedia.",
-        setHideTitles: "Sembunyikan Judul Buku di Rak",
         expressiveLabel: "Ekspresif",
         uploadDuplicateTitle: "Buku Sudah Ada",
         uploadDuplicateDesc: "Buku berikut sudah ada di rakmu. Tambahkan lagi (sebagai file baru) atau lewati saja?",
@@ -275,13 +274,25 @@ const i18n = {
         archiveFic: "Fiksi Populer",
         archiveSci: "Sains & Ilmu Pengetahuan",
         archiveHis: "Sejarah Dunia",
+        archiveTech: "Teknologi",
+        archivePhil: "Filsafat",
+        archiveFantasy: "Fantasi & Sihir",
         archiveLoading: "Memuat rekomendasi...",
         archiveFailed: "Gagal memuat rekomendasi.",
 
         // --- ARCHIVE DOWNLOAD RESULT TOASTS ---
         toastBookAdded: "Buku berhasil ditambah!",
         toastBookDuplicate: "Buku \"{title}\" udah ada di rak sebelumnya.",
-        toastBookFailed: "Gagal diproses, file mungkin rusak."
+        toastBookFailed: "Gagal diproses, file mungkin rusak.",
+
+        // --- SEARCH / NAV / HOME (baru) ---
+        searchArchive: "Cari di Internet Archive...",
+        searchLocal: "Cari di rak lokal...",
+        navHome: "Beranda",
+        navScroll: "Scroll",
+        navCanvas: "Canvas",
+        jelajahArsip: "Jelajahi Arsip",
+        continueReadingHome: "Lanjutkan Membaca"
     },
     en: {
         libEmpty: "Library is Empty.", searchBooks: "Search books...", loadingDocs: "Reading Document...", 
@@ -399,7 +410,6 @@ const i18n = {
 
         // --- PHASE 3 UI UPDATES & NEW MODALS ---
         tocCanvasWarning: "Table of contents is not available in canvas mode.",
-        setHideTitles: "Hide Book Titles in Shelf",
         expressiveLabel: "Expressive",
         uploadDuplicateTitle: "Book Already Exists",
         uploadDuplicateDesc: "The following book is already in your shelf. Add anyway (as new) or skip?",
@@ -438,13 +448,25 @@ const i18n = {
         archiveFic: "Popular Fiction",
         archiveSci: "Science & Knowledge",
         archiveHis: "World History",
+        archiveTech: "Technology",
+        archivePhil: "Philosophy",
+        archiveFantasy: "Fantasy & Magic",
         archiveLoading: "Loading recommendations...",
         archiveFailed: "Failed to load recommendations.",
 
         // --- ARCHIVE DOWNLOAD RESULT TOASTS ---
         toastBookAdded: "Book added successfully!",
         toastBookDuplicate: "Book \"{title}\" is already in your shelf.",
-        toastBookFailed: "Processing failed, file may be corrupted."
+        toastBookFailed: "Processing failed, file may be corrupted.",
+
+        // --- SEARCH / NAV / HOME (new) ---
+        searchArchive: "Search Internet Archive...",
+        searchLocal: "Search local shelf...",
+        navHome: "Home",
+        navScroll: "Scroll",
+        navCanvas: "Canvas",
+        jelajahArsip: "Explore Archive",
+        continueReadingHome: "Continue Reading"
     },
     es: {
         libEmpty: "La biblioteca está vacía.", searchBooks: "Buscar libros...", loadingDocs: "Leyendo documento...", 
@@ -562,7 +584,6 @@ const i18n = {
 
         // --- PHASE 3 UI UPDATES & NEW MODALS ---
         tocCanvasWarning: "El índice no está disponible en el modo canvas.",
-        setHideTitles: "Ocultar Títulos de Libros en Estante",
         expressiveLabel: "Expresivo",
         uploadDuplicateTitle: "El Libro Ya Existe",
         uploadDuplicateDesc: "El siguiente libro ya está en tu estante. ¿Añadir de todos modos (nuevo archivo) o saltar?",
@@ -601,12 +622,24 @@ const i18n = {
         archiveFic: "Ficción Popular",
         archiveSci: "Ciencia y Conocimiento",
         archiveHis: "Historia Mundial",
+        archiveTech: "Tecnología",
+        archivePhil: "Filosofía",
+        archiveFantasy: "Fantasía y Magia",
         archiveLoading: "Cargando recomendaciones...",
         archiveFailed: "Error al cargar recomendaciones.",
 
         // --- ARCHIVE DOWNLOAD RESULT TOASTS ---
         toastBookAdded: "¡Libro añadido con éxito!",
         toastBookDuplicate: "El libro \"{title}\" ya está en tu estante.",
-        toastBookFailed: "Error al procesar, el archivo puede estar dañado."
+        toastBookFailed: "Error al procesar, el archivo puede estar dañado.",
+
+        // --- SEARCH / NAV / HOME (nuevo) ---
+        searchArchive: "Buscar en Internet Archive...",
+        searchLocal: "Buscar en estante local...",
+        navHome: "Inicio",
+        navScroll: "Scroll",
+        navCanvas: "Canvas",
+        jelajahArsip: "Explorar Archivo",
+        continueReadingHome: "Continuar Leyendo"
     }
 };
