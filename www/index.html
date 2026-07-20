@@ -58,7 +58,7 @@
     <!-- VIEW: LIBRARY -->
     <div id="library-view" class="absolute inset-0 flex flex-col overflow-hidden transition-transform duration-500 origin-bottom bg-m3-bg z-10 w-full">
         
-        <header id="main-header" class="flex-none sticky top-0 z-40 bg-m3-bg pt-[calc(env(safe-area-inset-top,48px)+1rem)] pb-2 px-5 transition-all duration-300">
+        <header id="main-header" class="flex-none sticky top-0 z-40 bg-m3-bg pt-[calc(env(safe-area-inset-top,0px)+3rem)] pb-2 px-5 transition-all duration-300">
             <div class="flex items-center gap-3 w-full" id="search-nav-row">
                 <button onclick="toggleLayoutMode()" id="layout-btn" class="w-10 h-10 shrink-0 flex items-center justify-center text-m3-onBg bg-m3-surfaceVariant/50 rounded-full btn-morph outline-none">
                     <i data-lucide="layout-grid"></i>
@@ -75,8 +75,8 @@
             </div>
         </header>
         <!-- MORPHING FULLSCREEN SEARCH MODAL -->
-        <div id="search-fullscreen-modal" class="fixed inset-0 z-[100] bg-m3-bg flex-col justify-start hidden opacity-0 transition-all duration-300 ease-[cubic-bezier(0.34,1.56,0.64,1)] scale-95 origin-top">
-            <div class="flex items-center px-2 pt-[calc(env(safe-area-inset-top,48px)+1rem)] pb-3 bg-m3-surface border-b border-m3-onSurface/10 shrink-0 shadow-sm">
+        <div id="search-fullscreen-modal" class="fixed inset-0 z-[100] bg-m3-bg flex-col justify-start hidden opacity-0 transition-all duration-300 ease-[cubic-bezier(0.34,1.56,0.64,1)] scale-95 -translate-y-10 origin-top">
+            <div class="flex items-center px-2 pt-[calc(env(safe-area-inset-top,0px)+3rem)] pb-3 bg-m3-surface border-b border-m3-onSurface/10 shrink-0 shadow-sm">
                 <button onclick="closeSearchMode()" class="w-12 h-12 flex items-center justify-center rounded-full text-m3-onSurface shrink-0 btn-morph"><i data-lucide="arrow-left"></i></button>
                 <input type="text" id="global-search" class="flex-1 bg-transparent border-none outline-none font-bold text-m3-onSurface text-base px-2" autocomplete="off">
                 <button id="search-clear-btn" onclick="clearSearchInput()" class="w-12 h-12 flex items-center justify-center rounded-full text-m3-onSurfaceVariant shrink-0 hidden btn-morph"><i data-lucide="x" class="w-5 h-5"></i></button>
@@ -149,9 +149,9 @@
             <!-- TAB 2: SCROLL — Rak lokal mode Scroll (teks dinamis) -->
             <div id="tab-scroll" class="w-full px-5 hidden transition-opacity duration-300">
 
-            <div id="continue-reading-section" class="hidden mb-8 -mx-5 mt-2">
+            <div id="scroll-continue-section" class="hidden mb-8 -mx-5 mt-2">
                 <h2 id="str-continue-reading" class="text-base font-bold mb-4 text-m3-onBg px-5 tracking-tight">Lanjutkan Membaca</h2>
-                <div id="top-books-slider" class="flex gap-3 overflow-x-auto snap-x snap-proximity px-5 pb-2 hide-scroll" style="scroll-padding-left: 1.25rem;">
+                <div id="scroll-top-slider" class="flex gap-3 overflow-x-auto snap-x snap-proximity px-5 pb-2 hide-scroll" style="scroll-padding-left: 1.25rem;">
                 </div>
             </div>
 
@@ -182,6 +182,11 @@
 
             <!-- TAB 3: CANVAS — Rak lokal mode Canvas (layout asli / scan) -->
             <div id="tab-canvas" class="w-full px-5 hidden transition-opacity duration-300">
+                <div id="canvas-continue-section" class="hidden mb-8 -mx-5 mt-2">
+                    <h2 id="str-continue-reading-canvas" class="text-base font-bold mb-4 text-m3-onBg px-5 tracking-tight">Lanjutkan Membaca</h2>
+                    <div id="canvas-top-slider" class="flex gap-3 overflow-x-auto snap-x snap-proximity px-5 pb-2 hide-scroll" style="scroll-padding-left: 1.25rem;">
+                    </div>
+                </div>
                 <div id="canvas-collection-section" class="mb-8 mt-1">
                     <div class="flex items-center gap-2 mb-4">
                         <i data-lucide="layout" class="w-5 h-5 text-m3-primary"></i>
@@ -491,11 +496,10 @@
     <!-- Global Settings Modal -->
     <div id="global-settings-modal" onclick="if(event.target === this) history.back()" class="hidden fixed inset-0 bg-m3-surface z-[200] flex flex-col opacity-0 transition-opacity duration-300">
         <div class="w-full h-full flex flex-col transform translate-x-full transition-transform duration-300 ease-[cubic-bezier(0.34,1.56,0.64,1)] bg-m3-surface" id="global-settings-sheet">
-            <div class="flex items-center px-4 pt-[calc(env(safe-area-inset-top,32px)+1rem)] pb-4 border-b border-m3-onSurface/10 shrink-0">
+            <div class="flex items-center px-4 pt-[calc(env(safe-area-inset-top,0px)+3rem)] pb-4 shrink-0">
                 <button onclick="history.back()" class="w-10 h-10 flex items-center justify-center rounded-full bg-transparent text-m3-onSurface btn-morph outline-none"><i data-lucide="arrow-left"></i></button>
                 <div class="ml-2 flex-1 flex items-center gap-2">
                     <h1 class="text-2xl font-black tracking-tighter text-m3-onSurface" style="font-family: 'Outfit', sans-serif;">Baca.</h1>
-                    <h3 id="str-set-main-title" class="text-[10px] font-bold text-m3-onSurfaceVariant opacity-70 mt-1 uppercase tracking-wider bg-m3-onSurface/5 px-2 py-0.5 rounded-full">Pengaturan</h3>
                 </div>
             </div>
             <div class="flex-1 overflow-y-auto p-6 pb-32 hide-scroll">
