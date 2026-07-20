@@ -28,7 +28,6 @@ let wikiLang = localStorage.getItem('wiki_lang') || 'en';
 let readerTheme = localStorage.getItem('reader_theme') || 'dark';
 
 // State baru untuk menyembunyikan judul buku dari rak
-let isTitlesHidden = localStorage.getItem('hide_book_titles') === 'true';
 let isExpressive = localStorage.getItem('expressive') === 'true';
 window.activeCanvasSearchKeyword = "";
 
@@ -65,11 +64,6 @@ let swipeStartX = 0;
 const DOM = {};
 
 document.addEventListener("DOMContentLoaded", () => {
-    // Terapkan state sembunyi judul kalau aktif dari localStorage
-    if (isTitlesHidden) {
-        document.body.classList.add('hide-book-titles');
-    }
-
     // Inisialisasi DOM Elements
     Object.assign(DOM, {
         libView: document.getElementById('library-view'), 
@@ -480,9 +474,9 @@ window.addEventListener('popstate', (e) => {
     else if (!document.getElementById('b-opt-modal').classList.contains('opacity-0')) { _closeModalAction('b-opt-modal', 'b-opt-sheet', false, true); }
     else if (!document.getElementById('edit-modal').classList.contains('opacity-0')) { _closeModalAction('edit-modal', 'edit-sheet', true, true); }
     else if (!document.getElementById('welcome-modal').classList.contains('opacity-0')) { closeWelcome(true); }
-    else if (!document.getElementById('global-settings-modal').classList.contains('opacity-0')) { _closeModalAction('global-settings-modal', 'global-settings-sheet', false, true); }
     else if (!document.getElementById('backup-type-modal').classList.contains('opacity-0')) { _closeModalAction('backup-type-modal', 'backup-type-sheet', true, true); }
     else if (!document.getElementById('pdf-mode-modal').classList.contains('opacity-0')) { _closeModalAction('pdf-mode-modal', 'pdf-mode-sheet', true, true); }
+    else if (!document.getElementById('global-settings-modal').classList.contains('opacity-0')) { _closeModalAction('global-settings-modal', 'global-settings-sheet', false, true); }
     else if (!document.getElementById('search-fullscreen-modal').classList.contains('hidden')) { window.closeSearchMode(true); }
     else if (isBatchDeleteMode) { window.toggleBatchDelete(true); }
     else if (activePanel) { _closeSidePanelsAction(true); } 
@@ -536,7 +530,10 @@ function setupSearchListeners() {
                 if(matchedBooks.length === 0) {
                     localPanel.innerHTML = '<div class="col-span-full text-center text-xs opacity-50 mt-10">Tidak ditemukan.</div>';
                 } else {
-                    matchedBooks.forEach((book, idx) => { localPanel.appendChild(createBookCard(book, false, idx)); });
+                    matchedBooks.forEach((book, idx) => {
+                        const card = layoutMode === 'list' ? createBookListItem(book, idx, true) : createBookCard(book, false, idx, true);
+                        localPanel.appendChild(card);
+                    });
                     initCoverObserver();
                 }
             }
@@ -547,16 +544,36 @@ function setupSearchListeners() {
 window.openSearchMode = function() {
     pushAppHistory('search');
     const modal = document.getElementById('search-fullscreen-modal');
+    const capsule = document.getElementById('search-capsule');
     const searchInput = document.getElementById('global-search');
     const dummyText = document.getElementById('search-dummy-text');
-    searchInput.placeholder = _archiveMode ? "Cari di Internet Archive..." : "Cari di rak lokal...";
+    const _dSearch = typeof i18n !== 'undefined' ? (i18n[wikiLang] || i18n['id']) : {};
+    searchInput.placeholder = _archiveMode ? _dSearch.searchArchive : _dSearch.searchLocal;
     searchInput.value = '';
     document.getElementById('search-clear-btn').classList.add('hidden');
+
+    // Morphing: modal dimulai dari posisi & ukuran persis search-capsule (titik sentuh),
+    // lalu tumbuh (scale bukan lewat transform, tapi lewat width/height/posisi asli) ke fullscreen.
+    if (capsule) {
+        const rect = capsule.getBoundingClientRect();
+        modal.style.transition = 'none';
+        modal.style.top = rect.top + 'px';
+        modal.style.left = rect.left + 'px';
+        modal.style.width = rect.width + 'px';
+        modal.style.height = rect.height + 'px';
+        modal.style.borderRadius = '9999px';
+    }
     modal.classList.remove('hidden');
     modal.classList.add('flex');
+    void modal.offsetWidth; // force reflow agar transisi dari state awal tidak di-skip
+    modal.style.transition = '';
     requestAnimationFrame(() => {
-        modal.classList.remove('opacity-0', 'scale-95', '-translate-y-10');
-        modal.classList.add('translate-y-0', 'scale-100');
+        modal.classList.remove('opacity-0');
+        modal.style.top = '0px';
+        modal.style.left = '0px';
+        modal.style.width = '100vw';
+        modal.style.height = '100vh';
+        modal.style.borderRadius = '0px';
         searchInput.focus();
     });
     const wrapper = document.getElementById('search-results-wrapper');
@@ -581,15 +598,28 @@ window.openSearchMode = function() {
 window.closeSearchMode = function(fromHistory = false) {
     if (!fromHistory) history.back();
     const modal = document.getElementById('search-fullscreen-modal');
+    const capsule = document.getElementById('search-capsule');
     const searchInput = document.getElementById('global-search');
     if(searchInput) searchInput.blur();
-    modal.classList.add('opacity-0', 'scale-95', '-translate-y-10');
-    modal.classList.remove('translate-y-0', 'scale-100');
+    // Morph mengecil kembali ke posisi & ukuran search-capsule sebelum disembunyikan
+    if (capsule) {
+        const rect = capsule.getBoundingClientRect();
+        modal.style.top = rect.top + 'px';
+        modal.style.left = rect.left + 'px';
+        modal.style.width = rect.width + 'px';
+        modal.style.height = rect.height + 'px';
+        modal.style.borderRadius = '9999px';
+    }
+    modal.classList.add('opacity-0');
     // Pastikan semua rak (Scroll, Canvas, dll) selalu dikembalikan, apapun mode search terakhir
     _hideRacksForSearch(false);
     setTimeout(() => {
         modal.classList.add('hidden');
         modal.classList.remove('flex');
+        // Reset geometri agar modal siap dipakai fullscreen lagi di pembukaan berikutnya
+        modal.style.top = '0px'; modal.style.left = '0px';
+        modal.style.width = '100vw'; modal.style.height = '100vh';
+        modal.style.borderRadius = '0px';
         // Kembalikan archive panel ke tempat asal, lalu sembunyikan agar Tab Home balik ke dashboard
         const tabHome = document.getElementById('tab-home');
         const archivePanel = document.getElementById('archive-results-panel');
@@ -621,9 +651,19 @@ window.closeSearch = function(fromHistory = false) {
     window.closeSearchMode(fromHistory); // Proxy fungsi lama agar aman
 };
 
+// --- SCROLL STATE MEMORY: ingat posisi scroll tiap tab (Home/Scroll/Canvas) ---
+const tabScrollMemory = { home: 0, scroll: 0, canvas: 0 };
+
 // --- TAB SYSTEM: Home (Archive) / Scroll / Canvas ---
 window.switchTab = function(tabId) {
     if (!['home', 'scroll', 'canvas'].includes(tabId)) return;
+
+    // Simpan posisi scroll tab yang sedang aktif sebelum berpindah
+    const scrollContainer = document.getElementById('library-content-scroll');
+    if (scrollContainer && tabScrollMemory.hasOwnProperty(currentTab)) {
+        tabScrollMemory[currentTab] = scrollContainer.scrollTop;
+    }
+
     currentTab = tabId;
 
     ['home', 'scroll', 'canvas'].forEach(id => {
@@ -653,7 +693,8 @@ window.switchTab = function(tabId) {
     // Home tab = mode pencarian archive.org otomatis; Scroll/Canvas = pencarian lokal
     _archiveMode = (tabId === 'home');
     if (DOM.globalSearch) {
-        DOM.globalSearch.placeholder = _archiveMode ? 'Cari di Internet Archive...' : 'Cari di rak lokal...';
+        const _dTab = typeof i18n !== 'undefined' ? (i18n[wikiLang] || i18n['id']) : {};
+        DOM.globalSearch.placeholder = _archiveMode ? _dTab.searchArchive : _dTab.searchLocal;
     }
     // Tutup panel hasil pencarian archive & tampilkan dashboard kurasi saat berpindah tab
     const archivePanel = document.getElementById('archive-results-panel');
@@ -666,6 +707,11 @@ window.switchTab = function(tabId) {
     }
 
     if (window.lucide) window.lucide.createIcons();
+
+    // Pulihkan posisi scroll tab yang baru diaktifkan
+    requestAnimationFrame(() => {
+        if (scrollContainer) scrollContainer.scrollTop = tabScrollMemory[tabId] || 0;
+    });
 };
 
 // --- LAYOUT TOGGLE: Grid / List (rak lokal Scroll & Canvas) ---
@@ -695,7 +741,10 @@ window.loadArchivePlayBooksStyle = async function() {
     const queries = [
         { title: d.archiveFic || "Fiksi Populer", q: 'subject:("fiction" OR "literature") AND mediatype:texts' },
         { title: d.archiveSci || "Sains & Ilmu Pengetahuan", q: 'subject:("science" OR "physics" OR "chemistry") AND mediatype:texts' },
-        { title: d.archiveHis || "Sejarah Dunia", q: 'subject:"history" AND mediatype:texts' }
+        { title: d.archiveHis || "Sejarah Dunia", q: 'subject:"history" AND mediatype:texts' },
+        { title: d.archiveTech || "Teknologi", q: 'subject:("technology" OR "computer science" OR "engineering") AND mediatype:texts' },
+        { title: d.archivePhil || "Filsafat", q: 'subject:("philosophy") AND mediatype:texts' },
+        { title: d.archiveFantasy || "Fantasi & Sihir", q: 'subject:("fantasy" OR "magic") AND mediatype:texts' }
     ];
     try {
         let html = '';
@@ -750,6 +799,27 @@ window.loadArchivePlayBooksStyle = async function() {
             }
         }
         container.innerHTML = html || `<p class="text-center text-xs opacity-50 p-5 w-full">${d.archiveFailed || 'Gagal memuat rekomendasi.'}</p>`;
+
+        // "Lanjutkan Membaca" khusus Home: 4 buku dengan progres terbesar dari SELURUH rak (scroll + canvas)
+        const homeContinueBooks = (typeof library !== 'undefined' ? library : [])
+            .filter(b => b.progressPct > 0)
+            .sort((a, b) => b.progressPct - a.progressPct)
+            .slice(0, 4);
+        if (homeContinueBooks.length > 0) {
+            const continueSection = document.createElement('div');
+            continueSection.className = 'w-full mb-6';
+            continueSection.innerHTML = `
+                <h3 class="text-[15px] px-5 font-bold text-m3-onSurface mb-3 tracking-wide" id="str-home-continue-title">${_esc(d.continueReadingHome || 'Lanjutkan Membaca')}</h3>
+                <div id="home-continue-slider" class="flex gap-4 overflow-x-auto snap-x snap-proximity hide-scroll pb-2" style="scroll-padding-left: 1.25rem;">
+                    <div class="w-4 shrink-0 snap-align-none"></div>
+                </div>
+            `;
+            container.prepend(continueSection);
+            const slider = document.getElementById('home-continue-slider');
+            homeContinueBooks.forEach((book, idx) => { slider.appendChild(createBookCard(book, true, idx)); });
+            const spacer = document.createElement('div'); spacer.className = "w-4 shrink-0 snap-align-none"; slider.appendChild(spacer);
+            initCoverObserver();
+        }
     } catch(e) {
         container.innerHTML = `<p class="text-center text-xs opacity-50 p-5 w-full">${d.archiveFailed || 'Gagal memuat rekomendasi.'}</p>`;
     }
@@ -761,6 +831,8 @@ function applyLanguage() {
     const d = typeof i18n !== 'undefined' ? (i18n[wikiLang] || i18n['id']) : {};
     if (!Object.keys(d).length) return;
 
+    setElementText('str-nav-home', d.navHome); setElementText('str-nav-scroll', d.navScroll); setElementText('str-nav-canvas', d.navCanvas);
+    setElementText('str-jelajah-arsip', d.jelajahArsip);
     setElementText('str-lib-empty', d.libEmpty); setElementText('str-continue-reading', d.continueReading);
     setElementText('str-continue-reading-canvas', d.continueReading);
     setElementText('btn-batch-cancel', d.cancel); setElementText('btn-batch-exec', d.delete);
@@ -820,8 +892,6 @@ function applyLanguage() {
     setElementText('str-edit-book-cover', d.editBookCover); setElementText('str-edit-book-shape', d.editBookShape);
     setElementText('str-edit-cancel', d.editCancel); setElementText('str-edit-save', d.editSave);
     setElementText('str-amoled-label', d.amoledLabel);
-    setElementText('str-hide-titles-label', d.setHideTitles || 'Sembunyikan Judul Buku');
-    _syncHideTitlesUI();
     setElementText('str-expressive-label', d.expressiveLabel || 'Ekspresif');
     
     setElementText('shape-default', d.shapeDyn);
@@ -985,7 +1055,7 @@ window.openModal = function(modalId, sheetId, isScale = false) {
         void m.offsetWidth;
         m.classList.remove('opacity-0');
         if(sheetId === 'global-settings-sheet') { s.classList.remove('translate-x-full'); }
-        else if(isScale) { s.classList.remove('scale-75', 'translate-y-12'); }
+        else if(isScale && (sheetId === 'raw-backup-sheet' || sheetId === 'raw-restore-sheet' || sheetId === 'backup-type-sheet' || sheetId === 'pdf-mode-sheet' || sheetId === 'custom-dialog-sheet')) { s.classList.remove('scale-75', 'translate-y-12'); }
         else { s.classList.remove('translate-y-full'); }
     }
 }
@@ -998,7 +1068,7 @@ window._closeModalAction = function(modalId, sheetId, isScale = false, isFromHis
         s.style.transition = '';
         requestAnimationFrame(() => {
             if(sheetId === 'global-settings-sheet') { s.classList.add('translate-x-full'); }
-            else if(isScale) { s.classList.add('scale-75', 'translate-y-12'); }
+            else if(isScale && (sheetId === 'raw-backup-sheet' || sheetId === 'raw-restore-sheet' || sheetId === 'backup-type-sheet' || sheetId === 'pdf-mode-sheet' || sheetId === 'custom-dialog-sheet')) { s.classList.add('scale-75', 'translate-y-12'); }
             else { s.classList.add('translate-y-full'); }
             m.classList.add('opacity-0');
             setTimeout(() => m.classList.add('hidden'), 300);
@@ -1631,12 +1701,18 @@ function initCoverObserver() {
             localforage.getItem('cover_' + id).then(coverData => {
                 if (!coverData) return;
 
-                // Support format baru (Blob) dan format lama (base64 string) secara bersamaan
+                // Support format baru (Blob), base64 string, dan URL/object URL string secara bersamaan.
+                // Validasi lama (length > 50) terlalu kaku dan bisa menggagalkan cover valid yang pendek
+                // (mis. URL relatif atau path singkat). Sekarang cukup pastikan coverData tidak kosong.
                 let coverUrl = null;
                 if (coverData instanceof Blob) {
                     coverUrl = URL.createObjectURL(coverData);
-                } else if (typeof coverData === 'string' && coverData.length > 50) {
-                    coverUrl = coverData;
+                } else if (typeof coverData === 'string' && coverData.trim().length > 0) {
+                    // Deteksi otomatis: base64 data URI, blob:/http(s) URL, atau path/URL biasa — semua diterima
+                    coverUrl = coverData.trim();
+                } else if (coverData && typeof coverData === 'object' && typeof coverData.url === 'string') {
+                    // Format URL object custom { url: '...' }
+                    coverUrl = coverData.url;
                 }
                 if (!coverUrl) return;
 
@@ -1707,12 +1783,12 @@ function initCoverObserver() {
     document.querySelectorAll('.lazy-cover').forEach(el => coverObserver.observe(el));
 }
 
-function createBookCard(book, isSlider = false, index = 0) {
+function createBookCard(book, isSlider = false, index = 0, isSearch = false) {
     const progress = book.progressPct || 0;
     const card = document.createElement('div');
     const isList = !isSlider && layoutMode === 'list';
     const widthClass = isSlider ? 'w-[110px] sm:w-[130px] snap-start' : 'w-full';
-    card.className = `${isSlider ? '' : 'card-morph'} lazy-cover outline-none ring-0 relative ${isList ? 'flex gap-4 items-center w-full mb-4' : `flex flex-col ${widthClass} shrink-0`}`;
+    card.className = `${isSlider || isSearch ? '' : 'card-morph'} lazy-cover outline-none ring-0 relative ${isList ? 'flex gap-4 items-center w-full mb-4' : `flex flex-col ${widthClass} shrink-0`}`;
     card.dataset.coverId = book.id;
     let badgeText = book.type === 'pdf' ? 'PDF' : book.type.toUpperCase();
     let batchOverlayHTML = !isSlider ? `
@@ -1740,7 +1816,7 @@ function createBookCard(book, isSlider = false, index = 0) {
     let pressTimer = null; let isPressing = false; let hasLongPressed = false;
     const handleStart = (e) => {
         hasLongPressed = false;
-        if(isBatchDeleteMode || isSlider) return;
+        if(isBatchDeleteMode || isSlider || isSearch) return;
         isPressing = true;
         pressTimer = setTimeout(() => { if(isPressing){ hasLongPressed = true; window.openBookOptions(book.id); }}, 400);
     };
@@ -1773,10 +1849,10 @@ function createBookCard(book, isSlider = false, index = 0) {
 }
 
 // --- LIST LAYOUT: baris horizontal (thumbnail 2:3 polos + judul di samping) ---
-function createBookListItem(book, index = 0) {
+function createBookListItem(book, index = 0, isSearch = false) {
     const progress = book.progressPct || 0;
     const row = document.createElement('div');
-    row.className = 'card-morph lazy-cover w-full flex items-center gap-3 p-2 pr-3 rounded-2xl bg-m3-surfaceVariant/40 hover:bg-m3-surfaceVariant/70 transition-colors relative cursor-pointer border-none outline-none ring-0';
+    row.className = `${isSearch ? '' : 'card-morph'} lazy-cover w-full flex items-center gap-3 p-2 pr-3 rounded-2xl bg-m3-surfaceVariant/40 hover:bg-m3-surfaceVariant/70 transition-colors relative cursor-pointer border-none outline-none ring-0`;
     row.dataset.coverId = book.id;
     row.dataset.coverMode = 'list';
 
@@ -1811,7 +1887,7 @@ function createBookListItem(book, index = 0) {
     let pressTimer = null; let isPressing = false; let hasLongPressed = false;
     const handleStart = (e) => {
         hasLongPressed = false;
-        if (isBatchDeleteMode) return;
+        if (isBatchDeleteMode || isSearch) return;
         isPressing = true;
         pressTimer = setTimeout(() => { if (isPressing) { hasLongPressed = true; window.openBookOptions(book.id); } }, 400);
     };
@@ -2029,6 +2105,23 @@ window.saveBookEdit = async function() {
             reader.onload = async function(e) { 
                 await localforage.setItem('cover_' + id, e.target.result);
                 await localforage.setItem('pdf_epub_master', library); 
+                // Update DOM secara langsung agar cover di galeri berubah seketika, tanpa perlu restart app
+                const coverEl = document.getElementById('cover-img-' + id);
+                if (coverEl) {
+                    coverEl.style.backgroundImage = 'url(' + e.target.result + ')';
+                    coverEl.style.backgroundSize = 'cover';
+                    coverEl.style.backgroundPosition = 'center';
+                    coverEl.style.backgroundRepeat = 'no-repeat';
+                    coverEl.classList.remove('opacity-0');
+                    coverEl.classList.add('opacity-100');
+                }
+                // Elemen versi list mode (thumbnail polos di .list-cover-thumb)
+                document.querySelectorAll(`[data-cover-id="${id}"][data-cover-mode="list"] .list-cover-thumb`).forEach(thumb => {
+                    thumb.style.backgroundImage = 'url(' + e.target.result + ')';
+                    thumb.style.opacity = '1';
+                    const icon = thumb.querySelector('[data-lucide="book"]');
+                    if (icon) icon.classList.add('hidden');
+                });
                 history.back(); renderLibrary(); 
             }; 
             reader.readAsDataURL(coverFile); 
@@ -2074,12 +2167,12 @@ function _syncExpressiveUI() {
     if (!bg || !knob) return;
     if (isExpressive) {
         bg.classList.add('bg-m3-primary');
-        bg.classList.remove('bg-m3-onSurfaceVariant/20');
+        bg.classList.remove('bg-gray-500/40');
         knob.style.transform = 'translateX(32px)';
         knob.classList.replace('bg-m3-onSurface', 'bg-m3-onPrimary');
     } else {
         bg.classList.remove('bg-m3-primary');
-        bg.classList.add('bg-m3-onSurfaceVariant/20');
+        bg.classList.add('bg-gray-500/40');
         knob.style.transform = 'translateX(0)';
         knob.classList.replace('bg-m3-onPrimary', 'bg-m3-onSurface');
     }
@@ -2102,37 +2195,6 @@ window.hideGlobalLoading = function() {
     overlay.classList.add('opacity-0');
     setTimeout(() => overlay.classList.add('hidden'), 220);
 };
-
-// Fitur Baru v25: Sembunyikan Judul di Rak Buku
-window.toggleHideTitles = function() {
-    isTitlesHidden = !isTitlesHidden;
-    localStorage.setItem('hide_book_titles', isTitlesHidden.toString());
-    
-    if (isTitlesHidden) {
-        document.body.classList.add('hide-book-titles');
-    } else {
-        document.body.classList.remove('hide-book-titles');
-    }
-    
-    // Sync toggle UI
-    _syncHideTitlesUI();
-    renderLibrary(DOM.globalSearch ? DOM.globalSearch.value : '');
-};
-
-function _syncHideTitlesUI() {
-    const bg   = document.getElementById('hide-titles-switch-bg');
-    const knob = document.getElementById('hide-titles-switch-knob');
-    if (!bg || !knob) return;
-    if (isTitlesHidden) {
-        bg.classList.add('bg-m3-primary');
-        bg.classList.remove('bg-m3-onSurfaceVariant/20');
-        knob.style.transform = 'translateX(32px)';
-    } else {
-        bg.classList.remove('bg-m3-primary');
-        bg.classList.add('bg-m3-onSurfaceVariant/20');
-        knob.style.transform = 'translateX(0)';
-    }
-}
 
 // ── TEMA KONTEN BUKU (scroll & canvas) — light/dark/amoled ──
 // Terpisah total dari tema UI (yang selalu dark). Diterapkan secara scoped
@@ -4708,3 +4770,37 @@ document.addEventListener("DOMContentLoaded", () => {
         }
     }, 500);
 });
+
+// ===================================================================
+// EFEK RIPPLE (Material Design) — global listener untuk .btn-morph, .card-morph, dan tombol
+// ===================================================================
+function _spawnRipple(target, clientX, clientY) {
+    if (!target) return;
+    // Pastikan elemen bisa menampung ripple (posisi relative + overflow hidden)
+    target.classList.add('ripple-container');
+    const rect = target.getBoundingClientRect();
+    const size = Math.max(rect.width, rect.height) * 1.4;
+    const x = (clientX != null ? clientX - rect.left : rect.width / 2) - size / 2;
+    const y = (clientY != null ? clientY - rect.top : rect.height / 2) - size / 2;
+
+    const ripple = document.createElement('span');
+    ripple.className = 'ripple-effect';
+    ripple.style.width = ripple.style.height = size + 'px';
+    ripple.style.left = x + 'px';
+    ripple.style.top = y + 'px';
+    target.appendChild(ripple);
+
+    ripple.addEventListener('animationend', () => ripple.remove(), { once: true });
+    // Safety net kalau animationend tidak terpanggil (mis. elemen dihapus dari DOM lebih dulu)
+    setTimeout(() => { if (ripple.parentNode) ripple.remove(); }, 700);
+}
+
+function _handleGlobalRippleTrigger(e) {
+    const target = e.target.closest('.btn-morph, .card-morph, button');
+    if (!target) return;
+    const point = e.touches && e.touches[0] ? e.touches[0] : e;
+    _spawnRipple(target, point.clientX, point.clientY);
+}
+
+document.addEventListener('mousedown', _handleGlobalRippleTrigger, true);
+document.addEventListener('touchstart', _handleGlobalRippleTrigger, { capture: true, passive: true });
