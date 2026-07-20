@@ -664,29 +664,54 @@ window.switchTab = function(tabId) {
         tabScrollMemory[currentTab] = scrollContainer.scrollTop;
     }
 
+    const previousTab = currentTab;
     currentTab = tabId;
+
+    // --- Ganti tab secara seamless, tanpa lompatan scroll ---
+    // 1. Elemen tab lama langsung disembunyikan (hidden) SEKETIKA, bukan difade lalu
+    //    ditunda dengan setTimeout — supaya tinggi kontainer scroll berubah instan
+    //    dan tidak ada momen di mana tab lama & baru sama-sama memakan ruang (dobel tinggi).
+    const prevTabEl = previousTab !== tabId ? document.getElementById('tab-' + previousTab) : null;
+    if (prevTabEl) {
+        prevTabEl.style.transition = 'none';
+        prevTabEl.style.opacity = '0';
+        prevTabEl.classList.add('hidden');
+    }
+
+    // 2. Tampilkan tab baru (masih transparan) lalu 3. terapkan scroll state SINKRON,
+    //    persis setelah hidden dihapus — sebelum browser sempat repaint dengan posisi lama.
+    const newTabEl = document.getElementById('tab-' + tabId);
+    if (newTabEl) {
+        newTabEl.style.transition = 'none';
+        newTabEl.classList.remove('hidden');
+        newTabEl.style.opacity = '0';
+    }
+    if (scrollContainer) {
+        scrollContainer.scrollTop = tabScrollMemory[tabId] || 0;
+    }
+
+    // 4. Baru sesudah layout & scroll final ter-set, jalankan fade-in di frame berikutnya.
+    //    Tidak ada layout thrashing di antara penutupan dan pembukaan tab.
+    requestAnimationFrame(() => {
+        if (newTabEl) {
+            newTabEl.style.transition = '';
+            newTabEl.style.opacity = '1';
+        }
+        if (prevTabEl) prevTabEl.style.transition = '';
+    });
 
     ['home', 'scroll', 'canvas'].forEach(id => {
         const btn = document.getElementById('nav-tab-' + id);
-        const tabEl = document.getElementById('tab-' + id);
         if (!btn) return;
         const ind = btn.querySelector('.nav-indicator');
         if (id === tabId) {
             if (ind) ind.classList.add('bg-m3-secondaryContainer', 'text-m3-onSecondaryContainer');
             btn.classList.add('text-m3-onSurface');
             btn.classList.remove('text-m3-onSurfaceVariant');
-            if (tabEl) {
-                tabEl.classList.remove('hidden');
-                requestAnimationFrame(() => { tabEl.style.opacity = '1'; });
-            }
         } else {
             if (ind) ind.classList.remove('bg-m3-secondaryContainer', 'text-m3-onSecondaryContainer');
             btn.classList.remove('text-m3-onSurface');
             btn.classList.add('text-m3-onSurfaceVariant');
-            if (tabEl) {
-                tabEl.style.opacity = '0';
-                setTimeout(() => { if (currentTab !== id) tabEl.classList.add('hidden'); }, 200);
-            }
         }
     });
 
@@ -707,11 +732,6 @@ window.switchTab = function(tabId) {
     }
 
     if (window.lucide) window.lucide.createIcons();
-
-    // Pulihkan posisi scroll tab yang baru diaktifkan
-    requestAnimationFrame(() => {
-        if (scrollContainer) scrollContainer.scrollTop = tabScrollMemory[tabId] || 0;
-    });
 };
 
 // --- LAYOUT TOGGLE: Grid / List (rak lokal Scroll & Canvas) ---
@@ -1739,15 +1759,21 @@ function initCoverObserver() {
                 }
 
                 // Transisi transparan -> solid saat gambar sampul diterapkan
-                const coverEl = document.getElementById(`cover-img-${id}`) || card;
+                // Cari SEMUA instansi cover buku ini di DOM (rak utama + "Lanjutkan Membaca")
+                // sekaligus, karena buku yang sama bisa muncul di lebih dari satu tempat.
+                const coverEls = document.querySelectorAll(`.cover-img-target-${id}`);
 
                 requestAnimationFrame(() => {
-                    coverEl.style.backgroundImage = `url('${coverUrl}')`;
-                    coverEl.style.backgroundSize = 'cover';
-                    coverEl.style.backgroundPosition = 'center';
-                    coverEl.style.backgroundRepeat = 'no-repeat';
-                    coverEl.classList.remove('opacity-0');
-                    coverEl.classList.add('opacity-100');
+                    if (coverEls.length > 0) {
+                        coverEls.forEach(coverEl => {
+                            coverEl.style.backgroundImage = `url('${coverUrl}')`;
+                            coverEl.style.backgroundSize = 'cover';
+                            coverEl.style.backgroundPosition = 'center';
+                            coverEl.style.backgroundRepeat = 'no-repeat';
+                            coverEl.classList.remove('opacity-0');
+                            coverEl.classList.add('opacity-100');
+                        });
+                    }
 
                     if (baseClass) card.classList.remove(...baseClass.split(' '));
                     card.classList.add('text-white', 'shadow-lg');
@@ -1799,7 +1825,7 @@ function createBookCard(book, isSlider = false, index = 0, isSearch = false) {
     card.innerHTML = `
         ${batchOverlayHTML}
         <div class="relative overflow-hidden shadow-sm bg-m3-surfaceVariant rounded-xl flex-shrink-0" style="${isList ? 'width: 80px; aspect-ratio: 2/3;' : 'width: 100%; aspect-ratio: 2/3;'}">
-            <div id="cover-img-${book.id}" class="bg-cover bg-center bg-no-repeat w-full h-full absolute inset-0 transition-opacity duration-300 opacity-0"></div>
+            <div class="cover-img-target-${book.id} bg-cover bg-center bg-no-repeat w-full h-full absolute inset-0 transition-opacity duration-300 opacity-0"></div>
             <div class="absolute inset-0 bg-black/5 pointer-events-none"></div>
             <div class="absolute top-2 left-2 flex gap-1 z-10">
                 <span class="text-[9px] font-black px-1.5 py-0.5 bg-m3-primary/90 rounded-md text-m3-onPrimary shadow-sm">${badgeText}</span>
@@ -2106,15 +2132,15 @@ window.saveBookEdit = async function() {
                 await localforage.setItem('cover_' + id, e.target.result);
                 await localforage.setItem('pdf_epub_master', library); 
                 // Update DOM secara langsung agar cover di galeri berubah seketika, tanpa perlu restart app
-                const coverEl = document.getElementById('cover-img-' + id);
-                if (coverEl) {
+                // Target SEMUA instansi (rak utama + "Lanjutkan Membaca") sekaligus, bukan cuma satu.
+                document.querySelectorAll(`.cover-img-target-${id}`).forEach(coverEl => {
                     coverEl.style.backgroundImage = 'url(' + e.target.result + ')';
                     coverEl.style.backgroundSize = 'cover';
                     coverEl.style.backgroundPosition = 'center';
                     coverEl.style.backgroundRepeat = 'no-repeat';
                     coverEl.classList.remove('opacity-0');
                     coverEl.classList.add('opacity-100');
-                }
+                });
                 // Elemen versi list mode (thumbnail polos di .list-cover-thumb)
                 document.querySelectorAll(`[data-cover-id="${id}"][data-cover-mode="list"] .list-cover-thumb`).forEach(thumb => {
                     thumb.style.backgroundImage = 'url(' + e.target.result + ')';
@@ -4114,7 +4140,8 @@ window.filterBookmarkPanel = function(query) {
 
 // 12. SWIPE TO DISMISS LOGIC & SCROLL LOCK
 function setupSwipeToDismiss() {
-    const sheets = ['b-opt-sheet', 'edit-sheet', 'bookmark-sheet', 'raw-backup-sheet', 'raw-restore-sheet', 'welcome-sheet', 'backup-type-sheet', 'pdf-mode-sheet', 'ai-sheet'];
+    // 'welcome-sheet' (view Instruksi) sengaja TIDAK dimasukkan — tidak boleh ditutup dengan swipe ke bawah
+    const sheets = ['b-opt-sheet', 'edit-sheet', 'bookmark-sheet', 'raw-backup-sheet', 'raw-restore-sheet', 'backup-type-sheet', 'pdf-mode-sheet', 'ai-sheet'];
     
     sheets.forEach(sheetId => {
         const sheet = document.getElementById(sheetId);
@@ -4796,6 +4823,8 @@ function _spawnRipple(target, clientX, clientY) {
 }
 
 function _handleGlobalRippleTrigger(e) {
+    // Kecualikan nav bar bawah — ripple tidak boleh muncul di dalamnya
+    if (e.target.closest('#bottom-nav-bar, .nav-bar, nav')) return;
     const target = e.target.closest('.btn-morph, .card-morph, button');
     if (!target) return;
     const point = e.touches && e.touches[0] ? e.touches[0] : e;
