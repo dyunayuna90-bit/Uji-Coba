@@ -3190,22 +3190,25 @@ function initCanvasGestures() {
     function _updateTurnShade(progress) {
         if (!foldShadow || !seamShadow) return;
         const absP = Math.min(1, Math.abs(progress));
-        foldShadow.style.opacity = absP.toFixed(2);
-        seamShadow.style.opacity = absP.toFixed(2);
-        // Box-shadow dinamis di pageStage: kesan kertas terangkat dari permukaan (depth cue)
+        // Cap opacity shadow (tidak sampai 1 penuh) supaya efeknya tetap terlihat tapi jauh lebih halus
+        const shadeP = absP * 0.65;
+        foldShadow.style.opacity = shadeP.toFixed(2);
+        seamShadow.style.opacity = shadeP.toFixed(2);
+        // Box-shadow dinamis di pageStage: kesan kertas terangkat dari permukaan (depth cue),
+        // versi lebih tipis/soft dibanding sebelumnya
         if (pageStage) {
-            pageStage.style.boxShadow = `0 ${8 + absP * 26}px ${18 + absP * 46}px rgba(0,0,0,${(0.12 + absP * 0.28).toFixed(2)})`;
+            pageStage.style.boxShadow = `0 ${4 + absP * 10}px ${10 + absP * 20}px rgba(0,0,0,${(0.08 + absP * 0.12).toFixed(2)})`;
         }
         if (progress < 0) {
             // ditarik ke kiri → pivot kanan, seam nempel di canvas-next (kanan)
-            foldShadow.style.background = 'linear-gradient(to right, transparent 0%, rgba(255,255,255,.38) 9%, rgba(0,0,0,.06) 22%, rgba(0,0,0,.7) 100%)';
+            foldShadow.style.background = 'linear-gradient(to right, transparent 0%, rgba(255,255,255,.22) 10%, rgba(0,0,0,.04) 24%, rgba(0,0,0,.32) 100%)';
             seamShadow.style.left = '100%'; seamShadow.style.right = 'auto';
-            seamShadow.style.background = 'linear-gradient(to right, rgba(0,0,0,.65) 0%, rgba(0,0,0,.28) 45%, transparent 100%)';
+            seamShadow.style.background = 'linear-gradient(to right, rgba(0,0,0,.30) 0%, rgba(0,0,0,.12) 45%, transparent 100%)';
         } else if (progress > 0) {
             // ditarik ke kanan → pivot kiri, seam nempel di canvas-prev (kiri)
-            foldShadow.style.background = 'linear-gradient(to left, transparent 0%, rgba(255,255,255,.38) 9%, rgba(0,0,0,.06) 22%, rgba(0,0,0,.7) 100%)';
+            foldShadow.style.background = 'linear-gradient(to left, transparent 0%, rgba(255,255,255,.22) 10%, rgba(0,0,0,.04) 24%, rgba(0,0,0,.32) 100%)';
             seamShadow.style.right = '100%'; seamShadow.style.left = 'auto';
-            seamShadow.style.background = 'linear-gradient(to left, rgba(0,0,0,.65) 0%, rgba(0,0,0,.28) 45%, transparent 100%)';
+            seamShadow.style.background = 'linear-gradient(to left, rgba(0,0,0,.30) 0%, rgba(0,0,0,.12) 45%, transparent 100%)';
         }
     }
     function _resetTurnShade() {
@@ -3360,11 +3363,13 @@ function initCanvasGestures() {
                 // Tilt 3D ala Play Books: makin jauh drag, makin miring & sedikit mengecil.
                 // HANYA pageStage yang gerak — canvas-prev/next diam total di belakang.
                 const progress = Math.max(-1, Math.min(1, deltaX / window.innerWidth));
-                const rotateY  = -progress * 26; // derajat maksimum (lebih besar = lebih 3D)
+                const rotateY  = -progress * 34; // derajat maksimum (lebih besar = lebih 3D)
                 const liftZ    = -Math.abs(progress) * 50; // "terangkat" menjauh sedikit
-                const scaleTo  = 1 - Math.abs(progress) * 0.05;
+                // PENTING: tinggi kertas TIDAK boleh ikut menyusut — hanya scaleX (lebar) yang
+                // sedikit mengecil untuk mempertegas kesan lengkung 3D, scaleY tetap 1 (tinggi asli).
+                const scaleXTo = 1 - Math.abs(progress) * 0.06;
                 pageStage.style.transformOrigin = deltaX < 0 ? 'right center' : 'left center';
-                pageStage.style.transform = `translate(${deltaX}px, 0px) perspective(1000px) rotateY(${rotateY}deg) translateZ(${liftZ}px) scale(${scaleTo})`;
+                pageStage.style.transform = `translate(${deltaX}px, 0px) perspective(1000px) rotateY(${rotateY}deg) translateZ(${liftZ}px) scale3d(${scaleXTo}, 1, 1)`;
                 _updateTurnShade(progress);
             } else if (pageStage) {
                 pageStage.style.transform = `translate(${deltaX}px, 0px) scale(1)`;
@@ -3427,7 +3432,7 @@ function initCanvasGestures() {
                         if (pageStage) pageStage.style.transition = 'transform 0.3s cubic-bezier(0.2, 0, 0, 1), box-shadow 0.3s ease';
                         if (pageTurnAnimEnabled && pageStage) {
                             pageStage.style.transformOrigin = 'right center';
-                            pageStage.style.transform = `translate(-${window.innerWidth}px, 0px) perspective(1000px) rotateY(-32deg) translateZ(-60px) scale(0.92)`;
+                            pageStage.style.transform = `translate(-${window.innerWidth}px, 0px) perspective(1000px) rotateY(-40deg) translateZ(-60px) scale3d(0.94, 1, 1)`;
                             _updateTurnShade(-1);
                         } else if (pageStage) {
                             pageStage.style.transform = `translate(-${window.innerWidth}px, 0px) scale(1)`;
@@ -3467,7 +3472,7 @@ function initCanvasGestures() {
                         if (pageStage) pageStage.style.transition = 'transform 0.3s cubic-bezier(0.2, 0, 0, 1), box-shadow 0.3s ease';
                         if (pageTurnAnimEnabled && pageStage) {
                             pageStage.style.transformOrigin = 'left center';
-                            pageStage.style.transform = `translate(${window.innerWidth}px, 0px) perspective(1000px) rotateY(32deg) translateZ(-60px) scale(0.92)`;
+                            pageStage.style.transform = `translate(${window.innerWidth}px, 0px) perspective(1000px) rotateY(40deg) translateZ(-60px) scale3d(0.94, 1, 1)`;
                             _updateTurnShade(1);
                         } else if (pageStage) {
                             pageStage.style.transform = `translate(${window.innerWidth}px, 0px) scale(1)`;
