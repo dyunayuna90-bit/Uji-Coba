@@ -157,6 +157,7 @@ const i18n = {
         statChartPages: "halaman",
         setMainTitle: "Pengaturan", setPalette: "Palet Tema", setLang: "Bahasa", setInfo: "Info & Dukungan",
         btnInfo: "Lihat Instruksi", btnDonate: "Traktir Kopi (Donasi)", btnClose: "Tutup",
+        btnDonateKoFi: "Donasi di Ko-fi", btnFetchCover: "Cari Sampul dari Internet",
         setData: "Data Aplikasi", btnBackup: "Backup Data", btnRestore: "Pulihkan",
         
         // Teks Sistem Cek Update
@@ -331,6 +332,7 @@ const i18n = {
         statChartPages: "pages",
         setMainTitle: "Settings", setPalette: "Theme Palette", setLang: "Language", setInfo: "Info & Support",
         btnInfo: "View Instructions", btnDonate: "Buy Me a Coffee", btnClose: "Close",
+        btnDonateKoFi: "Donate on Ko-fi", btnFetchCover: "Fetch Cover from Internet",
         setData: "App Data", btnBackup: "Backup Data", btnRestore: "Restore Data",
         
         // Teks Sistem Cek Update
@@ -505,6 +507,7 @@ const i18n = {
         statChartPages: "páginas",
         setMainTitle: "Ajustes", setPalette: "Paleta de temas", setLang: "Idioma", setInfo: "Información y soporte",
         btnInfo: "Ver instrucciones", btnDonate: "Cómprame un café", btnClose: "Cerrar",
+        btnDonateKoFi: "Donar en Ko-fi", btnFetchCover: "Buscar portada desde Internet",
         setData: "Datos de la app", btnBackup: "Copia de seguridad", btnRestore: "Restaurar datos",
         
         // Teks Sistem Cek Update
