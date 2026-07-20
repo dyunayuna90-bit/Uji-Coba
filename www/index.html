@@ -60,7 +60,7 @@
         
         <header id="main-header" class="flex-none sticky top-0 z-40 bg-m3-bg pt-[calc(env(safe-area-inset-top,0px)+3rem)] pb-2 px-5 transition-all duration-300">
             <div class="flex items-center gap-3 w-full" id="search-nav-row">
-                <button onclick="toggleLayoutMode()" id="layout-btn" class="w-10 h-10 shrink-0 flex items-center justify-center text-m3-onBg bg-m3-surfaceVariant/50 rounded-full outline-none">
+                <button onclick="toggleLayoutMode()" id="layout-btn" class="w-10 h-10 shrink-0 flex items-center justify-center text-m3-onBg bg-m3-surfaceVariant/50 rounded-full btn-morph outline-none">
                     <i data-lucide="layout-grid"></i>
                 </button>
                 <div id="search-container" class="flex-1">
@@ -69,7 +69,7 @@
                         <span class="ml-3 font-bold opacity-60 text-sm truncate" id="search-dummy-text">Cari...</span>
                     </div>
                 </div>
-                <button onclick="openModal('global-settings-modal', 'global-settings-sheet', false)" id="settings-btn" class="w-10 h-10 shrink-0 flex items-center justify-center text-m3-onBg bg-m3-surfaceVariant/50 rounded-full outline-none">
+                <button onclick="openModal('global-settings-modal', 'global-settings-sheet', false)" id="settings-btn" class="w-10 h-10 shrink-0 flex items-center justify-center text-m3-onBg bg-m3-surfaceVariant/50 rounded-full btn-morph outline-none">
                     <i data-lucide="menu"></i>
                 </button>
             </div>
@@ -126,9 +126,10 @@
                 </section>
                 <div id="archive-dashboard" class="flex flex-col gap-6 w-full"></div>
                 <div id="archive-results-panel" class="hidden flex flex-col gap-2.5 overflow-y-auto pb-6 w-full">
-                    <div id="archive-state-loading" class="hidden flex items-center justify-center gap-3 py-8">
-                        <div class="w-6 h-6 border-[3px] border-m3-primary border-t-transparent rounded-full animate-spin shrink-0"></div>
-                        <span class="text-xs font-bold text-m3-onBg opacity-60">Mencari di arsip...</span>
+                    <div id="archive-state-loading" class="hidden flex flex-col gap-2.5 py-2">
+                        <div class="skeleton h-20 w-full"></div>
+                        <div class="skeleton h-20 w-full"></div>
+                        <div class="skeleton h-20 w-full"></div>
                     </div>
                     <div id="archive-state-offline" class="hidden flex flex-col items-center justify-center py-8 gap-2 opacity-50">
                         <i data-lucide="wifi-off" class="w-10 h-10 text-m3-onBg"></i>
@@ -598,12 +599,12 @@
                 </div>
             </button>
 
-            <a href="https://saweria.co/Densl" target="_blank" class="flex items-center justify-center gap-2 w-full p-4 bg-yellow-100 text-yellow-800 dark:bg-yellow-900/40 dark:text-yellow-400 rounded-2xl font-bold btn-morph mb-4">
+            <a href="https://saweria.co/Densl" target="_blank" class="flex items-center justify-center gap-2 w-full p-4 bg-yellow-100 text-yellow-800 dark:bg-yellow-900/40 dark:text-yellow-400 rounded-2xl font-bold btn-morph mb-3">
                 <i data-lucide="coffee"></i> <span id="str-btn-donate">Traktir Kopi (Donasi)</span>
             </a>
 
-            <a href="https://ko-fi.com/densl" target="_blank" class="flex items-center justify-center gap-2 w-full p-4 bg-yellow-100 text-yellow-800 dark:bg-yellow-900/40 dark:text-yellow-400 rounded-2xl font-bold btn-morph mb-2">
-                <i data-lucide="coffee"></i> <span id="str-btn-donate-kofi">Donasi di Ko-fi</span>
+            <a href="https://ko-fi.com/densl" target="_blank" class="flex items-center justify-center gap-2 w-full p-4 bg-sky-100 text-sky-800 dark:bg-sky-900/40 dark:text-sky-400 rounded-2xl font-bold btn-morph mb-4">
+                <i data-lucide="heart"></i> <span id="str-btn-donate-kofi">Dukung di Ko-fi</span>
             </a>
 
             <button id="str-btn-close" onclick="history.back()" class="btn-morph w-full mt-2 py-4 bg-transparent text-m3-onSurface font-bold text-base">Tutup</button>
@@ -705,10 +706,6 @@
             
             <label id="str-edit-book-cover" class="text-xs font-bold opacity-70 block mb-2 uppercase tracking-wider">Gambar Sampul</label>
             <input type="file" id="edit-book-cover" accept="image/*" class="w-full text-xs mb-5 font-bold file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-xs file:font-bold file:bg-m3-primaryContainer file:text-m3-onPrimaryContainer hover:file:bg-m3-primaryContainer/80">
-            <button onclick="fetchOnlineCover()" id="btn-fetch-cover" class="w-full mt-2 py-2 bg-m3-secondaryContainer text-m3-onSecondaryContainer rounded-full font-bold btn-morph text-sm flex items-center justify-center gap-2">
-                <i data-lucide="globe"></i> <span id="str-btn-fetch-cover">Cari Sampul dari Internet</span>
-            </button>
-            <img id="edit-book-cover-preview" src="" class="hidden w-full aspect-[2/3] object-cover rounded-2xl mb-4" alt="Cover Preview">
             
             <label id="str-edit-book-shape" class="text-xs font-bold opacity-70 block mb-2 uppercase tracking-wider">Bentuk Kartu</label>
             <div class="grid grid-cols-2 gap-2 mb-8">
