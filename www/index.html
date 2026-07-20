@@ -29,6 +29,7 @@
     <!-- CSS Terpisah & Tema Dinamis -->
     <link rel="stylesheet" href="css/style.css">
     <style id="dynamic-theme"></style>
+    <style id="reader-theme-style"></style>
     <style>
         @keyframes splash-bar {
             0%   { left: -50%; width: 40%; }
@@ -39,17 +40,15 @@
             animation: splash-bar 1.2s cubic-bezier(0.4, 0, 0.2, 1) infinite;
         }
     </style>
-    <!-- Deteksi tema awal agar splash screen tidak kedip putih di dark mode -->
+    <!-- UI selalu Dark Mode -->
     <script>
         (function() {
             try {
-                if (localStorage.getItem('theme') !== 'light') {
-                    document.documentElement.classList.add('dark');
-                    document.getElementById && document.addEventListener('DOMContentLoaded', function() {
-                        var s = document.getElementById('splash-screen');
-                        if (s) s.style.backgroundColor = '#0B0314';
-                    });
-                }
+                document.documentElement.classList.add('dark');
+                document.getElementById && document.addEventListener('DOMContentLoaded', function() {
+                    var s = document.getElementById('splash-screen');
+                    if (s) s.style.backgroundColor = '#0B0314';
+                });
             } catch(e) {}
         })();
     </script>
@@ -59,39 +58,28 @@
     <!-- VIEW: LIBRARY -->
     <div id="library-view" class="absolute inset-0 flex flex-col overflow-hidden transition-transform duration-500 origin-bottom bg-m3-bg z-10 w-full">
         
-        <header id="main-header" class="flex-none sticky top-0 z-40 bg-m3-bg pt-[calc(env(safe-area-inset-top,0px)+4.5rem)] pb-5 px-5 transition-shadow duration-300">
+        <header id="main-header" class="flex-none sticky top-0 z-40 bg-m3-bg pt-[calc(env(safe-area-inset-top,0px)+1.5rem)] pb-4 px-5 transition-shadow duration-300">
             <div id="title-area" class="mb-4">
-                <h1 class="text-4xl font-black tracking-tighter text-m3-onBg" style="font-family: 'Outfit', sans-serif;">Baca.</h1>
+                <h1 class="text-3xl font-black tracking-tighter text-m3-onBg" style="font-family: 'Outfit', sans-serif;">Baca.</h1>
             </div>
-            
+
             <div id="search-area" class="search-row transition-shadow duration-300">
+                <button onclick="toggleLayoutMode()" id="layout-btn" class="btn-morph btn-settings flex items-center justify-center bg-m3-surfaceVariant text-m3-onSurfaceVariant">
+                    <i data-lucide="layout-grid"></i>
+                </button>
                 <div class="search-capsule bg-m3-secondaryContainer text-m3-onSecondaryContainer p-1.5 rounded-full px-4 relative">
                     <i data-lucide="search" id="search-icon-lib" class="w-5 h-5 opacity-70 text-m3-onSecondaryContainer shrink-0 absolute left-4 transition-transform duration-300 pointer-events-none"></i>
-                    <input type="text" id="global-search" placeholder="..." class="w-full bg-transparent border-none outline-none py-2.5 pl-8 pr-2 font-bold text-m3-onSecondaryContainer placeholder:text-m3-onSecondaryContainer/70 text-sm">
+                    <input type="text" id="global-search" placeholder="Cari di Internet Archive..." class="w-full bg-transparent border-none outline-none py-2.5 pl-8 pr-2 font-bold text-m3-onSecondaryContainer placeholder:text-m3-onSecondaryContainer/70 text-sm">
                 </div>
                 <button onclick="openModal('global-settings-modal', 'global-settings-sheet')" id="settings-btn" class="btn-morph btn-settings flex items-center justify-center bg-m3-surfaceVariant text-m3-onSurfaceVariant">
                     <i data-lucide="settings"></i>
                 </button>
             </div>
-
-            <!-- MODE TOGGLE: Library / Archive.org — muncul saat search aktif -->
-            <div id="search-mode-row" class="hidden flex gap-2 mt-2.5 items-center">
-                <button id="search-mode-local" onclick="window.setSearchMode('local')" class="px-3 py-1.5 rounded-full text-xs font-bold bg-m3-primary text-m3-onPrimary btn-morph flex items-center gap-1.5 shrink-0">
-                    <i data-lucide="library" class="w-3 h-3"></i> Library
-                </button>
-                <button id="search-mode-archive" onclick="window.setSearchMode('archive')" class="px-3 py-1.5 rounded-full text-xs font-bold bg-m3-surfaceVariant text-m3-onSurfaceVariant btn-morph flex items-center gap-1.5 shrink-0">
-                    <i data-lucide="globe" class="w-3 h-3"></i> Internet Archive
-                </button>
-                <span id="offline-badge" class="hidden ml-auto flex items-center gap-1 text-[9px] font-bold text-red-500 shrink-0">
-                    <i data-lucide="wifi-off" class="w-3 h-3"></i> Offline
-                </span>
-            </div>
-
         </header>
 
-        <div id="library-content-scroll" class="flex-1 overflow-y-auto overflow-x-hidden w-full px-5 pb-32 relative">
-            
-            <div id="loading-state" class="hidden mb-8 p-5 bg-m3-secondaryContainer text-m3-onSecondaryContainer rounded-[28px]">
+        <div id="library-content-scroll" class="flex-1 overflow-y-auto overflow-x-hidden w-full pb-[150px] relative">
+
+            <div id="loading-state" class="hidden mb-8 mx-5 p-5 bg-m3-secondaryContainer text-m3-onSecondaryContainer rounded-[28px]">
                 <div class="flex justify-between items-end mb-3">
                     <p id="loading-text" class="font-bold text-sm leading-tight">Reading Document...</p>
                     <p id="loading-percent" class="font-bold text-base">0%</p>
@@ -100,6 +88,42 @@
                     <div id="loading-bar" class="absolute h-full w-0 bg-m3-primary progress-smooth rounded-full"></div>
                 </div>
             </div>
+
+            <!-- TAB 1: HOME — Jelajahi Arsip (Internet Archive dashboard) -->
+            <div id="tab-home" class="w-full px-5 transition-opacity duration-300">
+                <div class="flex justify-between items-center mt-1 mb-4">
+                    <h2 class="text-xl font-black tracking-tight text-m3-onBg" id="str-archive-title">Jelajahi Arsip</h2>
+                    <button onclick="loadArchivePlayBooksStyle()" class="w-9 h-9 flex items-center justify-center rounded-full bg-m3-surfaceVariant text-m3-onSurfaceVariant btn-morph shrink-0">
+                        <i data-lucide="refresh-cw" class="w-4 h-4"></i>
+                    </button>
+                </div>
+
+                <div id="archive-dashboard" class="flex flex-col gap-6 -mx-5 pb-2 w-full"></div>
+
+                <!-- ARCHIVE SEARCH RESULTS PANEL — muncul saat mengetik di search bar pada tab Home -->
+                <div id="archive-results-panel" class="hidden mb-6 flex flex-col gap-2.5 overflow-y-auto pb-2">
+                    <div id="archive-state-loading" class="hidden flex items-center justify-center gap-3 py-8">
+                        <div class="w-6 h-6 border-[3px] border-m3-primary border-t-transparent rounded-full animate-spin shrink-0"></div>
+                        <span class="text-xs font-bold text-m3-onBg opacity-60">Mencari di arsip...</span>
+                    </div>
+                    <div id="archive-state-offline" class="hidden flex flex-col items-center justify-center py-8 gap-2 opacity-50">
+                        <i data-lucide="wifi-off" class="w-10 h-10 text-m3-onBg"></i>
+                        <span class="text-xs font-bold text-m3-onBg text-center">Tidak ada koneksi internet.</span>
+                    </div>
+                    <div id="archive-state-empty" class="hidden flex flex-col items-center justify-center py-8 gap-2 opacity-50">
+                        <i data-lucide="search-x" class="w-10 h-10 text-m3-onBg"></i>
+                        <span class="text-xs font-bold text-m3-onBg">Tidak ada hasil. Coba kata lain.</span>
+                    </div>
+                    <div id="archive-state-error" class="hidden flex flex-col items-center justify-center py-8 gap-2 opacity-50">
+                        <i data-lucide="alert-circle" class="w-10 h-10 text-m3-onBg"></i>
+                        <span id="archive-error-text" class="text-xs font-bold text-m3-onBg text-center">Gagal mencari.</span>
+                    </div>
+                    <div id="archive-cards" class="flex flex-col gap-2.5"></div>
+                </div>
+            </div>
+
+            <!-- TAB 2: SCROLL — Rak lokal mode Scroll (teks dinamis) -->
+            <div id="tab-scroll" class="w-full px-5 hidden transition-opacity duration-300">
 
             <!-- STATISTIK USER (M3 Expressive Card - Compact) -->
             <section id="statistics-section" class="mb-8 mt-1 transition-all duration-300 origin-top overflow-hidden">
@@ -152,27 +176,6 @@
                 </div>
             </section>
 
-            <!-- ARCHIVE RESULTS PANEL — di bawah statistik -->
-            <div id="archive-results-panel" class="hidden mb-6 flex flex-col gap-2.5 overflow-y-auto pb-2">
-                <div id="archive-state-loading" class="hidden flex items-center justify-center gap-3 py-8">
-                    <div class="w-6 h-6 border-[3px] border-m3-primary border-t-transparent rounded-full animate-spin shrink-0"></div>
-                    <span class="text-xs font-bold text-m3-onBg opacity-60">Mencari di arsip...</span>
-                </div>
-                <div id="archive-state-offline" class="hidden flex flex-col items-center justify-center py-8 gap-2 opacity-50">
-                    <i data-lucide="wifi-off" class="w-10 h-10 text-m3-onBg"></i>
-                    <span class="text-xs font-bold text-m3-onBg text-center">Tidak ada koneksi internet.</span>
-                </div>
-                <div id="archive-state-empty" class="hidden flex flex-col items-center justify-center py-8 gap-2 opacity-50">
-                    <i data-lucide="search-x" class="w-10 h-10 text-m3-onBg"></i>
-                    <span class="text-xs font-bold text-m3-onBg">Tidak ada hasil. Coba kata lain.</span>
-                </div>
-                <div id="archive-state-error" class="hidden flex flex-col items-center justify-center py-8 gap-2 opacity-50">
-                    <i data-lucide="alert-circle" class="w-10 h-10 text-m3-onBg"></i>
-                    <span id="archive-error-text" class="text-xs font-bold text-m3-onBg text-center">Gagal mencari.</span>
-                </div>
-                <div id="archive-cards" class="flex flex-col gap-2.5"></div>
-            </div>
-
             <div id="continue-reading-section" class="hidden mb-8 -mx-5 mt-2">
                 <h2 id="str-continue-reading" class="text-base font-bold mb-4 text-m3-onBg px-5 tracking-tight">Lanjutkan Membaca</h2>
                 <div id="top-books-slider" class="flex gap-3 overflow-x-auto snap-x snap-proximity px-5 pb-2 hide-scroll" style="scroll-padding-left: 1.25rem;">
@@ -197,25 +200,46 @@
                 <div id="scroll-book-grid" class="grid grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 w-full"></div>
             </div>
 
-            <!-- RAK MEMBACA CANVAS MODE (LAYOUT ASLI) -->
-            <div id="canvas-collection-section" class="hidden mb-8 mt-4">
-                <div class="flex items-center gap-2 mb-4">
-                    <i data-lucide="layout" class="w-5 h-5 text-m3-primary"></i>
-                    <h2 id="str-canvas-rak-title" class="text-base font-bold text-m3-onBg tracking-tight">Rak Mode Canvas (Layout Asli)</h2>
-                </div>
-                <div id="canvas-book-grid" class="grid grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 w-full"></div>
-            </div>
-
-            <!-- FALLBACK GRID UNTUK COMPATIBILITY SEARCH -->
-            <div id="book-grid" class="hidden grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 w-full"></div>
-
             <div id="empty-state" class="flex flex-col items-center justify-center mt-20 opacity-40">
                 <i data-lucide="library" class="w-16 h-16 mb-4"></i>
                 <p class="text-lg font-bold text-center tracking-tight" id="str-lib-empty">Library is Empty.</p>
             </div>
+            </div>
+            <!-- /TAB 2: SCROLL -->
+
+            <!-- TAB 3: CANVAS — Rak lokal mode Canvas (layout asli / scan) -->
+            <div id="tab-canvas" class="w-full px-5 hidden transition-opacity duration-300">
+                <div id="canvas-collection-section" class="mb-8 mt-1">
+                    <div class="flex items-center gap-2 mb-4">
+                        <i data-lucide="layout" class="w-5 h-5 text-m3-primary"></i>
+                        <h2 id="str-canvas-rak-title" class="text-base font-bold text-m3-onBg tracking-tight">Rak Mode Canvas (Layout Asli)</h2>
+                    </div>
+                    <div id="canvas-book-grid" class="grid grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 w-full"></div>
+                </div>
+            </div>
+            <!-- /TAB 3: CANVAS -->
+
+            <!-- FALLBACK GRID UNTUK COMPATIBILITY SEARCH -->
+            <div id="book-grid" class="hidden grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 w-full"></div>
         </div>
 
-        <div id="fab-container" class="fixed bottom-8 right-6 z-50 transition-all duration-300">
+        <!-- M3 EXPRESSIVE BOTTOM NAVIGATION BAR -->
+        <div id="bottom-nav-bar" class="fixed bottom-0 left-0 right-0 bg-m3-surfaceVariant pb-[calc(env(safe-area-inset-bottom,0px)+10px)] pt-2.5 px-6 z-40 flex justify-between items-center border-none">
+            <button onclick="switchTab('home')" id="nav-tab-home" class="flex-1 flex flex-col items-center gap-1 text-m3-onSurface transition-all">
+                <div class="w-16 h-8 rounded-full flex items-center justify-center transition-colors nav-indicator bg-m3-secondaryContainer text-m3-onSecondaryContainer"><i data-lucide="globe" class="w-5 h-5"></i></div>
+                <span class="text-[10px] font-bold" id="str-nav-home">Beranda</span>
+            </button>
+            <button onclick="switchTab('scroll')" id="nav-tab-scroll" class="flex-1 flex flex-col items-center gap-1 text-m3-onSurfaceVariant transition-all">
+                <div class="w-16 h-8 rounded-full flex items-center justify-center transition-colors nav-indicator"><i data-lucide="align-left" class="w-5 h-5"></i></div>
+                <span class="text-[10px] font-bold" id="str-nav-scroll">Scroll</span>
+            </button>
+            <button onclick="switchTab('canvas')" id="nav-tab-canvas" class="flex-1 flex flex-col items-center gap-1 text-m3-onSurfaceVariant transition-all">
+                <div class="w-16 h-8 rounded-full flex items-center justify-center transition-colors nav-indicator"><i data-lucide="layout" class="w-5 h-5"></i></div>
+                <span class="text-[10px] font-bold" id="str-nav-canvas">Canvas</span>
+            </button>
+        </div>
+
+        <div id="fab-container" class="fixed bottom-24 right-6 z-50 transition-all duration-300">
             <button onclick="document.getElementById('doc-upload').click();" class="fab-capsule flex items-center justify-center bg-m3-primary text-m3-onPrimary cursor-pointer shadow-none overflow-hidden">
                 <i data-lucide="plus" class="w-8 h-8 shrink-0"></i>
             </button>
@@ -223,11 +247,11 @@
             <input type="file" id="folder-scan-upload" accept=".epub,.pdf,.txt,.md" multiple webkitdirectory class="hidden">
         </div>
         
-        <div id="batch-delete-bar" class="fixed bottom-6 left-1/2 -translate-x-1/2 bg-m3-surfaceVariant text-m3-onSurfaceVariant px-6 py-3 z-[60] translate-y-32 transition-transform duration-300 flex justify-between items-center rounded-full shadow-[0_8px_30px_rgba(0,0,0,0.2)] gap-4 w-max border-none pointer-events-auto">
-            <span id="batch-delete-count" class="font-bold text-sm tracking-wide whitespace-nowrap">0 Terpilih</span>
-            <div class="flex gap-2 pl-4">
-                <button onclick="toggleBatchDelete()" id="btn-batch-cancel" class="px-4 py-2 font-bold text-xs uppercase tracking-wider text-m3-onSurfaceVariant bg-transparent rounded-full btn-morph">Batal</button>
-                <button onclick="executeBatchDelete()" id="btn-batch-exec" class="px-4 py-2 font-bold text-xs uppercase tracking-wider bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-400 rounded-full btn-morph shadow-sm">Hapus</button>
+        <div id="batch-delete-bar" class="fixed bottom-24 left-1/2 -translate-x-1/2 w-[90%] max-w-[360px] bg-m3-surfaceVariant text-m3-onSurfaceVariant pl-5 pr-2 py-2 z-[60] translate-y-32 transition-transform duration-300 flex justify-between items-center rounded-full shadow-[0_8px_30px_rgba(0,0,0,0.2)] gap-3 border-none pointer-events-auto">
+            <span id="batch-delete-count" class="font-bold text-sm tracking-wide truncate flex-1">0 Terpilih</span>
+            <div class="flex gap-1 shrink-0">
+                <button onclick="toggleBatchDelete()" id="btn-batch-cancel" class="px-4 py-2.5 font-bold text-[11px] uppercase tracking-wider text-m3-onSurfaceVariant bg-transparent rounded-full btn-morph hover:bg-m3-onSurfaceVariant/10 transition-colors">Batal</button>
+                <button onclick="executeBatchDelete()" id="btn-batch-exec" class="px-4 py-2.5 font-bold text-[11px] uppercase tracking-wider bg-m3-primary text-m3-onPrimary rounded-full btn-morph shadow-sm">Hapus</button>
             </div>
         </div>
     </div>
@@ -262,8 +286,18 @@
             <div id="canvas-container" class="hidden absolute inset-0 overflow-hidden w-full h-full bg-m3-bg select-none" style="padding-top: 56px; padding-bottom: 0px;">
                 <div id="canvas-zoom-viewport" class="w-full h-full overflow-hidden flex items-center justify-center">
                     <!-- Wrapper: di-center oleh flex parent, transform-origin center agar zoom tidak loncat -->
-                    <div id="canvas-wrapper" class="shadow-lg bg-white flex-shrink-0" style="transform-origin: center center;">
-                        <canvas id="pdf-canvas" class="block"></canvas>
+                    <div id="canvas-wrapper" class="shadow-lg bg-white flex-shrink-0" style="transform-origin: center center; position: relative; overflow: visible;">
+                        <!-- canvas-slider: absolute positioning agar dimensi canvas TIDAK bergantung pada lebar wrapper -->
+                        <!-- canvas-prev: diletakkan persis 1 lebar (100vw) di kiri canvas utama -->
+                        <canvas id="canvas-prev" class="block" style="position:absolute; top:0; right:100%; display:block;"></canvas>
+                        <!-- canvas utama: menentukan ukuran wrapper, selalu di posisi normal -->
+                        <canvas id="pdf-canvas"  class="block" style="display:block; position:relative; z-index:1;"></canvas>
+                        <!-- canvas-next: diletakkan persis 1 lebar (100%) di kanan canvas utama -->
+                        <canvas id="canvas-next" class="block" style="position:absolute; top:0; left:100%; display:block;"></canvas>
+                        <!-- Highlight layer: kotak stabilo warna di bawah TextLayer -->
+                        <div id="canvas-highlight-layer" style="position: absolute; top: 0; left: 0; right: 0; bottom: 0; pointer-events: none; z-index: 1;"></div>
+                        <!-- TextLayer transparan PDF.js untuk text selection di Canvas Mode -->
+                        <div id="canvas-text-layer" oncontextmenu="event.preventDefault()" class="textLayer" style="position: absolute; top: 0; left: 0; right: 0; bottom: 0; overflow: hidden; pointer-events: auto; z-index: 2;"></div>
                     </div>
                 </div>
                 
@@ -302,31 +336,39 @@
                     <!-- Panel Warns Canvas Mode (Dinamis Di-enable/Disable via JS) -->
                     <div id="canvas-warning-info" class="hidden p-4 rounded-3xl bg-red-500/10 dark:bg-red-950/20 text-red-600 dark:text-red-400 border border-red-500/20 flex gap-2.5 items-start">
                         <i data-lucide="alert-triangle" class="w-5 h-5 shrink-0 mt-0.5"></i>
-                        <p id="str-pdf-canvas-warning" class="text-[10px] font-bold leading-relaxed">Fitur tipografi (ukuran font, perataan, dll), AI penjelasan, dan text selection dinonaktifkan pada Mode Canvas.</p>
+                        <p id="str-pdf-canvas-warning" class="text-[10px] font-bold leading-relaxed">Fitur tipografi (ukuran font, perataan, dll) dinonaktifkan pada Mode Canvas. Text selection, AI lookup, dan bookmark tersedia.</p>
                     </div>
 
                     <div id="setting-group-search">
                         <label id="str-set-search" class="text-xs font-bold opacity-70 block mb-3 uppercase tracking-wider">Pencarian</label>
-                        <!-- Scroll mode: pencarian teks -->
+                        <!-- Search teks dalam buku: aktif untuk Scroll Mode & Canvas Mode (jika PDF punya teks) -->
                         <div id="search-scroll-area">
-                            <div class="search-capsule bg-m3-surface p-1 rounded-full relative flex items-center h-14 border-none transition-all duration-300">
+                            <div id="inbook-search-capsule" class="search-capsule bg-m3-surface p-1 rounded-full relative flex items-center h-14 border-none transition-all duration-300">
                                 <i data-lucide="search" class="w-5 h-5 ml-4 opacity-70 text-m3-onSurface shrink-0 pointer-events-none"></i>
                                 <input type="text" id="inbook-search-input" class="w-full bg-transparent border-none outline-none py-2 pl-3 pr-4 text-sm font-bold text-m3-onSurface placeholder:opacity-60" placeholder="Cari dalam buku...">
                             </div>
                             <div id="search-results-panel" class="hidden mt-3 max-h-48 overflow-y-auto rounded-2xl bg-m3-surface text-xs shadow-md border-none pointer-events-auto flex-col gap-1 p-2"></div>
                         </div>
+                        <!-- Canvas mode + PDF tanpa teks (hasil scan/gambar): tampilkan indikator -->
+                        <div id="search-canvas-image-warning" class="hidden p-3 rounded-2xl bg-m3-surface flex items-center gap-2.5 opacity-70">
+                            <i data-lucide="image-off" class="w-4 h-4 shrink-0 text-m3-onSurfaceVariant"></i>
+                            <p id="str-search-canvas-image-warning" class="text-xs font-bold text-m3-onSurfaceVariant">PDF ini hanya berisi gambar, pencarian kata tidak tersedia.</p>
+                        </div>
                         <!-- Canvas mode: lompat ke halaman -->
-                        <div id="search-canvas-area" class="hidden">
-                            <div class="flex items-center gap-2 bg-m3-surface p-2 pl-4 rounded-full h-14">
-                                <i data-lucide="corner-down-right" class="w-5 h-5 opacity-70 text-m3-primary shrink-0 pointer-events-none"></i>
+                        <div id="canvas-jump-area" class="hidden mt-3">
+                            <label id="str-set-jump-label" class="text-xs font-bold opacity-70 block mb-2 uppercase tracking-wider">Lompat ke Halaman</label>
+                            <div class="flex items-center gap-2 bg-m3-surface p-1 pl-4 rounded-full h-14">
+                                <i data-lucide="hash" class="w-5 h-5 opacity-70 text-m3-primary shrink-0 pointer-events-none"></i>
                                 <input type="number" id="canvas-jump-input" min="1"
                                     class="flex-1 bg-transparent border-none outline-none text-sm font-bold text-m3-onSurface placeholder:opacity-60 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                                     placeholder="Halaman..."
                                     onkeydown="if(event.key==='Enter') window.executeJumpToPage()">
-                                <button onclick="window.executeJumpToPage()" class="px-4 py-2 bg-m3-primary text-m3-onPrimary rounded-full font-bold text-xs btn-morph shrink-0">Go</button>
+                                <button onclick="window.executeJumpToPage()" class="px-4 py-2 bg-m3-primary text-m3-onPrimary rounded-full font-bold text-xs btn-morph shrink-0" id="str-set-jump-go">Go</button>
                             </div>
                         </div>
                     </div>
+
+
 
                     <div id="setting-group-theme">
                         <label id="str-set-theme" class="text-xs font-bold opacity-70 block mb-3 uppercase tracking-wider">Mode Tema</label>
@@ -367,27 +409,31 @@
             </div>
         </div>
 
-        <!-- JUMP TO PAGE BAR (canvas mode, above bottom bar) -->
-        <div id="canvas-jump-bar" class="hidden bg-m3-surface border-t border-m3-surfaceVariant px-4 py-2.5 shrink-0 z-40 flex items-center gap-2 transition-all duration-200">
-            <i data-lucide="corner-down-right" class="w-4 h-4 text-m3-primary shrink-0"></i>
-            <input type="number" id="canvas-jump-input" min="1" placeholder="Halaman..." 
-                class="flex-1 bg-m3-surfaceVariant text-m3-onSurface text-sm font-bold px-3 py-1.5 rounded-full border-none outline-none focus:ring-2 focus:ring-m3-primary/30 placeholder:opacity-50 placeholder:font-normal [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                onkeydown="if(event.key==='Enter') window.executeJumpToPage()">
-            <button onclick="window.executeJumpToPage()" class="px-4 py-1.5 bg-m3-primary text-m3-onPrimary rounded-full font-bold text-xs btn-morph shrink-0">Go</button>
-            <button onclick="window.hideJumpBar()" class="w-7 h-7 rounded-full flex items-center justify-center text-m3-onSurfaceVariant btn-morph shrink-0">
-                <i data-lucide="x" class="w-4 h-4"></i>
-            </button>
-        </div>
 
-        <!-- PROGRESS BAR -->
+
+        <!-- PROGRESS BAR (di Canvas Mode: bisa digeser/diketuk untuk lompat halaman) -->
         <div id="progress-container" class="h-1 w-full bg-m3-surfaceVariant shrink-0 z-40 relative">
             <div id="reading-progress-bar" class="h-full bg-m3-primary progress-smooth w-0"></div>
+            <div id="progress-drag-handle" class="hidden absolute top-1/2 -translate-y-1/2 -translate-x-1/2 w-3 h-3 rounded-full bg-m3-primary shadow-md pointer-events-none" style="left:0%"></div>
+            <div id="progress-drag-tooltip" class="hidden absolute -translate-x-1/2 -translate-y-full bg-m3-primary text-m3-onPrimary text-xs font-bold px-3 py-1.5 rounded-full shadow-lg pointer-events-none whitespace-nowrap" style="left:0%; bottom: calc(100% + 10px);">1 / 1</div>
         </div>
 
         <!-- CANVAS PAGE INDICATOR (di atas bottom bar, hanya canvas mode) -->
         <div id="canvas-page-indicator-bar" class="hidden bg-m3-surfaceVariant/80 px-3 py-1.5 shrink-0 z-40 flex items-center gap-2" style="display:none !important">
             <!-- This element is kept for backward compat, logic moved to canvas-page-controller -->
         </div>
+        <!-- Canvas Default Zoom Slider (floating, muncul dari tombol di controller) -->
+        <div id="canvas-zoom-slider-container" class="hidden absolute bottom-24 left-1/2 -translate-x-1/2 bg-m3-surfaceVariant/95 backdrop-blur-md px-3 py-2.5 rounded-full shadow-lg z-50 flex items-center gap-2 transition-all duration-300 opacity-0 translate-y-4">
+            <button onclick="window.stepZoom(-0.1)" class="w-7 h-7 flex items-center justify-center rounded-full bg-m3-surface text-m3-onSurface btn-morph shrink-0 active:scale-90 transition-transform">
+                <i data-lucide="zoom-out" class="w-4 h-4 text-m3-onSurfaceVariant"></i>
+            </button>
+            <input type="range" id="canvas-default-zoom" min="0.5" max="3.0" step="0.1" value="1.0" class="w-28 h-1.5 bg-m3-onSurfaceVariant/30 rounded-lg appearance-none cursor-pointer accent-m3-primary outline-none">
+            <button onclick="window.stepZoom(0.1)" class="w-7 h-7 flex items-center justify-center rounded-full bg-m3-surface text-m3-onSurface btn-morph shrink-0 active:scale-90 transition-transform">
+                <i data-lucide="zoom-in" class="w-4 h-4 text-m3-onSurfaceVariant"></i>
+            </button>
+            <span id="canvas-zoom-val" class="text-xs font-bold text-m3-primary min-w-[36px] text-right">1.0x</span>
+        </div>
+
         <!-- Canvas Page Controller: prev/next + nomor halaman -->
         <div id="canvas-page-controller" class="hidden bg-m3-surfaceVariant/90 px-3 py-1.5 shrink-0 z-40 flex items-center gap-2">
             <button onclick="window.prevCanvasPage()" class="w-7 h-7 rounded-full flex items-center justify-center text-m3-primary btn-morph hover:bg-m3-surface transition-colors" title="Halaman Sebelumnya">
@@ -398,6 +444,9 @@
                 <span class="opacity-40">/</span>
                 <span id="canvas-page-total">1</span>
             </div>
+            <button onclick="window.toggleZoomSlider()" class="w-7 h-7 rounded-full flex items-center justify-center text-m3-onSurfaceVariant btn-morph hover:bg-m3-surface transition-colors shrink-0" title="Atur Default Zoom">
+                <i data-lucide="zoom-in" class="w-4 h-4"></i>
+            </button>
             <button onclick="window.nextCanvasPage()" class="w-7 h-7 rounded-full flex items-center justify-center text-m3-primary btn-morph hover:bg-m3-surface transition-colors" title="Halaman Berikutnya">
                 <i data-lucide="chevron-right" class="w-4 h-4"></i>
             </button>
@@ -467,27 +516,23 @@
     </div>
 
     <!-- Global Settings Modal -->
-    <div id="global-settings-modal" onclick="if(event.target === this) history.back()" class="hidden modal-overlay fixed inset-0 bg-black/60 z-[100] flex items-end justify-center opacity-0">
-        <div class="modal-content bg-m3-surface w-full max-w-md rounded-t-[48px] p-6 pb-12 transform translate-y-full border-none max-h-[90dvh] overflow-y-auto hide-scroll will-change-transform" id="global-settings-sheet">
-            <div class="w-12 h-1.5 bg-m3-onSurfaceVariant/30 rounded-full mx-auto mb-6 shrink-0 sticky top-0"></div>
-            <h3 id="str-set-main-title" class="text-2xl font-bold mb-6 text-m3-onSurface">Pengaturan</h3>
+    <div id="global-settings-modal" onclick="if(event.target === this) history.back()" class="hidden fixed inset-0 bg-m3-surface z-[200] flex flex-col opacity-0 transition-opacity duration-300">
+        <div class="w-full h-full flex flex-col transform translate-x-full transition-transform duration-300 ease-[cubic-bezier(0.34,1.56,0.64,1)] bg-m3-surface" id="global-settings-sheet">
+            <div class="flex items-center px-4 pt-[calc(env(safe-area-inset-top,0px)+1.25rem)] pb-5 border-b border-m3-onSurface/10 shrink-0">
+                <button onclick="history.back()" class="w-10 h-10 flex items-center justify-center rounded-full bg-transparent text-m3-onSurface btn-morph shrink-0">
+                    <i data-lucide="arrow-left"></i>
+                </button>
+                <h3 id="str-set-main-title" class="text-xl font-bold ml-2 text-m3-onSurface flex-1">Pengaturan</h3>
+            </div>
+            <div class="flex-1 overflow-y-auto p-6 pb-32 hide-scroll">
             
-            <div class="flex items-center justify-between mb-2 bg-m3-surfaceVariant p-2 pl-5 rounded-full cursor-pointer btn-morph" onclick="toggleThemeState()">
-                <span class="font-bold text-sm tracking-wide" id="theme-label-text">Mode Terang</span>
-                <div class="relative w-16 h-8 rounded-full bg-m3-onSurfaceVariant/20 transition-colors" id="theme-switch-bg">
-                    <div id="theme-switch-knob" class="absolute top-1 left-1 w-6 h-6 rounded-full bg-m3-surface flex items-center justify-center transition-transform">
-                        <i data-lucide="sun" id="theme-switch-icon" class="w-4 h-4 text-m3-onSurface"></i>
-                    </div>
+<!-- Toggle Mode Ekspresif -->
+            <div id="expressive-toggle-container" class="flex items-center justify-between mb-2 bg-m3-surfaceVariant p-2 pl-5 rounded-full cursor-pointer btn-morph" onclick="toggleExpressive()">
+                <span class="font-bold text-sm tracking-wide opacity-80" id="str-expressive-label">Mode Ekspresif</span>
+                <div class="relative w-16 h-8 rounded-full transition-colors bg-m3-onSurfaceVariant/20" id="expressive-switch-bg">
+                    <div id="expressive-switch-knob" class="absolute top-[2px] left-[2px] w-6 h-6 rounded-full bg-m3-onSurface transition-transform duration-300 ease-out"></div>
                 </div>
             </div>
-
-            <div id="amoled-toggle-container" class="flex items-center justify-between mb-6 bg-m3-surfaceVariant p-2 pl-5 rounded-full cursor-pointer btn-morph hidden" onclick="toggleAmoled()">
-                <span class="font-bold text-sm tracking-wide opacity-80" id="str-amoled-label">AMOLED (Hitam Pekat)</span>
-                <div class="relative w-16 h-8 rounded-full transition-colors" id="amoled-switch-bg">
-                    <div id="amoled-switch-knob" class="absolute top-[2px] left-[2px] w-6 h-6 rounded-full bg-m3-onSurface transition-transform duration-300 ease-out"></div>
-                </div>
-            </div>
-
             <!-- Toggle Sembunyikan Judul Buku -->
             <div id="hide-titles-toggle-container" class="flex items-center justify-between mb-6 bg-m3-surfaceVariant p-2 pl-5 rounded-full cursor-pointer btn-morph" onclick="toggleHideTitles()">
                 <span class="font-bold text-sm tracking-wide opacity-80" id="str-hide-titles-label">Sembunyikan Judul Buku</span>
@@ -577,6 +622,7 @@
             </a>
 
             <button id="str-btn-close" onclick="history.back()" class="btn-morph w-full mt-2 py-4 bg-transparent text-m3-onSurface font-bold text-base">Tutup</button>
+            </div>
         </div>
     </div>
 
@@ -825,7 +871,7 @@
                         <i data-lucide="layout" class="w-4 h-4 text-m3-primary"></i>
                         <span class="font-bold text-xs text-m3-onSurface" id="str-pdf-mode-btn-canvas">Mode Canvas (Layout Asli)</span>
                     </div>
-                    <p class="text-[10px] text-m3-onSurfaceVariant leading-relaxed opacity-85" id="str-pdf-mode-btn-canvas-desc">Menampilkan halaman asli dokumen seperti cetakan fisik. Mendukung zoom cubit dengan jari, tapi tidak mendukung ubah font, AI, dan text selection.</p>
+                    <p class="text-[10px] text-m3-onSurfaceVariant leading-relaxed opacity-85" id="str-pdf-mode-btn-canvas-desc">Menampilkan halaman asli dokumen seperti cetakan fisik. Mendukung zoom cubit dengan jari dan text selection (AI lookup, copy, bookmark snippet).</p>
                 </button>
             </div>
 
