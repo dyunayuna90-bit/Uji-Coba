@@ -171,7 +171,7 @@ const i18n = {
 
         navBack: "Kembali", navToc: "Daftar Isi", navSearch: "Pencarian", navJumpPage: "Lompat ke Halaman", navText: "Teks", navFull: "Penuh",
         readerLoading: "Memuat Buku...", tocTitle: "Daftar Isi", setTitle: "Tampilan",
-        setTheme: "Mode Tema", setSize: "Ukuran Teks", setAlign: "Perataan Teks", setFont: "Jenis Font",
+        setPageturn: "Animasi Pindah Halaman (Mode Canvas)", pageturnOn: "Aktif", pageturnOff: "Nonaktif", setTheme: "Mode Tema", setSize: "Ukuran Teks", setAlign: "Perataan Teks", setFont: "Jenis Font",
         searchPlaceholder: "Cari dalam buku...", searchNotFound: "Tidak ditemukan.",
         aiTitle: "Penjelasan", aiLoading: "Mencari referensi...", noInternet: "Koneksi internet bermasalah.",
         deleteNoteConfirm: "Hapus catatan/sorotan ini?",
@@ -348,7 +348,7 @@ const i18n = {
 
         navBack: "Back", navToc: "Contents", navSearch: "Search", navJumpPage: "Jump to Page", navText: "Text", navFull: "Full",
         readerLoading: "Loading Book...", tocTitle: "Table of Contents", setTitle: "Appearance",
-        setTheme: "Theme Mode", setSize: "Text Size", setAlign: "Text Alignment", setFont: "Font Family",
+        setPageturn: "Page Turn Animation (Canvas Mode)", pageturnOn: "On", pageturnOff: "Off", setTheme: "Theme Mode", setSize: "Text Size", setAlign: "Text Alignment", setFont: "Font Family",
         searchPlaceholder: "Search in book...", searchNotFound: "Not found.",
         aiTitle: "Definition", aiLoading: "Looking for references...", noInternet: "Internet connection issue.",
         deleteNoteConfirm: "Delete this note/highlight?",
@@ -525,7 +525,7 @@ const i18n = {
 
         navBack: "Atrás", navToc: "Índice", navSearch: "Buscar", navJumpPage: "Ir a Página", navText: "Texto", navFull: "Completo",
         readerLoading: "Cargando libro...", tocTitle: "Índice", setTitle: "Apariencia",
-        setTheme: "Modo de tema", setSize: "Tamaño del texto", setAlign: "Alineación", setFont: "Tipo de letra",
+        setPageturn: "Animación al Pasar Página (Modo Canvas)", pageturnOn: "Activado", pageturnOff: "Desactivado", setTheme: "Modo de tema", setSize: "Tamaño del texto", setAlign: "Alineación", setFont: "Tipo de letra",
         searchPlaceholder: "Buscar en el libro...", searchNotFound: "No encontrado.",
         aiTitle: "Definición", aiLoading: "Buscando referencias...", noInternet: "Problema de conexión a internet.",
         deleteNoteConfirm: "¿Eliminar esta nota/resaltado?",
