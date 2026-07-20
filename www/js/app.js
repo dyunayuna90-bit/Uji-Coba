@@ -124,7 +124,8 @@ document.addEventListener("DOMContentLoaded", () => {
 
     // Terapkan ikon layout tersimpan (grid/list) sebelum render pertama
     // Ikon menandakan aksi berikutnya (kebalikan dari mode aktif saat ini)
-    const layoutIcon = document.querySelector('#layout-btn i');
+    // Catatan: pakai 'i, svg' karena setelah Lucide render pertama, tag <i> diganti jadi <svg>
+    const layoutIcon = document.querySelector('#layout-btn i, #layout-btn svg');
     if (layoutIcon) layoutIcon.setAttribute('data-lucide', layoutMode === 'grid' ? 'layout-list' : 'layout-grid');
 
     loadLibrary().finally(() => {
@@ -560,13 +561,21 @@ window.openSearchMode = function() {
     if (modalResults) { modalResults.style.transition = 'none'; modalResults.style.opacity = '0'; }
 
     // Morphing: Start with exact capsule dimensions
+    // Fix: modal tetap 100vw/100vh sepanjang animasi (ga pernah nyentuh top/left/width/height lagi).
+    // "Kecil"-nya cuma ilusi dari transform translate+scale, jadi cuma 1 properti yang
+    // dianimasiin, dikerjain GPU compositor, semua sisi (atas/bawah/kiri/kanan) dijamin
+    // gerak bareng persis di frame yang sama -> ga ada lagi kesan "kepeleset"/ngehentak.
     if (capsule) {
         const rect = capsule.getBoundingClientRect();
+        const vw = window.innerWidth;
+        const vh = window.innerHeight;
         modal.style.transition = 'none';
-        modal.style.top = rect.top + 'px';
-        modal.style.left = rect.left + 'px';
-        modal.style.width = rect.width + 'px';
-        modal.style.height = rect.height + 'px';
+        modal.style.top = '0px';
+        modal.style.left = '0px';
+        modal.style.width = '100vw';
+        modal.style.height = '100vh';
+        modal.style.transformOrigin = '0 0';
+        modal.style.transform = `translate(${rect.left}px, ${rect.top}px) scale(${rect.width / vw}, ${rect.height / vh})`;
         modal.style.borderRadius = '9999px';
         capsule.style.opacity = '0'; // Hide original capsule instantly
     }
@@ -576,19 +585,29 @@ window.openSearchMode = function() {
     void modal.offsetWidth; // Force layout calc
     modal.style.transition = ''; // Restore CSS transitions
 
-    // Expand physically
+    // Expand physically (transform-only, GPU-composited)
     requestAnimationFrame(() => {
-        modal.style.top = '0px';
-        modal.style.left = '0px';
-        modal.style.width = '100vw';
-        modal.style.height = '100vh';
+        modal.style.transform = 'translate(0px, 0px) scale(1, 1)';
         modal.style.borderRadius = '0px';
-        // Fade in contents during expansion
-        setTimeout(() => {
+
+        // Tampilkan konten (header/hasil) baru SETELAH modal benar-benar full size.
+        // Kalau di-fade-in sambil scale masih < 1, teks/ikon di dalamnya ikut
+        // "kegencet" oleh transform scale milik parent-nya -> jadi kelihatan distorsi.
+        let revealed = false;
+        const revealContent = () => {
+            if (revealed) return;
+            revealed = true;
             if (modalHeader) { modalHeader.style.transition = 'opacity 0.2s ease'; modalHeader.style.opacity = '1'; }
             if (modalResults) { modalResults.style.transition = 'opacity 0.25s ease'; modalResults.style.opacity = '1'; }
             searchInput.focus();
-        }, 100);
+        };
+        modal.addEventListener('transitionend', function onEnd(e) {
+            if (e.target === modal && e.propertyName === 'transform') {
+                modal.removeEventListener('transitionend', onEnd);
+                revealContent();
+            }
+        });
+        setTimeout(revealContent, 450); // fallback jaga-jaga kalau transitionend ga fire
     });
 
     const archivePanel = document.getElementById('archive-results-panel');
@@ -624,13 +643,13 @@ window.closeSearchMode = function(fromHistory = false) {
     if (modalHeader) { modalHeader.style.transition = 'opacity 0.15s ease'; modalHeader.style.opacity = '0'; }
     if (modalResults) { modalResults.style.transition = 'opacity 0.15s ease'; modalResults.style.opacity = '0'; }
 
-    // Shrink physically back to capsule size
+    // Shrink physically back to capsule size (transform-only, GPU-composited)
     if (capsule) {
         const rect = capsule.getBoundingClientRect();
-        modal.style.top = rect.top + 'px';
-        modal.style.left = rect.left + 'px';
-        modal.style.width = rect.width + 'px';
-        modal.style.height = rect.height + 'px';
+        const vw = window.innerWidth;
+        const vh = window.innerHeight;
+        modal.style.transformOrigin = '0 0';
+        modal.style.transform = `translate(${rect.left}px, ${rect.top}px) scale(${rect.width / vw}, ${rect.height / vh})`;
         modal.style.borderRadius = '9999px';
     }
     _hideRacksForSearch(false);
@@ -648,6 +667,7 @@ window.closeSearchMode = function(fromHistory = false) {
         // Reset modal constraints for next use
         modal.style.top = '0px'; modal.style.left = '0px';
         modal.style.width = '100vw'; modal.style.height = '100vh';
+        modal.style.transform = 'translate(0px, 0px) scale(1, 1)';
         modal.style.borderRadius = '0px';
         const tabHome = document.getElementById('tab-home');
         const archivePanel = document.getElementById('archive-results-panel');
@@ -765,7 +785,8 @@ window.switchTab = function(tabId) {
 window.toggleLayoutMode = function() {
     layoutMode = layoutMode === 'grid' ? 'list' : 'grid';
     localStorage.setItem('layout_mode', layoutMode);
-    const icon = document.querySelector('#layout-btn i');
+    // Catatan: pakai 'i, svg' karena setelah Lucide render pertama, tag <i> diganti jadi <svg>
+    const icon = document.querySelector('#layout-btn i, #layout-btn svg');
     if(icon) {
         // Ikon menandakan aksi berikutnya (kebalikan dari mode aktif saat ini)
         icon.setAttribute('data-lucide', layoutMode === 'grid' ? 'layout-list' : 'layout-grid');
