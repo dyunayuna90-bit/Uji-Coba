@@ -128,7 +128,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
     // Terapkan ikon layout tersimpan (grid/list) sebelum render pertama
     const layoutIcon = document.querySelector('#layout-btn i');
-    if (layoutIcon) layoutIcon.setAttribute('data-lucide', layoutMode === 'grid' ? 'layout-grid' : 'list');
+    if (layoutIcon) layoutIcon.setAttribute('data-lucide', layoutMode === 'grid' ? 'grid-2x2' : 'list');
 
     loadLibrary().finally(() => {
         // Sembunyikan splash screen setelah library siap
@@ -481,7 +481,7 @@ window.addEventListener('popstate', (e) => {
     else if (!document.getElementById('global-settings-modal').classList.contains('opacity-0')) { _closeModalAction('global-settings-modal', 'global-settings-sheet', false, true); }
     else if (!document.getElementById('backup-type-modal').classList.contains('opacity-0')) { _closeModalAction('backup-type-modal', 'backup-type-sheet', true, true); }
     else if (!document.getElementById('pdf-mode-modal').classList.contains('opacity-0')) { _closeModalAction('pdf-mode-modal', 'pdf-mode-sheet', true, true); }
-    else if (!document.getElementById('search-fullscreen-modal').classList.contains('hidden')) { window.closeSearchMode(true); }
+    else if (document.getElementById('search-nav-row').classList.contains('search-active')) { window.closeSearchMode(true); }
     else if (isBatchDeleteMode) { window.toggleBatchDelete(true); }
     else if (activePanel) { _closeSidePanelsAction(true); } 
     else if (document.getElementById('reader-bottom-bar') && document.getElementById('reader-bottom-bar').classList.contains('hidden')) { window.toggleFullscreenReading(true); }
@@ -516,6 +516,8 @@ function _hideRacksForSearch(hide) {
 function setupSearchListeners() {
     const searchInput = document.getElementById('global-search');
     const clearBtn = document.getElementById('search-clear-btn');
+    const navRow = document.getElementById('search-nav-row');
+    const wrapper = document.getElementById('search-results-wrapper');
     if(searchInput) {
         searchInput.addEventListener('input', (e) => {
             const val = e.target.value;
@@ -539,23 +541,26 @@ function setupSearchListeners() {
             }
         });
     }
+    document.addEventListener('click', (e) => {
+        if (navRow && navRow.classList.contains('search-active')) {
+            if (navRow.contains(e.target) || (wrapper && wrapper.contains(e.target))) return;
+            window.closeSearchMode(false);
+        }
+    });
 }
 
 window.openSearchMode = function() {
-    pushAppHistory('search');
-    const modal = document.getElementById('search-fullscreen-modal');
+    const navRow = document.getElementById('search-nav-row');
     const searchInput = document.getElementById('global-search');
-    const dummyText = document.getElementById('search-dummy-text');
-    searchInput.placeholder = _archiveMode ? "Cari di Internet Archive..." : "Cari di rak lokal...";
-    searchInput.value = '';
-    document.getElementById('search-clear-btn').classList.add('hidden');
-    modal.classList.remove('hidden', 'flex-col');
-    modal.classList.add('flex');
-    requestAnimationFrame(() => {
-        modal.classList.remove('opacity-0', 'scale-95');
-        searchInput.focus();
-    });
     const wrapper = document.getElementById('search-results-wrapper');
+    if (navRow.classList.contains('search-active')) return;
+    pushAppHistory('search');
+    navRow.classList.add('search-active');
+    searchInput.placeholder = _archiveMode ? "Cari di Internet Archive..." : "Cari di rak lokal...";
+    document.getElementById('search-clear-btn').classList.toggle('hidden', searchInput.value.length === 0);
+    wrapper.classList.remove('hidden');
+    requestAnimationFrame(() => { searchInput.focus(); });
+
     const archivePanel = document.getElementById('archive-results-panel');
     const localPanel = document.getElementById('local-search-results');
     if(_archiveMode) {
@@ -570,24 +575,24 @@ window.openSearchMode = function() {
         if(archivePanel) archivePanel.classList.add('hidden');
         localPanel.classList.remove('hidden');
         localPanel.className = layoutMode === 'list' ? 'flex flex-col gap-4 px-5 py-4 w-full' : 'grid grid-cols-2 gap-4 px-5 py-4 w-full';
-        localPanel.innerHTML = '<div class="col-span-full text-center text-xs opacity-50 mt-10">Ketik judul buku...</div>';
+        if (searchInput.value.trim().length === 0) {
+            localPanel.innerHTML = '<div class="col-span-full text-center text-xs opacity-50 mt-10">Ketik judul buku...</div>';
+        }
     }
 };
 
 window.closeSearchMode = function(fromHistory = false) {
     if (!fromHistory) history.back();
-    const modal = document.getElementById('search-fullscreen-modal');
+    const navRow = document.getElementById('search-nav-row');
     const searchInput = document.getElementById('global-search');
+    const wrapper = document.getElementById('search-results-wrapper');
     if(searchInput) searchInput.blur();
-    modal.classList.add('opacity-0', 'scale-95');
-    setTimeout(() => {
-        modal.classList.add('hidden');
-        modal.classList.remove('flex');
-        // Kembalikan archive panel ke tempat asal
-        const tabHome = document.getElementById('tab-home');
-        const archivePanel = document.getElementById('archive-results-panel');
-        if(tabHome && archivePanel) tabHome.appendChild(archivePanel);
-    }, 300);
+    navRow.classList.remove('search-active');
+    wrapper.classList.add('hidden');
+    // Kembalikan archive panel ke tempat asal
+    const tabHome = document.getElementById('tab-home');
+    const archivePanel = document.getElementById('archive-results-panel');
+    if(tabHome && archivePanel) tabHome.appendChild(archivePanel);
 };
 
 window.clearSearchInput = function() {
@@ -656,7 +661,7 @@ window.toggleLayoutMode = function() {
     localStorage.setItem('layout_mode', layoutMode);
     const icon = document.querySelector('#layout-btn i');
     if(icon) {
-        icon.setAttribute('data-lucide', layoutMode === 'grid' ? 'layout-grid' : 'list');
+        icon.setAttribute('data-lucide', layoutMode === 'grid' ? 'grid-2x2' : 'list');
         if(window.lucide) window.lucide.createIcons({nodes: [icon]});
     }
     if (currentTab === 'home') loadArchivePlayBooksStyle();
@@ -675,9 +680,9 @@ window.loadArchivePlayBooksStyle = async function() {
         return;
     }
     const queries = [
-        { title: d.archiveFic || "Fiksi Populer", q: 'subject:"fiction" AND mediatype:texts' },
-        { title: d.archiveSci || "Sains & Ilmu Pengetahuan", q: 'subject:"science" AND mediatype:texts' },
-        { title: d.archiveHis || "Sejarah Dunia", q: 'subject:"history" AND mediatype:texts' }
+        { title: d.archiveFic || "Fiksi Populer", q: 'subject:"fiction" AND collection:(inlibrary OR printdisabled) AND mediatype:texts' },
+        { title: d.archiveSci || "Sains & Ilmu Pengetahuan", q: 'subject:"science" AND collection:(inlibrary OR printdisabled) AND mediatype:texts' },
+        { title: d.archiveHis || "Sejarah Dunia", q: 'subject:"history" AND collection:(inlibrary OR printdisabled) AND mediatype:texts' }
     ];
     try {
         let html = '';
@@ -723,6 +728,7 @@ window.loadArchivePlayBooksStyle = async function() {
                     <div class="w-full mb-6">
                         <h3 class="text-[15px] px-5 font-bold text-m3-onSurface mb-3 tracking-wide">${_esc(item.title)}</h3>
                         <div class="${isList ? 'flex flex-col px-5' : 'flex gap-4 overflow-x-auto snap-x snap-proximity hide-scroll px-5 pb-2'}">
+                            ${!isList ? '<div class="w-1 shrink-0 snap-align-none"></div>' : ''}
                             ${cardsHtml}
                             ${!isList ? '<div class="w-2 shrink-0 snap-align-none"></div>' : ''}
                         </div>
@@ -743,6 +749,7 @@ function applyLanguage() {
     if (!Object.keys(d).length) return;
 
     setElementText('str-lib-empty', d.libEmpty); setElementText('str-continue-reading', d.continueReading);
+    setElementText('str-explore-archive', d.archiveSectionTitle || 'Jelajahi Arsip');
     setElementText('btn-batch-cancel', d.cancel); setElementText('btn-batch-exec', d.delete);
     setElementText('str-opt-select', d.optSelect); setElementText('str-opt-edit', d.optEdit);
     setElementText('str-opt-delete', d.optDelete); setElementText('str-opt-cancel', d.optCancel);
@@ -1593,8 +1600,6 @@ function initCoverObserver() {
             if (!entry.isIntersecting) return;
             const card = entry.target;
             const id = card.dataset.coverId;
-            const baseClass = card.dataset.baseClass || '';
-            const isListCover = card.dataset.coverMode === 'list';
             if (!id) { obs.unobserve(card); return; }
 
             localforage.getItem('cover_' + id).then(coverData => {
@@ -1609,56 +1614,13 @@ function initCoverObserver() {
                 }
                 if (!coverUrl) return;
 
-                if (isListCover) {
-                    // Mode List: cover polos di child div, tanpa overlay teks putih
-                    const thumb = card.querySelector('.list-cover-thumb');
-                    if (thumb) {
-                        thumb.style.opacity = '0';
-                        requestAnimationFrame(() => {
-                            thumb.style.backgroundImage = `url('${coverUrl}')`;
-                            thumb.style.opacity = '1';
-                            const icon = thumb.querySelector('[data-lucide="book"]');
-                            if (icon) icon.classList.add('hidden');
-                        });
-                    }
-                    if (coverData instanceof Blob) {
-                        const mo = new MutationObserver(() => {
-                            if (!document.body.contains(card)) { URL.revokeObjectURL(coverUrl); mo.disconnect(); }
-                        });
-                        mo.observe(document.body, { childList: true, subtree: true });
-                    }
-                    obs.unobserve(card);
-                    return;
+                // Terapkan cover HANYA ke div cover-nya, bukan ke card utama —
+                // agar teks judul di bawahnya tidak tertimpa warna solid.
+                const coverDiv = card.querySelector('[id^="cover-img-"]');
+                if (coverDiv) {
+                    coverDiv.style.backgroundImage = `url('${coverUrl}')`;
+                    coverDiv.style.opacity = '1';
                 }
-
-                // Transisi transparan -> solid saat gambar sampul diterapkan
-                card.style.transition = 'opacity 0.3s ease';
-                card.style.opacity = '0';
-
-                requestAnimationFrame(() => {
-                    card.style.backgroundImage = `url('${coverUrl}')`;
-                    card.style.backgroundSize = 'cover';
-                    card.style.backgroundPosition = 'top center';
-
-                    if (baseClass) card.classList.remove(...baseClass.split(' '));
-                    card.classList.add('text-white', 'shadow-lg');
-
-                    const overlay = document.getElementById(`overlay-${id}`);
-                    if(overlay) overlay.classList.remove('hidden');
-
-                    ['title-', 'top-icons-', 'pct-'].forEach(prefix => {
-                        const el = document.getElementById(prefix + id);
-                        if(el) el.classList.add('text-white');
-                    });
-
-                    const bar = document.getElementById(`bar-${id}`);
-                    if(bar) { bar.classList.remove('bg-m3-primary', 'dark:bg-m3-primaryContainer'); bar.classList.add('bg-white'); }
-
-                    const icon = document.getElementById(`book-icon-${id}`);
-                    if(icon) icon.classList.add('hidden');
-
-                    card.style.opacity = '1';
-                });
 
                 // Revoke ObjectURL saat card dihapus dari DOM agar tidak leak
                 if (coverData instanceof Blob) {
