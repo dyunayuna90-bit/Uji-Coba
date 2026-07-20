@@ -598,8 +598,7 @@ async function handleTxt(file, bookTitle) {
             pages: Math.ceil(parsedNodes.length / 10),
             progressPct: 0,
             lastReadId: null,
-            shape: 'square',
-            archiveId: file._archiveId
+            shape: 'square'
         });
     } else {
         library[existingIndex].pages = Math.ceil(parsedNodes.length / 10);
@@ -674,8 +673,7 @@ async function handleMd(file, bookTitle) {
             pages: Math.ceil(parsedNodes.length / 10),
             progressPct: 0,
             lastReadId: null,
-            shape: 'square',
-            archiveId: file._archiveId
+            shape: 'square'
         });
     } else {
         library[existingIndex].pages = Math.ceil(parsedNodes.length / 10);
@@ -872,8 +870,7 @@ const pdfBlob = new Blob([arrayBuffer], { type: 'application/pdf' });
                 pages: total,
                 progressPct: 0,
                 lastReadId: 1, 
-                shape: 'square',
-                archiveId: file._archiveId
+                shape: 'square'
             });
         } else {
             library[existingIndex].pages = total;
@@ -1222,8 +1219,7 @@ const pdfBlob = new Blob([arrayBuffer], { type: 'application/pdf' });
                 pages: total,
                 progressPct: 0,
                 lastReadId: null,
-                shape: 'square',
-                archiveId: file._archiveId
+                shape: 'square'
             });
         } else {
             library[existingIndex].pages = total;
@@ -1427,8 +1423,7 @@ async function handleEpub(file, bookTitle) {
             pages: spine.length,
             progressPct: 0,
             lastReadId: null,
-            shape: 'square',
-            archiveId: file._archiveId
+            shape: 'square'
         });
     } else {
         library[existingIndex].pages = spine.length;
