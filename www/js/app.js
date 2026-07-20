@@ -124,7 +124,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
     // Terapkan ikon layout tersimpan (grid/list) sebelum render pertama
     const layoutIcon = document.querySelector('#layout-btn i');
-    if (layoutIcon) layoutIcon.setAttribute('data-lucide', layoutMode === 'grid' ? 'layout-grid' : 'list');
+    if (layoutIcon) layoutIcon.setAttribute('data-lucide', layoutMode === 'grid' ? 'layout-grid' : 'layout-list');
 
     loadLibrary().finally(() => {
         // Sembunyikan splash screen setelah library siap
@@ -546,14 +546,19 @@ window.openSearchMode = function() {
     const modal = document.getElementById('search-fullscreen-modal');
     const capsule = document.getElementById('search-capsule');
     const searchInput = document.getElementById('global-search');
-    const dummyText = document.getElementById('search-dummy-text');
     const _dSearch = typeof i18n !== 'undefined' ? (i18n[wikiLang] || i18n['id']) : {};
     searchInput.placeholder = _archiveMode ? _dSearch.searchArchive : _dSearch.searchLocal;
     searchInput.value = '';
     document.getElementById('search-clear-btn').classList.add('hidden');
 
-    // Morphing: modal dimulai dari posisi & ukuran persis search-capsule (titik sentuh),
-    // lalu tumbuh (scale bukan lewat transform, tapi lewat width/height/posisi asli) ke fullscreen.
+    const modalHeader = modal.querySelector('div.flex.items-center.px-2');
+    const modalResults = document.getElementById('search-results-wrapper');
+
+    // Hide inner contents before morph starts
+    if (modalHeader) { modalHeader.style.transition = 'none'; modalHeader.style.opacity = '0'; }
+    if (modalResults) { modalResults.style.transition = 'none'; modalResults.style.opacity = '0'; }
+
+    // Morphing: Start with exact capsule dimensions
     if (capsule) {
         const rect = capsule.getBoundingClientRect();
         modal.style.transition = 'none';
@@ -562,26 +567,34 @@ window.openSearchMode = function() {
         modal.style.width = rect.width + 'px';
         modal.style.height = rect.height + 'px';
         modal.style.borderRadius = '9999px';
+        capsule.style.opacity = '0'; // Hide original capsule instantly
     }
-    modal.classList.remove('hidden');
+    modal.classList.remove('hidden', 'opacity-0');
     modal.classList.add('flex');
-    void modal.offsetWidth; // force reflow agar transisi dari state awal tidak di-skip
-    modal.style.transition = '';
+    modal.style.opacity = '1';
+    void modal.offsetWidth; // Force layout calc
+    modal.style.transition = ''; // Restore CSS transitions
+
+    // Expand physically
     requestAnimationFrame(() => {
-        modal.classList.remove('opacity-0');
         modal.style.top = '0px';
         modal.style.left = '0px';
         modal.style.width = '100vw';
         modal.style.height = '100vh';
         modal.style.borderRadius = '0px';
-        searchInput.focus();
+        // Fade in contents during expansion
+        setTimeout(() => {
+            if (modalHeader) { modalHeader.style.transition = 'opacity 0.2s ease'; modalHeader.style.opacity = '1'; }
+            if (modalResults) { modalResults.style.transition = 'opacity 0.25s ease'; modalResults.style.opacity = '1'; }
+            searchInput.focus();
+        }, 100);
     });
-    const wrapper = document.getElementById('search-results-wrapper');
+
     const archivePanel = document.getElementById('archive-results-panel');
     const localPanel = document.getElementById('local-search-results');
     if(_archiveMode) {
         if(archivePanel) {
-            wrapper.appendChild(archivePanel);
+            modalResults.appendChild(archivePanel);
             archivePanel.classList.remove('hidden');
             archivePanel.classList.add('px-5');
         }
@@ -600,8 +613,17 @@ window.closeSearchMode = function(fromHistory = false) {
     const modal = document.getElementById('search-fullscreen-modal');
     const capsule = document.getElementById('search-capsule');
     const searchInput = document.getElementById('global-search');
-    if(searchInput) searchInput.blur();
-    // Morph mengecil kembali ke posisi & ukuran search-capsule sebelum disembunyikan
+    // Fix Bug Layout: Reset input value here so background logic doesn't filter empty shelf
+    if(searchInput) { searchInput.blur(); searchInput.value = ''; }
+
+    const modalHeader = modal.querySelector('div.flex.items-center.px-2');
+    const modalResults = document.getElementById('search-results-wrapper');
+
+    // Fade out inner contents fast
+    if (modalHeader) { modalHeader.style.transition = 'opacity 0.15s ease'; modalHeader.style.opacity = '0'; }
+    if (modalResults) { modalResults.style.transition = 'opacity 0.15s ease'; modalResults.style.opacity = '0'; }
+
+    // Shrink physically back to capsule size
     if (capsule) {
         const rect = capsule.getBoundingClientRect();
         modal.style.top = rect.top + 'px';
@@ -610,23 +632,20 @@ window.closeSearchMode = function(fromHistory = false) {
         modal.style.height = rect.height + 'px';
         modal.style.borderRadius = '9999px';
     }
-    modal.classList.add('opacity-0');
-    // Pastikan semua rak (Scroll, Canvas, dll) selalu dikembalikan, apapun mode search terakhir
     _hideRacksForSearch(false);
     setTimeout(() => {
         modal.classList.add('hidden');
         modal.classList.remove('flex');
-        // Reset geometri agar modal siap dipakai fullscreen lagi di pembukaan berikutnya
+        if (capsule) capsule.style.opacity = '1'; // Restore original capsule
+        // Reset modal constraints for next use
         modal.style.top = '0px'; modal.style.left = '0px';
         modal.style.width = '100vw'; modal.style.height = '100vh';
         modal.style.borderRadius = '0px';
-        // Kembalikan archive panel ke tempat asal, lalu sembunyikan agar Tab Home balik ke dashboard
         const tabHome = document.getElementById('tab-home');
         const archivePanel = document.getElementById('archive-results-panel');
         if(tabHome && archivePanel) tabHome.appendChild(archivePanel);
         if(archivePanel) archivePanel.classList.add('hidden');
         const archiveDashboard = document.getElementById('archive-dashboard'); if (archiveDashboard) archiveDashboard.classList.remove('hidden');
-        // Validasi ekstra: hapus paksa sisa inline style yang mungkin masih nyangkut
         ['scroll-continue-section', 'canvas-continue-section', 'pinned-books-section', 'scroll-collection-section', 'canvas-collection-section'].forEach(id => {
             const el = document.getElementById(id);
             if (!el) return;
@@ -635,7 +654,9 @@ window.closeSearchMode = function(fromHistory = false) {
             el.style.overflow = '';
             el.style.marginBottom = '';
         });
-    }, 300);
+        // Force full re-render without active search query
+        renderLibrary('');
+    }, 400);
 };
 
 window.clearSearchInput = function() {
@@ -740,7 +761,7 @@ window.toggleLayoutMode = function() {
     localStorage.setItem('layout_mode', layoutMode);
     const icon = document.querySelector('#layout-btn i');
     if(icon) {
-        icon.setAttribute('data-lucide', layoutMode === 'grid' ? 'layout-grid' : 'list');
+        icon.setAttribute('data-lucide', layoutMode === 'grid' ? 'layout-grid' : 'layout-list');
         if(window.lucide) window.lucide.createIcons({nodes: [icon]});
     }
     if (currentTab === 'home') loadArchivePlayBooksStyle();
@@ -975,7 +996,9 @@ function applyLanguage() {
 
 window.setWikiLang = function(lang) {
     wikiLang = lang; localStorage.setItem('wiki_lang', lang); syncWikiLangUI(); applyLanguage();
-    if(activeBookId) renderBookmarkPanel(); 
+    if(activeBookId) renderBookmarkPanel();
+    renderLibrary(document.getElementById('global-search') ? document.getElementById('global-search').value : '');
+    if (currentTab === 'home') loadArchivePlayBooksStyle();
 };
 
 window.saveGeminiModel = function() {
@@ -1834,9 +1857,9 @@ function createBookCard(book, isSlider = false, index = 0, isSearch = false) {
             ${isList ? `<div class="absolute bottom-0 left-0 right-0 h-1 bg-black/20"><div class="h-full bg-m3-primary" style="width: ${progress}%"></div></div>` : ''}
         </div>
         <div class="flex flex-col justify-start ${isList ? 'flex-1 min-w-0' : 'mt-2 w-full'}">
-            <div class="${isList ? '' : 'min-h-[2.5rem]'}"><h3 class="font-bold text-m3-onSurface leading-tight line-clamp-2 text-ellipsis overflow-hidden book-title-text ${isList ? 'text-sm' : 'text-xs text-center'}">${book.title}</h3></div>
+            <div class="${isList ? '' : 'h-[2.5rem] flex items-start'}"><h3 class="font-bold text-m3-onSurface leading-tight line-clamp-2 book-title-text w-full ${isList ? 'text-sm' : 'text-xs'}">${book.title}</h3></div>
             ${!isList ? `<div class="w-full mt-2 h-1 bg-m3-surfaceVariant rounded-full overflow-hidden"><div class="h-full bg-m3-primary" style="width: ${progress}%"></div></div>` : ''}
-            <div class="text-[10px] font-bold text-m3-onSurfaceVariant opacity-70 mt-1">${progress}% ${(typeof i18n !== 'undefined' ? (i18n[wikiLang] || i18n['id']) : {}).readProgressText || 'dibaca'}</div>
+            <div class="text-[10px] font-bold text-m3-onSurfaceVariant opacity-70 mt-1">${typeof i18n !== 'undefined' ? (i18n[typeof wikiLang !== 'undefined' ? wikiLang : 'id'].readProgress || '{p}% Dibaca').replace('{p}', progress) : progress + '% Dibaca'}</div>
         </div>
     `;
     let pressTimer = null; let isPressing = false; let hasLongPressed = false;
