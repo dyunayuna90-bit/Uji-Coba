@@ -125,7 +125,25 @@
                     </div>
                 </section>
                 <div id="archive-dashboard" class="flex flex-col gap-6 w-full"></div>
-                <div id="archive-results-panel" class="hidden flex flex-col gap-2.5 overflow-y-auto pb-6 w-full"></div>
+                <div id="archive-results-panel" class="hidden flex flex-col gap-2.5 overflow-y-auto pb-6 w-full">
+                    <div id="archive-state-loading" class="hidden flex items-center justify-center gap-3 py-8">
+                        <div class="w-6 h-6 border-[3px] border-m3-primary border-t-transparent rounded-full animate-spin shrink-0"></div>
+                        <span class="text-xs font-bold text-m3-onBg opacity-60">Mencari di arsip...</span>
+                    </div>
+                    <div id="archive-state-offline" class="hidden flex flex-col items-center justify-center py-8 gap-2 opacity-50">
+                        <i data-lucide="wifi-off" class="w-10 h-10 text-m3-onBg"></i>
+                        <span class="text-xs font-bold text-m3-onBg text-center">Tidak ada koneksi internet.</span>
+                    </div>
+                    <div id="archive-state-empty" class="hidden flex flex-col items-center justify-center py-8 gap-2 opacity-50">
+                        <i data-lucide="search-x" class="w-10 h-10 text-m3-onBg"></i>
+                        <span class="text-xs font-bold text-m3-onBg">Tidak ada hasil. Coba kata lain.</span>
+                    </div>
+                    <div id="archive-state-error" class="hidden flex flex-col items-center justify-center py-8 gap-2 opacity-50">
+                        <i data-lucide="alert-circle" class="w-10 h-10 text-m3-onBg"></i>
+                        <span id="archive-error-text" class="text-xs font-bold text-m3-onBg text-center">Gagal mencari.</span>
+                    </div>
+                    <div id="archive-cards" class="flex flex-col gap-2.5"></div>
+                </div>
             </div>
 
             <!-- TAB 2: SCROLL — Rak lokal mode Scroll (teks dinamis) -->
