@@ -167,7 +167,10 @@ html, body {
 @keyframes ripple-grow {
     to { transform: scale(1); opacity: 0; }
 }
-.side-panel { transition: transform 0.3s cubic-bezier(0.2, 0, 0, 1), opacity 0.3s ease; }
+.side-panel {
+    transition: transform 0.3s cubic-bezier(0.2, 0, 0, 1), opacity 0.3s ease;
+    border-radius: 0 !important;
+}
 
 /* Mencegah default browser gesture (kayak pull-to-refresh) di modal/panel saat swipe-dismiss */
 #global-settings-sheet, #b-opt-sheet, #edit-sheet, #bookmark-sheet, #raw-backup-sheet, #raw-restore-sheet, #welcome-sheet,
