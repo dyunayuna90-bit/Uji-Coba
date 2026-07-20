@@ -873,7 +873,7 @@ function applyLanguage() {
     if (!Object.keys(d).length) return;
 
     setElementText('str-nav-home', d.navHome); setElementText('str-nav-scroll', d.navScroll); setElementText('str-nav-canvas', d.navCanvas);
-    setElementText('str-jelajah-arsip', d.jelajahArsip);
+    setElementText('str-jelajah-arsip', d.jelajahArsip); setElementText('str-archive-empty', d.archiveSearchEmpty);
     setElementText('str-lib-empty', d.libEmpty); setElementText('str-continue-reading', d.continueReading);
     setElementText('str-continue-reading-canvas', d.continueReading);
     setElementText('btn-batch-cancel', d.cancel); setElementText('btn-batch-exec', d.delete);
