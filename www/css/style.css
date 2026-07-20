@@ -12,6 +12,73 @@
     user-select: text !important;
 }
 
+/* PENGECUALIAN 3: TextLayer PDF.js di Canvas Mode — teks transparan bisa di-select */
+.textLayer, .textLayer * {
+    -webkit-user-select: text !important;
+    user-select: text !important;
+}
+
+/* Reset Kontainer TextLayer PDF.js */
+.textLayer {
+    --scale-factor: 1;
+    position: absolute;
+    top: 0; left: 0; right: 0; bottom: 0;
+    overflow: hidden;
+    transform-origin: 0 0;
+    line-height: 1;
+    text-size-adjust: none;
+    -webkit-text-size-adjust: none;
+    pointer-events: auto;
+}
+
+/* Span teks transparan pembentuk blok seleksi */
+.textLayer span, .textLayer br {
+    color: transparent !important;
+    position: absolute;
+    white-space: pre !important;
+    cursor: text;
+    transform-origin: 0% 0%;
+
+    /* LOGIKA MURNI: Penangkap CSS Variables dari PDF.js v3+ */
+    /* Dilarang pakai !important di 3 baris ini agar tak merusak PDF.js jadul */
+    font-size: calc(var(--font-size, 16px) * var(--scale-factor));
+    font-family: var(--font-family, sans-serif);
+    transform: var(--transform, none);
+
+    /* Reset total agar tidak diracuni ketebalan & spasi bawaan Tailwind */
+    line-height: 1 !important;
+    font-weight: normal !important;
+    letter-spacing: normal !important;
+    word-spacing: normal !important;
+    background: transparent !important;
+    border: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+}
+
+/* CSS Khusus Kotak Highlight di Canvas */
+.canvas-annot-hl {
+    mix-blend-mode: multiply;
+    transition: opacity 0.2s ease;
+    pointer-events: none;
+}
+#reader-view[data-reader-theme="dark"] .canvas-annot-hl,
+#reader-view[data-reader-theme="amoled"] .canvas-annot-hl {
+    mix-blend-mode: screen;
+}
+
+/* Highlight biru tegas saat user memblok teks pada TextLayer */
+.textLayer ::selection,
+.textLayer span::selection {
+    background-color: rgba(var(--md-sys-color-primary-rgb, 103, 80, 164), 0.35) !important;
+    color: transparent !important;
+}
+.textLayer ::-moz-selection,
+.textLayer span::-moz-selection {
+    background-color: rgba(103, 80, 164, 0.35) !important;
+    color: transparent !important;
+}
+
 /* PENGECUALIAN 2: Input & Textarea (Search, Bookmark) tetap berfungsi normal */
 input, textarea {
     -webkit-user-select: auto !important;
@@ -34,20 +101,20 @@ html, body {
     transition: background-color 0.4s ease, color 0.4s ease; -webkit-tap-highlight-color: transparent;
 }
 
-.btn-morph { transition: all 0.4s cubic-bezier(0.34, 1.56, 0.64, 1); border-radius: 99px; }
+.btn-morph { transition: transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1), border-radius 0.4s ease, background-color 0.4s ease, opacity 0.4s ease; border-radius: 99px; will-change: transform; }
 .btn-morph:active { transform: scale(0.85); border-radius: 12px; background-color: var(--md-sys-color-primary) !important; color: var(--md-sys-color-on-primary) !important; }
 
-.card-morph { transition: transform 0.5s cubic-bezier(0.34, 1.56, 0.64, 1), border-radius 0.4s ease; user-select: none; -webkit-user-select: none; }
+.card-morph { transition: transform 0.5s cubic-bezier(0.34, 1.56, 0.64, 1), border-radius 0.4s ease; user-select: none; -webkit-user-select: none; will-change: transform; transform: translateZ(0); }
 .card-morph:active { transform: scale(0.92); border-radius: 16px !important; }
 
-.fab-capsule { transition: width 0.45s cubic-bezier(0.34, 1.56, 0.64, 1), border-radius 0.45s cubic-bezier(0.34, 1.56, 0.64, 1), transform 0.35s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.3s ease; border-radius: 32px; width: 64px; height: 64px; }
+.fab-capsule { transition: width 0.45s cubic-bezier(0.34, 1.56, 0.64, 1), border-radius 0.45s cubic-bezier(0.34, 1.56, 0.64, 1), transform 0.35s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.3s ease; border-radius: 32px; width: 64px; height: 64px; will-change: transform, width, flex; }
 .fab-capsule:active { transform: scale(0.92); width: 120px; border-radius: 18px; background-color: var(--md-sys-color-primary) !important; color: var(--md-sys-color-on-primary) !important; opacity: 1 !important; box-shadow: 0 6px 24px rgba(0,0,0,0.25); }
 
-.capsule-group { display: flex; gap: 4px; width: 100%; transition: all 0.4s cubic-bezier(0.2, 0, 0, 1); }
+.capsule-group { display: flex; gap: 4px; width: 100%; transition: gap 0.4s cubic-bezier(0.2, 0, 0, 1), transform 0.4s cubic-bezier(0.2, 0, 0, 1); will-change: transform; }
 .capsule-btn { 
     flex: 1; display: flex; justify-content: center; align-items: center;
     transition: flex 0.5s cubic-bezier(0.34, 1.56, 0.64, 1), transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1), background-color 0.3s, border-radius 0.3s; 
-    border-radius: 99px; overflow: hidden; white-space: nowrap;
+    border-radius: 99px; overflow: hidden; white-space: nowrap; will-change: transform, width, flex;
 }
 .capsule-btn:active, .capsule-btn.nav-active { 
     flex: 1.5; transform: scale(0.95); border-radius: 16px; 
@@ -93,16 +160,44 @@ html, body {
 .progress-smooth { transition: width 0.4s cubic-bezier(0.34, 1.56, 0.64, 1); }
 
 mark.search-hl { background-color: var(--md-sys-color-primary) !important; color: var(--md-sys-color-on-primary) !important; border-radius: 4px; padding: 0 4px; transition: background-color 1.5s ease, color 1.5s ease; }
-
+/* Highlight pencarian khusus Canvas Mode — override transparansi TextLayer span */
+.textLayer mark.search-hl,
+.textLayer .canvas-search-hl {
+    background-color: #FACC15 !important; /* Kuning cerah — kontras di atas canvas PDF */
+    color: #1A1A1A !important;
+    border-radius: 3px;
+    padding: 0 2px;
+    opacity: 0.85 !important;
+    mix-blend-mode: multiply;
+    transition: none;
+}
+#reader-view[data-reader-theme="dark"] .textLayer mark.search-hl,
+#reader-view[data-reader-theme="dark"] .textLayer .canvas-search-hl,
+#reader-view[data-reader-theme="amoled"] .textLayer mark.search-hl,
+#reader-view[data-reader-theme="amoled"] .textLayer .canvas-search-hl {
+    background-color: #FDE047 !important;
+    color: #000000 !important;
+    mix-blend-mode: screen;
+    opacity: 0.9 !important;
+}
+/* Highlight pencarian Canvas Mode: transisi memudar setelah beberapa saat */
+.textLayer .canvas-search-hl {
+    transition: background-color 1s ease, opacity 1s ease, color 1s ease !important;
+}
+.textLayer .canvas-search-hl.canvas-search-hl-fade {
+    background-color: transparent !important;
+    color: inherit !important;
+    opacity: 0 !important;
+}
 /* Updated Annotations Colors with !important for priority */
 .hl-yellow { background-color: #FDE047 !important; color: #000 !important; }
 .hl-green { background-color: #86EFAC !important; color: #000 !important; }
 .hl-pink { background-color: #F9A8D4 !important; color: #000 !important; }
 .hl-blue { background-color: #93C5FD !important; color: #000 !important; }
-.dark .hl-yellow { background-color: #854D0E !important; color: #FFF !important; }
-.dark .hl-green { background-color: #166534 !important; color: #FFF !important; }
-.dark .hl-pink { background-color: #831843 !important; color: #FFF !important; }
-.dark .hl-blue { background-color: #1E3A8A !important; color: #FFF !important; }
+#reader-view[data-reader-theme="dark"] .hl-yellow, #reader-view[data-reader-theme="amoled"] .hl-yellow { background-color: #854D0E !important; color: #FFF !important; }
+#reader-view[data-reader-theme="dark"] .hl-green, #reader-view[data-reader-theme="amoled"] .hl-green { background-color: #166534 !important; color: #FFF !important; }
+#reader-view[data-reader-theme="dark"] .hl-pink, #reader-view[data-reader-theme="amoled"] .hl-pink { background-color: #831843 !important; color: #FFF !important; }
+#reader-view[data-reader-theme="dark"] .hl-blue, #reader-view[data-reader-theme="amoled"] .hl-blue { background-color: #1E3A8A !important; color: #FFF !important; }
 
 .hide-scroll::-webkit-scrollbar { display: none; }
 .hide-scroll { -ms-overflow-style: none; scrollbar-width: none; }
@@ -112,7 +207,7 @@ mark.search-hl { background-color: var(--md-sys-color-primary) !important; color
 .reader-dynamic-text { word-wrap: break-word; overflow-wrap: anywhere; hyphens: auto; }
 .reader-dynamic-text p { font-family: var(--reader-font) !important; font-size: var(--reader-size) !important; text-align: var(--reader-align) !important; line-height: var(--reader-line-height) !important; max-width: 100%; overflow-x: hidden; }
 .reader-dynamic-text h1 { font-family: var(--reader-font) !important; font-size: calc(var(--reader-size) * 1.8) !important; text-align: left !important; line-height: 1.3 !important; font-weight: bold; margin-top: 2rem; margin-bottom: 1.5rem; color: var(--md-sys-color-primary); }
-.reader-dynamic-text h2 { font-family: var(--reader-font) !important; font-size: calc(var(--reader-size) * 1.4) !important; text-align: left !important; line-height: 1.4 !important; font-weight: bold; margin-top: 1.5rem; margin-bottom: 1rem; color: var(--md-sys-color-on-surface-variant); border-bottom: 1px solid var(--md-sys-color-surface-variant); padding-bottom: 0.5rem; opacity: 1; }
+.reader-dynamic-text h2 { font-family: var(--reader-font) !important; font-size: calc(var(--reader-size) * 1.4) !important; text-align: left !important; line-height: 1.4 !important; font-weight: bold; margin-top: 1.5rem; margin-bottom: 1rem; color: var(--md-sys-color-primary); border-bottom: 2px solid var(--md-sys-color-primary); padding-bottom: 0.5rem; opacity: 1; }
 ::-webkit-scrollbar { width: 0px; }
 
 /* ===================================================================
@@ -135,48 +230,71 @@ mark.search-hl { background-color: var(--md-sys-color-primary) !important; color
     touch-action: none; /* Cegah gesture browser native saat pinch zoom */
     transform-origin: center center;
     transition: transform 0.1s ease-out;
-    width: 100%; /* Lebar penuh supaya gak ada sisa kanan-kiri yang aneh */
-    display: flex;
-    justify-content: center;
-    align-items: center;
+    /* overflow:visible agar canvas-prev/next yang absolute tidak terpotong */
+    overflow: visible;
+    flex-shrink: 0;
 }
 
 /* Halaman PDF Canvas murni */
-#pdf-canvas {
+#pdf-canvas, #canvas-prev, #canvas-next {
     background-color: #FFFFFF;
     transition: filter 0.3s ease;
-    width: 100% !important; /* Paksa width penuh, height menyesuaikan aspek rasio PDF */
-    height: auto !important;
-    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08); /* Shadow halus untuk light mode */
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
     border: none !important;
     outline: none !important;
+    display: block;
 }
 
-/* Efek Dark Mode murni untuk Mode Canvas */
-.dark #pdf-canvas {
-    filter: invert(0.92) hue-rotate(180deg);
-    box-shadow: none !important; /* Hapus border/glow putih di dark mode */
+/* canvas-prev & canvas-next: absolute, selalu tepat di kiri/kanan canvas utama.
+   Dimensi fisiknya diset JS secara eksplisit, bukan bergantung % wrapper. */
+#canvas-prev { position: absolute; top: 0; right: 100%; }
+#canvas-next { position: absolute; top: 0; left:  100%; }
+
+/* canvas-slider: kontainer swipe yang diberi translateX oleh JS */
+#canvas-slider {
+    transition: none; /* default: no transition — dikontrol JS */
+}
+#canvas-slider.is-snapping {
+    transition: transform 0.28s cubic-bezier(0.2, 0, 0, 1);
+}
+
+/* Filter invert untuk Canvas Mode kini diatur via JS (applyReaderThemeToDOM)
+   berdasarkan readerTheme — agar tidak terikat ke tema UI global */
+#reader-view[data-reader-theme="dark"] #pdf-canvas,
+#reader-view[data-reader-theme="dark"] #canvas-prev,
+#reader-view[data-reader-theme="dark"] #canvas-next,
+#reader-view[data-reader-theme="amoled"] #pdf-canvas,
+#reader-view[data-reader-theme="amoled"] #canvas-prev,
+#reader-view[data-reader-theme="amoled"] #canvas-next {
+    box-shadow: none !important;
     border: none !important;
 }
 
-/* AMOLED Mode khusus untuk Canvas agar lebih pekat */
-.dark[data-theme="amoled"] #pdf-canvas,
-html[data-amoled="true"] .dark #pdf-canvas {
-    filter: invert(1) hue-rotate(180deg) contrast(1.1);
-}
-
-/* Fix 3: Grey out AMOLED button saat light mode aktif (AMOLED butuh dark mode) */
-#theme-btn-amoled.amoled-unavailable {
-    opacity: 0.35 !important;
-    pointer-events: none !important;
-    cursor: not-allowed !important;
-}
 .ui-disabled-group {
     opacity: 0.4 !important;
     pointer-events: none !important;
     user-select: none !important;
     transition: opacity 0.3s ease;
 }
+
+/* Bar pencarian Canvas Mode untuk PDF tanpa teks (gambar saja) — abu-abu/disabled */
+#inbook-search-capsule.search-disabled-canvas {
+    opacity: 0.4 !important;
+    pointer-events: none !important;
+    user-select: none !important;
+}
+
+/* Progress bar Canvas Mode: bisa diketuk/digeser untuk lompat halaman */
+#progress-container.progress-draggable {
+    height: 6px !important;
+    cursor: pointer;
+    touch-action: none;
+}
+#progress-container.progress-draggable #progress-drag-handle {
+    width: 14px;
+    height: 14px;
+}
+
 
 /* Kustomisasi gaya navigasi bottom-controller pada Canvas Mode */
 #canvas-page-controller {
@@ -236,3 +354,46 @@ body.hide-book-titles .book-badge {
 
 /* Archive download overlay spinner */
 @keyframes spin { to { transform: rotate(360deg); } }
+/* Archive download overlay spinner */
+@keyframes spin { to { transform: rotate(360deg); } }
+/* ===================================================================
+   FIX LIGHT MODE: KONTRAS TEKS & KAPSUL (VERSI ELEGAN)
+   =================================================================== */
+/* Bikin list Daftar Isi (TOC) nggak nyaru */
+body:not(.dark) #toc-list button {
+    color: var(--md-sys-color-on-surface) !important;
+}
+
+/* Cegah input bisa diklik native saat kapsul belum membesar */
+#search-area:not(.search-active) #global-search {
+    pointer-events: none;
+}
+
+/* Nonaktifkan animasi morph mengecil saat memilih buku di mode batch */
+body.batch-mode-active .card-morph:active {
+    transform: none !important;
+}
+
+/* Matikan efek morph/membal saat batch mode agar tap-tap lebih mulus */
+body.batch-mode-active .card-morph {
+    transition: none !important;
+}
+body.batch-mode-active .card-morph:active {
+    transform: none !important;
+}
+
+/* ===================================================================
+   M3 EXPRESSIVE BOTTOM NAV + TAB SYSTEM (Home/Scroll/Canvas)
+   =================================================================== */
+body { padding-bottom: env(safe-area-inset-bottom); }
+
+#bottom-nav-bar button .nav-indicator {
+    transition: background-color 0.35s cubic-bezier(0.34, 1.56, 0.64, 1), color 0.35s ease;
+}
+
+/* Cover thumbnail milik item mode List (lihat createBookListItem di app.js) */
+.list-cover-thumb {
+    background-size: cover;
+    background-position: top center;
+    transition: opacity 0.3s ease;
+}
