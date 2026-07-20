@@ -3161,9 +3161,42 @@ function initCanvasGestures() {
     const wrapper = document.getElementById('canvas-wrapper');
     if (!wrapper) return;
 
+    // FIX BUG "KUBIK": hanya page-stage (halaman aktif) yang boleh di-translate/rotateY.
+    // wrapper tetap dipakai untuk pinch-zoom/pan (scale seluruh area), TAPI untuk
+    // gesture page-turn (drag/tilt/commit) targetnya harus pageStage, bukan wrapper,
+    // supaya canvas-prev/canvas-next diam total di belakang.
+    const pageStage  = document.getElementById('page-stage');
+    const foldShadow = document.getElementById('fold-shadow');
+    const seamShadow = document.getElementById('seam-shadow');
+
+    // Update shading dinamis: fold-shadow (di atas halaman yg ditarik, biar kesan lengkung)
+    // + seam-shadow (jatuh di halaman statis di baliknya, biar kesan halaman aktif "terangkat")
+    function _updateTurnShade(progress) {
+        if (!foldShadow || !seamShadow) return;
+        const absP = Math.min(1, Math.abs(progress));
+        foldShadow.style.opacity = absP.toFixed(2);
+        seamShadow.style.opacity = (absP * 0.9).toFixed(2);
+        if (progress < 0) {
+            // ditarik ke kiri → pivot kanan, seam nempel di canvas-next (kanan)
+            foldShadow.style.background = 'linear-gradient(to right, transparent 0%, rgba(255,255,255,.22) 8%, rgba(0,0,0,.04) 22%, rgba(0,0,0,.5) 100%)';
+            seamShadow.style.left = '100%'; seamShadow.style.right = 'auto';
+            seamShadow.style.background = 'linear-gradient(to right, rgba(0,0,0,.55), transparent)';
+        } else if (progress > 0) {
+            // ditarik ke kanan → pivot kiri, seam nempel di canvas-prev (kiri)
+            foldShadow.style.background = 'linear-gradient(to left, transparent 0%, rgba(255,255,255,.22) 8%, rgba(0,0,0,.04) 22%, rgba(0,0,0,.5) 100%)';
+            seamShadow.style.right = '100%'; seamShadow.style.left = 'auto';
+            seamShadow.style.background = 'linear-gradient(to left, rgba(0,0,0,.55), transparent)';
+        }
+    }
+    function _resetTurnShade() {
+        if (foldShadow) foldShadow.style.opacity = 0;
+        if (seamShadow) seamShadow.style.opacity = 0;
+    }
+
     wrapper.style.transformOrigin = 'center center';
     wrapper.style.willChange      = 'transform';
     wrapper.style.transition      = 'none';
+    if (pageStage) { pageStage.style.willChange = 'transform'; pageStage.style.transition = 'none'; }
     _resetCanvasTransform();
 
     // State internal gesture — semua di sini, tidak pakai variabel global yang bisa
@@ -3300,15 +3333,17 @@ function initCanvasGestures() {
         } else if (isSwipingPage && e.touches.length === 1) {
             // [LAYOUT ABSOLUT] Geser wrapper langsung — canvas-prev/next (absolute) ikut otomatis
             const deltaX = e.touches[0].clientX - swipeStartX;
-            if (pageTurnAnimEnabled) {
-                // Tilt 3D ala Play Books: makin jauh drag, makin miring & sedikit mengecil
+            if (pageTurnAnimEnabled && pageStage) {
+                // Tilt 3D ala Play Books: makin jauh drag, makin miring & sedikit mengecil.
+                // HANYA pageStage yang gerak — canvas-prev/next diam total di belakang.
                 const progress = Math.max(-1, Math.min(1, deltaX / window.innerWidth));
                 const rotateY  = -progress * 16; // derajat maksimum
                 const scaleTo  = 1 - Math.abs(progress) * 0.04;
-                wrapper.style.transformOrigin = deltaX < 0 ? 'right center' : 'left center';
-                wrapper.style.transform = `translate(${deltaX}px, 0px) perspective(1400px) rotateY(${rotateY}deg) scale(${scaleTo})`;
-            } else {
-                wrapper.style.transform = `translate(${deltaX}px, 0px) scale(1)`;
+                pageStage.style.transformOrigin = deltaX < 0 ? 'right center' : 'left center';
+                pageStage.style.transform = `translate(${deltaX}px, 0px) perspective(1400px) rotateY(${rotateY}deg) scale(${scaleTo})`;
+                _updateTurnShade(progress);
+            } else if (pageStage) {
+                pageStage.style.transform = `translate(${deltaX}px, 0px) scale(1)`;
             }
 
         } else if (e.touches.length === 1 && isPanning) {
@@ -3324,9 +3359,11 @@ function initCanvasGestures() {
 
     // Helper: snap wrapper kembali ke posisi tengah dengan animasi singkat
     function _snapSliderToCenter() {
-        wrapper.style.transition = 'transform 0.28s cubic-bezier(0.2, 0, 0, 1)';
-        wrapper.style.transform  = 'translate(0px, 0px) scale(1)';
-        setTimeout(() => { wrapper.style.transition = 'none'; wrapper.style.transformOrigin = 'center center'; }, 300);
+        if (!pageStage) return;
+        pageStage.style.transition = 'transform 0.28s cubic-bezier(0.2, 0, 0, 1)';
+        pageStage.style.transform  = 'translate(0px, 0px) scale(1)';
+        _resetTurnShade();
+        setTimeout(() => { pageStage.style.transition = 'none'; pageStage.style.transformOrigin = 'center center'; }, 300);
     }
 
     // ── touchend ──
@@ -3362,12 +3399,13 @@ function initCanvasGestures() {
                 } else if (deltaX < -80) {
                     // SWIPE KIRI → halaman berikutnya
                     if (currentPdfDoc && currentCanvasPage < currentPdfDoc.numPages) {
-                        wrapper.style.transition = 'transform 0.3s cubic-bezier(0.2, 0, 0, 1)';
-                        if (pageTurnAnimEnabled) {
-                            wrapper.style.transformOrigin = 'right center';
-                            wrapper.style.transform = `translate(-${window.innerWidth}px, 0px) perspective(1400px) rotateY(-24deg) scale(0.94)`;
-                        } else {
-                            wrapper.style.transform = `translate(-${window.innerWidth}px, 0px) scale(1)`;
+                        if (pageStage) pageStage.style.transition = 'transform 0.3s cubic-bezier(0.2, 0, 0, 1)';
+                        if (pageTurnAnimEnabled && pageStage) {
+                            pageStage.style.transformOrigin = 'right center';
+                            pageStage.style.transform = `translate(-${window.innerWidth}px, 0px) perspective(1400px) rotateY(-24deg) scale(0.94)`;
+                            _updateTurnShade(-1);
+                        } else if (pageStage) {
+                            pageStage.style.transform = `translate(-${window.innerWidth}px, 0px) scale(1)`;
                         }
                         setTimeout(() => {
                             const cnNext = document.getElementById('canvas-next');
@@ -3382,9 +3420,12 @@ function initCanvasGestures() {
                                 ctxCurr.drawImage(cnNext, 0, 0);
                                 _canvasAlreadyCopied = true;
                             }
-                            wrapper.style.transition = 'none';
-                            wrapper.style.transform  = 'translate(0px, 0px) scale(1)';
-                            wrapper.style.transformOrigin = 'center center';
+                            if (pageStage) {
+                                pageStage.style.transition = 'none';
+                                pageStage.style.transform  = 'translate(0px, 0px) scale(1)';
+                                pageStage.style.transformOrigin = 'center center';
+                            }
+                            _resetTurnShade();
                             currentCanvasPage++;
                             _resetCanvasTransform();
                             renderCanvasPage(currentCanvasPage);
@@ -3397,12 +3438,13 @@ function initCanvasGestures() {
                 } else if (deltaX > 80) {
                     // SWIPE KANAN → halaman sebelumnya
                     if (currentPdfDoc && currentCanvasPage > 1) {
-                        wrapper.style.transition = 'transform 0.3s cubic-bezier(0.2, 0, 0, 1)';
-                        if (pageTurnAnimEnabled) {
-                            wrapper.style.transformOrigin = 'left center';
-                            wrapper.style.transform = `translate(${window.innerWidth}px, 0px) perspective(1400px) rotateY(24deg) scale(0.94)`;
-                        } else {
-                            wrapper.style.transform = `translate(${window.innerWidth}px, 0px) scale(1)`;
+                        if (pageStage) pageStage.style.transition = 'transform 0.3s cubic-bezier(0.2, 0, 0, 1)';
+                        if (pageTurnAnimEnabled && pageStage) {
+                            pageStage.style.transformOrigin = 'left center';
+                            pageStage.style.transform = `translate(${window.innerWidth}px, 0px) perspective(1400px) rotateY(24deg) scale(0.94)`;
+                            _updateTurnShade(1);
+                        } else if (pageStage) {
+                            pageStage.style.transform = `translate(${window.innerWidth}px, 0px) scale(1)`;
                         }
                         setTimeout(() => {
                             const cnPrev = document.getElementById('canvas-prev');
@@ -3417,9 +3459,12 @@ function initCanvasGestures() {
                                 ctxCurr.drawImage(cnPrev, 0, 0);
                                 _canvasAlreadyCopied = true;
                             }
-                            wrapper.style.transition = 'none';
-                            wrapper.style.transform  = 'translate(0px, 0px) scale(1)';
-                            wrapper.style.transformOrigin = 'center center';
+                            if (pageStage) {
+                                pageStage.style.transition = 'none';
+                                pageStage.style.transform  = 'translate(0px, 0px) scale(1)';
+                                pageStage.style.transformOrigin = 'center center';
+                            }
+                            _resetTurnShade();
                             currentCanvasPage--;
                             _resetCanvasTransform();
                             renderCanvasPage(currentCanvasPage);
