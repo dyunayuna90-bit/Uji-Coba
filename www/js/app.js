@@ -2968,6 +2968,10 @@ function _resetCanvasTransform() {
     // page-turn yang ke-interrupt di tengah jalan (fail-safe untuk trik fade swap).
     const ps = document.getElementById('page-stage');
     if (ps) { ps.style.transition = 'none'; ps.style.opacity = '1'; }
+    const cn = document.getElementById('canvas-next');
+    const cp = document.getElementById('canvas-prev');
+    if (cn) { cn.style.transition = 'none'; cn.style.transform = 'translate(0px, 0px)'; }
+    if (cp) { cp.style.transition = 'none'; cp.style.transform = 'translate(0px, 0px)'; }
 }
 
 window.toggleZoomSlider = function() {
@@ -3398,6 +3402,15 @@ function initCanvasGestures() {
                 _updateTurnShade(progress);
             } else if (pageStage) {
                 pageStage.style.transform = `translate(${deltaX}px, 0px) scale(1)`;
+                // Animasi off: halaman tujuan ikut digeser masuk dari sisi (bukan diam numpuk),
+                // biar keliatan slide kanan-kiri asli kayak versi lama.
+                if (deltaX < 0 && canvasNextEl) {
+                    canvasNextEl.style.transition = 'none';
+                    canvasNextEl.style.transform = `translate(${window.innerWidth + deltaX}px, 0px)`;
+                } else if (deltaX > 0 && canvasPrevEl) {
+                    canvasPrevEl.style.transition = 'none';
+                    canvasPrevEl.style.transform = `translate(${deltaX - window.innerWidth}px, 0px)`;
+                }
             }
 
         } else if (e.touches.length === 1 && isPanning) {
@@ -3417,7 +3430,14 @@ function initCanvasGestures() {
         pageStage.style.transition = 'transform 0.28s cubic-bezier(0.2, 0, 0, 1), box-shadow 0.28s ease';
         pageStage.style.transform  = 'translate(0px, 0px) scale(1)';
         _resetTurnShade();
-        setTimeout(() => { pageStage.style.transition = 'none'; pageStage.style.transformOrigin = 'center center'; }, 300);
+        if (canvasNextEl) { canvasNextEl.style.transition = pageStage.style.transition; canvasNextEl.style.transform = 'translate(0px, 0px)'; }
+        if (canvasPrevEl) { canvasPrevEl.style.transition = pageStage.style.transition; canvasPrevEl.style.transform = 'translate(0px, 0px)'; }
+        setTimeout(() => {
+            pageStage.style.transition = 'none';
+            pageStage.style.transformOrigin = 'center center';
+            if (canvasNextEl) canvasNextEl.style.transition = 'none';
+            if (canvasPrevEl) canvasPrevEl.style.transition = 'none';
+        }, 300);
     }
 
     // ── touchend ──
@@ -3462,6 +3482,10 @@ function initCanvasGestures() {
                             _updateTurnShade(-1);
                         } else if (pageStage) {
                             pageStage.style.transform = `translate(-${window.innerWidth}px, 0px) scale(1)`;
+                            if (canvasNextEl) {
+                                canvasNextEl.style.transition = pageStage.style.transition;
+                                canvasNextEl.style.transform  = 'translate(0px, 0px)';
+                            }
                         }
 
                         let _swapped = false;
@@ -3469,6 +3493,8 @@ function initCanvasGestures() {
                         const finishSwap = () => {
                             if (_swapped) return; _swapped = true;
                             clearTimeout(_swapTimer);
+                            if (canvasNextEl) { canvasNextEl.style.transition = 'none'; canvasNextEl.style.transform = 'translate(0px, 0px)'; }
+                            if (canvasPrevEl) { canvasPrevEl.style.transition = 'none'; canvasPrevEl.style.transform = 'translate(0px, 0px)'; }
                             const cnNext = document.getElementById('canvas-next');
                             const cnCurr = document.getElementById('pdf-canvas');
                             if (cnNext && cnNext.width > 1 && cnCurr) {
@@ -3526,6 +3552,10 @@ function initCanvasGestures() {
                             _updateTurnShade(1);
                         } else if (pageStage) {
                             pageStage.style.transform = `translate(${window.innerWidth}px, 0px) scale(1)`;
+                            if (canvasPrevEl) {
+                                canvasPrevEl.style.transition = pageStage.style.transition;
+                                canvasPrevEl.style.transform  = 'translate(0px, 0px)';
+                            }
                         }
 
                         let _swapped = false;
@@ -3533,6 +3563,8 @@ function initCanvasGestures() {
                         const finishSwap = () => {
                             if (_swapped) return; _swapped = true;
                             clearTimeout(_swapTimer);
+                            if (canvasNextEl) { canvasNextEl.style.transition = 'none'; canvasNextEl.style.transform = 'translate(0px, 0px)'; }
+                            if (canvasPrevEl) { canvasPrevEl.style.transition = 'none'; canvasPrevEl.style.transform = 'translate(0px, 0px)'; }
                             const cnPrev = document.getElementById('canvas-prev');
                             const cnCurr = document.getElementById('pdf-canvas');
                             if (cnPrev && cnPrev.width > 1 && cnCurr) {
