@@ -3245,6 +3245,7 @@ function initCanvasGestures() {
 
     // State internal gesture — semua di sini, tidak pakai variabel global yang bisa
     // terpolusi antar-gesture
+    let isAnimatingPage = false; // Gembok pelindung animasi
     let isPinching    = false;
     let pinchStartDist  = 0;
     let pinchStartScale = 1;
@@ -3292,6 +3293,7 @@ function initCanvasGestures() {
 
     // ── touchstart ──
     newVP.addEventListener('touchstart', (e) => {
+        if (isAnimatingPage) return; // Abaikan sentuhan baru jika animasi belum selesai
         // FIX BUG DRAG SELECTION: Matikan gesture aplikasi kalau ada teks yang lagi diblok
         if (window.getSelection().toString().trim().length > 0) {
             isPinching    = false;
@@ -3345,6 +3347,7 @@ function initCanvasGestures() {
 
     // ── touchmove ──
     newVP.addEventListener('touchmove', (e) => {
+        if (isAnimatingPage) return; // Abaikan sentuhan baru jika animasi belum selesai
         // FIX BUG DRAG SELECTION: Cegah halaman ikutan bergeser saat user menarik gagang seleksi
         if (window.getSelection().toString().trim().length > 0) {
             return;
@@ -3417,6 +3420,7 @@ function initCanvasGestures() {
 
     // ── touchend ──
     newVP.addEventListener('touchend', (e) => {
+        if (isAnimatingPage) return; // Abaikan sentuhan baru jika animasi belum selesai
         // Jari ke-2 terangkat → akhiri pinch, perbarui anchor pan agar tidak loncat
         if (e.touches.length === 1 && isPinching) {
             isPinching = false;
@@ -3448,6 +3452,7 @@ function initCanvasGestures() {
                 } else if (deltaX < -80) {
                     // SWIPE KIRI → halaman berikutnya
                     if (currentPdfDoc && currentCanvasPage < currentPdfDoc.numPages) {
+                        isAnimatingPage = true; // Kunci layar!
                         _setRevealDirection(-1);
                         if (pageStage) pageStage.style.transition = 'transform 0.6s cubic-bezier(0.25, 1, 0.5, 1), box-shadow 0.6s ease';
                         if (pageTurnAnimEnabled && pageStage) {
@@ -3491,6 +3496,7 @@ function initCanvasGestures() {
                                         pageStage.style.opacity = '1';
                                     });
                                 }
+                                isAnimatingPage = false; // Lepas kunci layar
                             };
                             // Halaman sudah nyaris tak kasat mata (di luar layar + shadow sudah 0 lewat
                             // kurva bell) — sembunyikan sekejap dulu (fade super cepat) sebelum reset
@@ -3513,6 +3519,7 @@ function initCanvasGestures() {
                 } else if (deltaX > 80) {
                     // SWIPE KANAN → halaman sebelumnya
                     if (currentPdfDoc && currentCanvasPage > 1) {
+                        isAnimatingPage = true; // Kunci layar!
                         _setRevealDirection(1);
                         if (pageStage) pageStage.style.transition = 'transform 0.6s cubic-bezier(0.25, 1, 0.5, 1), box-shadow 0.6s ease';
                         if (pageTurnAnimEnabled && pageStage) {
@@ -3555,6 +3562,7 @@ function initCanvasGestures() {
                                         pageStage.style.opacity = '1';
                                     });
                                 }
+                                isAnimatingPage = false; // Lepas kunci layar
                             };
                             setTimeout(finishSwap, 500);
                         };
