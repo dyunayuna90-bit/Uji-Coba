@@ -274,27 +274,9 @@
                 <div id="canvas-zoom-viewport" class="w-full h-full overflow-hidden flex items-center justify-center">
                     <!-- Wrapper: di-center oleh flex parent, transform-origin center agar zoom tidak loncat -->
                     <div id="canvas-wrapper" class="shadow-lg bg-white flex-shrink-0" style="transform-origin: center center; position: relative; overflow: visible;">
-                        <!-- canvas-prev/next: NUMPUK PAS di posisi yang sama dengan page-stage (bukan di samping!),
-                             di lapisan belakang (z-index rendah). Statis, gak pernah ikut transform.
-                             z-index ditoggle JS sesuai arah drag, biar yg kebuka pas geser itu yg benar. -->
-                        <canvas id="canvas-prev" class="block" style="position:absolute; top:0; left:0; display:block; z-index:1;"></canvas>
-                        <canvas id="canvas-next" class="block" style="position:absolute; top:0; left:0; display:block; z-index:1;"></canvas>
-                        <!-- page-stage: HANYA halaman aktif ini yang boleh ditranslate/rotateY. Selalu di atas. -->
-                        <div id="page-stage" style="position:relative; z-index:3; display:inline-block;">
-                            <!-- Lift shadow: box-shadow TETAP (didefinisikan sekali di CSS), yang berubah cuma
-                                 opacity-nya (murah/GPU-only) — bukan animasi box-shadow tiap frame (mahal/CPU repaint). -->
-                            <div id="lift-shadow" class="lift-shadow-fixed" style="position:absolute; inset:0; pointer-events:none; opacity:0; z-index:0;"></div>
-                            <canvas id="pdf-canvas" class="block" style="display:block;"></canvas>
-                            <!-- Highlight layer: kotak stabilo warna di bawah TextLayer -->
-                            <div id="canvas-highlight-layer" style="position: absolute; top: 0; left: 0; right: 0; bottom: 0; pointer-events: none; z-index: 1;"></div>
-                            <!-- TextLayer transparan PDF.js untuk text selection di Canvas Mode -->
-                            <div id="canvas-text-layer" oncontextmenu="event.preventDefault()" class="textLayer" style="position: absolute; top: 0; left: 0; right: 0; bottom: 0; overflow: hidden; pointer-events: auto; z-index: 2;"></div>
-                            <!-- Fold shadow: shading dinamis biar kesan kertas melengkung, nempel & ikut muter di page-stage -->
-                            <div id="fold-shadow" style="position:absolute; inset:0; pointer-events:none; opacity:0; z-index:3;"></div>
-                            <!-- Seam shadow: nempel di TEPI page-stage yg lagi ke-lift, ikut translate/rotate bareng
-                                 page-stage — otomatis pas nutupin garis sambungan ke halaman statis di belakangnya. -->
-                            <div id="seam-shadow" style="position:absolute; top:0; bottom:0; width:140px; pointer-events:none; opacity:0; z-index:4;"></div>
-                        </div>
+                        <div id="book-container"></div>
+                        <div id="canvas-highlight-layer" style="position: absolute; top: 0; left: 0; right: 0; bottom: 0; pointer-events: none; z-index: 10;"></div>
+                        <div id="canvas-text-layer" oncontextmenu="event.preventDefault()" class="textLayer" style="position: absolute; top: 0; left: 0; right: 0; bottom: 0; overflow: hidden; pointer-events: auto; z-index: 11;"></div>
                     </div>
                 </div>
                 
@@ -911,6 +893,7 @@
     </div>
 
     <!-- Engine & App Logic Scripts -->
+    <script src="libs/page-flip.browser.min.js"></script>
     <script src="js/reader.js"></script>
     <script src="js/app.js"></script>
 
