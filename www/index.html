@@ -356,13 +356,6 @@
 
 
 
-                    <div id="setting-group-pageturn">
-                        <label id="str-set-pageturn" class="text-xs font-bold opacity-70 block mb-3 uppercase tracking-wider">Animasi Pindah Halaman (Mode Canvas)</label>
-                        <div class="capsule-group bg-m3-surface p-1 rounded-full">
-                            <button id="pageturn-btn-off" onclick="window.setPageTurnAnim(false)" class="capsule-btn py-2 font-bold text-xs"><span id="str-pageturn-off">Nonaktif</span></button>
-                            <button id="pageturn-btn-on" onclick="window.setPageTurnAnim(true)" class="capsule-btn py-2 font-bold text-xs"><span id="str-pageturn-on">Aktif</span></button>
-                        </div>
-                    </div>
                     <div id="setting-group-theme">
                         <label id="str-set-theme" class="text-xs font-bold opacity-70 block mb-3 uppercase tracking-wider">Mode Tema</label>
                         <div class="capsule-group bg-m3-surface p-1 rounded-full">
@@ -534,6 +527,14 @@
                 <span class="font-bold text-sm tracking-wide opacity-80" id="str-expressive-label">Mode Ekspresif</span>
                 <div class="relative w-16 h-8 rounded-full transition-colors bg-gray-500/40" id="expressive-switch-bg">
                     <div id="expressive-switch-knob" class="absolute top-[2px] left-[2px] w-6 h-6 rounded-full bg-m3-onSurface transition-transform duration-300 ease-out"></div>
+                </div>
+            </div>
+
+            <div id="setting-group-pageturn" class="mb-6">
+                <label id="str-set-pageturn" class="text-xs font-bold opacity-70 block mb-3 px-1 uppercase tracking-wider">Animasi Pindah Halaman (Mode Canvas)</label>
+                <div class="capsule-group bg-m3-surfaceVariant p-1 rounded-full">
+                    <button id="pageturn-btn-off" onclick="window.setPageTurnAnim(false)" class="capsule-btn py-3 font-bold text-xs"><span id="str-pageturn-off">Nonaktif</span></button>
+                    <button id="pageturn-btn-on" onclick="window.setPageTurnAnim(true)" class="capsule-btn py-3 font-bold text-xs"><span id="str-pageturn-on">Aktif</span></button>
                 </div>
             </div>
 
