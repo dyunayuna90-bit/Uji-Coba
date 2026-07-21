@@ -3452,7 +3452,7 @@ function initCanvasGestures() {
                         if (pageStage) pageStage.style.transition = 'transform 0.3s cubic-bezier(0.2, 0, 0, 1), box-shadow 0.3s ease';
                         if (pageTurnAnimEnabled && pageStage) {
                             pageStage.style.transformOrigin = 'right center';
-                            pageStage.style.transform = `translate(-${window.innerWidth}px, 0px) perspective(1400px) rotateY(-90deg) translateZ(-100px) scale3d(0.85, 1, 1)`;
+                            pageStage.style.transform = `translate(-${window.innerWidth * 1.6}px, 0px) perspective(1400px) rotateY(-75deg) translateZ(-100px) scale3d(0.85, 1, 1)`;
                             _updateTurnShade(-1);
                         } else if (pageStage) {
                             pageStage.style.transform = `translate(-${window.innerWidth}px, 0px) scale(1)`;
@@ -3495,7 +3495,7 @@ function initCanvasGestures() {
                             // Halaman sudah nyaris tak kasat mata (di luar layar + shadow sudah 0 lewat
                             // kurva bell) — sembunyikan sekejap dulu (fade super cepat) sebelum reset
                             // transform instan, supaya "loncatan" potongan animasi tidak kelihatan mata.
-                            setTimeout(finishSwap, 250);
+                            setTimeout(finishSwap, 260);
                         };
                         if (pageStage) {
                             pageStage.addEventListener('transitionend', function _te(ev) {
@@ -3517,7 +3517,7 @@ function initCanvasGestures() {
                         if (pageStage) pageStage.style.transition = 'transform 0.3s cubic-bezier(0.2, 0, 0, 1), box-shadow 0.3s ease';
                         if (pageTurnAnimEnabled && pageStage) {
                             pageStage.style.transformOrigin = 'left center';
-                            pageStage.style.transform = `translate(${window.innerWidth}px, 0px) perspective(1400px) rotateY(90deg) translateZ(-100px) scale3d(0.85, 1, 1)`;
+                            pageStage.style.transform = `translate(${window.innerWidth * 1.6}px, 0px) perspective(1400px) rotateY(75deg) translateZ(-100px) scale3d(0.85, 1, 1)`;
                             _updateTurnShade(1);
                         } else if (pageStage) {
                             pageStage.style.transform = `translate(${window.innerWidth}px, 0px) scale(1)`;
@@ -3556,7 +3556,7 @@ function initCanvasGestures() {
                                     });
                                 }
                             };
-                            setTimeout(finishSwap, 250);
+                            setTimeout(finishSwap, 260);
                         };
                         if (pageStage) {
                             pageStage.addEventListener('transitionend', function _te(ev) {
