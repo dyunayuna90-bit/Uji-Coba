@@ -897,6 +897,7 @@ function applyLanguage() {
     setElementText('str-opt-delete', d.optDelete); setElementText('str-opt-cancel', d.optCancel);
     
     setElementText('str-pinned-books', d.pinnedBooks);
+    setElementText('str-pinned-books-canvas', d.pinnedBooks);
     setElementText('str-nav-bookmark', d.navBookmark);
     if (document.getElementById('str-bookmark-title')) { document.getElementById('str-bookmark-title').innerHTML = `<i data-lucide="bookmark"></i> ${d.bookmarkTitle}`; }
     setElementText('str-bookmark-empty', d.bookmarkEmpty);
@@ -1690,12 +1691,14 @@ function renderLibrary(filterText = "") {
     
     const pinnedGrid = document.getElementById('pinned-book-grid');
     if(pinnedGrid) pinnedGrid.innerHTML = '';
+    const pinnedGridCanvas = document.getElementById('pinned-book-grid-canvas');
+    if(pinnedGridCanvas) pinnedGridCanvas.innerHTML = '';
 
     // Terapkan class kontainer sesuai mode Grid / List
     const isListMode = layoutMode === 'list';
     const gridClass = 'grid grid-cols-2 gap-4 w-full';
     const listClass = 'flex flex-col gap-4 w-full';
-    [DOM.scrollGrid, DOM.canvasGrid, pinnedGrid].forEach(el => {
+    [DOM.scrollGrid, DOM.canvasGrid, pinnedGrid, pinnedGridCanvas].forEach(el => {
         if (!el) return;
         el.className = isListMode ? listClass : gridClass;
     });
@@ -1710,6 +1713,11 @@ function renderLibrary(filterText = "") {
     
     const pinnedBooks = filteredLib.filter(b => b.isPinned);
     const regularBooks = filteredLib.filter(b => !b.isPinned);
+
+    // Pinned books juga dipisah per rak: pin di mode Scroll cuma nongol di tab Scroll,
+    // pin di mode Canvas cuma nongol di tab Canvas — gak lagi digabung jadi satu.
+    const pinnedScrollBooks = pinnedBooks.filter(b => b.pdfMode !== 'canvas');
+    const pinnedCanvasBooks = pinnedBooks.filter(b => b.pdfMode === 'canvas');
 
     // Pilah Regular Books menjadi 2 Rak: Scroll Mode & Canvas Mode
     const scrollBooks = regularBooks.filter(b => b.pdfMode !== 'canvas');
@@ -1734,11 +1742,19 @@ function renderLibrary(filterText = "") {
     } else if (DOM.canvasTopSection) { DOM.canvasTopSection.classList.add('hidden'); }
     
     const pinnedSection = document.getElementById('pinned-books-section');
-    if (pinnedBooks.length > 0) {
+    if (pinnedScrollBooks.length > 0) {
         if(pinnedSection) pinnedSection.classList.remove('hidden');
-        pinnedBooks.forEach((book, idx) => { if(pinnedGrid) pinnedGrid.appendChild(makeCard(book, idx)); });
+        pinnedScrollBooks.forEach((book, idx) => { if(pinnedGrid) pinnedGrid.appendChild(makeCard(book, idx)); });
     } else {
         if(pinnedSection) pinnedSection.classList.add('hidden');
+    }
+
+    const pinnedSectionCanvas = document.getElementById('pinned-books-section-canvas');
+    if (pinnedCanvasBooks.length > 0) {
+        if(pinnedSectionCanvas) pinnedSectionCanvas.classList.remove('hidden');
+        pinnedCanvasBooks.forEach((book, idx) => { if(pinnedGridCanvas) pinnedGridCanvas.appendChild(makeCard(book, idx + 200)); });
+    } else {
+        if(pinnedSectionCanvas) pinnedSectionCanvas.classList.add('hidden');
     }
 
     if (scrollBooks.length === 0) {
@@ -3184,6 +3200,12 @@ function initCanvasGestures() {
     const seamShadow = document.getElementById('seam-shadow');
     const canvasNextEl = document.getElementById('canvas-next');
     const canvasPrevEl = document.getElementById('canvas-prev');
+    const liftShadow   = document.getElementById('lift-shadow');
+    // Cache arah terakhir biar background gradient & transform-origin cuma ditulis ULANG
+    // pas arah drag beneran berubah — bukan tiap event touchmove (yang bisa nembak puluhan kali/detik).
+    // Nulis style.background / style.transformOrigin itu trigger repaint, jadi mahal kalau diulang tiap frame.
+    let _shadeDir  = 0;
+    let _originDir = 0;
 
     // z-index toggle: pastikan halaman statis yang SEDANG dibuka (sesuai arah drag)
     // ada DI ATAS halaman statis satunya, karena sekarang keduanya numpuk di posisi yang sama.
@@ -3195,39 +3217,34 @@ function initCanvasGestures() {
 
     // Update shading dinamis: fold-shadow (di atas halaman yg ditarik, biar kesan lengkung)
     // + seam-shadow (jatuh di halaman statis di baliknya, biar kesan halaman aktif "terangkat")
+    // + lift-shadow (box-shadow TETAP, cuma opacity-nya yang jalan).
+    // PENTING soal performa: gradient background (foldShadow/seamShadow) CUMA di-set ulang saat
+    // arah drag beneran ganti (lihat _shadeDir), bukan tiap frame — karena assign `style.background`
+    // itu memicu repaint. Yang boleh jalan tiap frame cuma `opacity` (murah, GPU-only).
     function _updateTurnShade(progress) {
         if (!foldShadow || !seamShadow) return;
         const absP = Math.min(1, Math.abs(progress));
         // Kurva "bell": shadow membesar di pertengahan drag, lalu MENGECIL LAGI saat halaman
-        // sudah hampir edge-on (menghadap sisi/atas). Ini meniru kertas fisik yang bayangannya
-        // makin tipis begitu nyaris tak terlihat dari depan, dan yang lebih penting: dengan ini
-        // shadow sudah otomatis mendekati 0 SEBELUM animasi commit selesai, jadi tidak ada lagi
-        // efek "kedip/pop" saat halaman di-swap instan di akhir animasi.
+        // sudah hampir edge-on (menghadap sisi/atas), meniru kertas fisik.
         const bell = Math.sin(absP * Math.PI); // 0 di awal → puncak di tengah → 0 lagi di akhir
-        const shadeP = bell * 0.8;
+        const shadeP = bell * 0.85;
         foldShadow.style.opacity = shadeP.toFixed(2);
         seamShadow.style.opacity = (shadeP * 0.9).toFixed(2);
-        // Box-shadow dinamis di pageStage: kesan kertas terangkat dari permukaan (depth cue),
-        // ikut kurva bell yang sama supaya menghilang mulus, bukan dipotong tiba-tiba
-        if (pageStage) {
-            pageStage.style.boxShadow = `0 ${6 + bell * 16}px ${16 + bell * 28}px rgba(0,0,0,${(0.12 + bell * 0.18).toFixed(2)})`;
-            const curveStr = (bell * 28).toFixed(1) + '%';
-            if (progress < 0) {
-                pageStage.style.borderRadius = `0 ${curveStr} ${curveStr} 0`;
-            } else if (progress > 0) {
-                pageStage.style.borderRadius = `${curveStr} 0 0 ${curveStr}`;
-            } else {
-                pageStage.style.borderRadius = '0px';
-            }
-        }
-        if (progress < 0) {
+        if (liftShadow) liftShadow.style.opacity = (bell * 0.95).toFixed(2);
+
+        const dir = progress < 0 ? -1 : (progress > 0 ? 1 : 0);
+        if (dir === 0 || dir === _shadeDir) return; // arah belum ganti, gak usah nulis ulang gradient
+        _shadeDir = dir;
+        if (dir < 0) {
             // ditarik ke kiri → pivot kanan, seam nempel di canvas-next (kanan)
-            foldShadow.style.background = 'radial-gradient(ellipse at right, rgba(0,0,0,0.5) 0%, rgba(255,255,255,0.1) 45%, transparent 80%)';
+            // Gradasi digabung: gelap tipis di seam, lalu strip TERANG (specular highlight,
+            // simulasi kertas melengkung kena cahaya), baru meredup ke shadow lalu transparan.
+            foldShadow.style.background = 'linear-gradient(to left, rgba(0,0,0,0.55) 0%, rgba(255,255,255,0.28) 7%, rgba(0,0,0,0.2) 22%, transparent 58%)';
             seamShadow.style.left = '100%'; seamShadow.style.right = 'auto';
             seamShadow.style.background = 'linear-gradient(to right, rgba(0,0,0,.45) 0%, rgba(0,0,0,.15) 25%, transparent 100%)';
-        } else if (progress > 0) {
+        } else {
             // ditarik ke kanan → pivot kiri, seam nempel di canvas-prev (kiri)
-            foldShadow.style.background = 'radial-gradient(ellipse at left, rgba(0,0,0,0.5) 0%, rgba(255,255,255,0.1) 45%, transparent 80%)';
+            foldShadow.style.background = 'linear-gradient(to right, rgba(0,0,0,0.55) 0%, rgba(255,255,255,0.28) 7%, rgba(0,0,0,0.2) 22%, transparent 58%)';
             seamShadow.style.right = '100%'; seamShadow.style.left = 'auto';
             seamShadow.style.background = 'linear-gradient(to left, rgba(0,0,0,.45) 0%, rgba(0,0,0,.15) 25%, transparent 100%)';
         }
@@ -3235,10 +3252,9 @@ function initCanvasGestures() {
     function _resetTurnShade() {
         if (foldShadow) foldShadow.style.opacity = 0;
         if (seamShadow) seamShadow.style.opacity = 0;
-        if (pageStage) {
-            pageStage.style.boxShadow = 'none';
-            pageStage.style.borderRadius = '0px';
-        }
+        if (liftShadow) liftShadow.style.opacity = 0;
+        _shadeDir  = 0;
+        _originDir = 0;
     }
 
     wrapper.style.transformOrigin = 'center center';
@@ -3393,12 +3409,13 @@ function initCanvasGestures() {
                 // HANYA pageStage yang gerak — canvas-prev/next diam total di belakang.
                 const progress = Math.max(-1, Math.min(1, deltaX / window.innerWidth));
                 const rotateY  = -progress * 85; // derajat maksimum (lebih besar = lebih 3D)
-                const liftZ    = -Math.abs(progress) * 80; // "terangkat" menjauh sedikit
+                const liftZ    = -Math.abs(progress) * 90; // "terangkat" menjauh sedikit
                 // PENTING: tinggi kertas TIDAK boleh ikut menyusut — hanya scaleX (lebar) yang
                 // sedikit mengecil untuk mempertegas kesan lengkung 3D, scaleY tetap 1 (tinggi asli).
                 const scaleXTo = 1 - Math.abs(progress) * 0.15;
-                pageStage.style.transformOrigin = deltaX < 0 ? 'right center' : 'left center';
-                pageStage.style.transform = `translate(${deltaX}px, 0px) perspective(1400px) rotateY(${rotateY}deg) translateZ(${liftZ}px) scale3d(${scaleXTo}, 1, 1)`;
+                const dir = deltaX < 0 ? -1 : 1;
+                if (dir !== _originDir) { _originDir = dir; pageStage.style.transformOrigin = dir < 0 ? 'right center' : 'left center'; }
+                pageStage.style.transform = `translate(${deltaX}px, 0px) perspective(900px) rotateY(${rotateY}deg) translateZ(${liftZ}px) scale3d(${scaleXTo}, 1, 1)`;
                 _updateTurnShade(progress);
             } else if (pageStage) {
                 pageStage.style.transform = `translate(${deltaX}px, 0px) scale(1)`;
@@ -3475,10 +3492,10 @@ function initCanvasGestures() {
                     if (currentPdfDoc && currentCanvasPage < currentPdfDoc.numPages) {
                         isAnimatingPage = true;
                         _setRevealDirection(-1);
-                        if (pageStage) pageStage.style.transition = 'transform 0.6s cubic-bezier(0.25, 1, 0.5, 1), box-shadow 0.6s ease';
+                        if (pageStage) pageStage.style.transition = 'transform 0.6s cubic-bezier(0.25, 1, 0.5, 1)';
                         if (pageTurnAnimEnabled && pageStage) {
                             pageStage.style.transformOrigin = 'right center';
-                            pageStage.style.transform = `translate(-${window.innerWidth * 1.6}px, 0px) perspective(1400px) rotateY(-75deg) translateZ(-100px) scale3d(0.85, 1, 1)`;
+                            pageStage.style.transform = `translate(-${window.innerWidth * 1.6}px, 0px) perspective(900px) rotateY(-75deg) translateZ(-100px) scale3d(0.85, 1, 1)`;
                             _updateTurnShade(-1);
                         } else if (pageStage) {
                             pageStage.style.transform = `translate(-${window.innerWidth}px, 0px) scale(1)`;
@@ -3545,10 +3562,10 @@ function initCanvasGestures() {
                     if (currentPdfDoc && currentCanvasPage > 1) {
                         isAnimatingPage = true;
                         _setRevealDirection(1);
-                        if (pageStage) pageStage.style.transition = 'transform 0.6s cubic-bezier(0.25, 1, 0.5, 1), box-shadow 0.6s ease';
+                        if (pageStage) pageStage.style.transition = 'transform 0.6s cubic-bezier(0.25, 1, 0.5, 1)';
                         if (pageTurnAnimEnabled && pageStage) {
                             pageStage.style.transformOrigin = 'left center';
-                            pageStage.style.transform = `translate(${window.innerWidth * 1.6}px, 0px) perspective(1400px) rotateY(75deg) translateZ(-100px) scale3d(0.85, 1, 1)`;
+                            pageStage.style.transform = `translate(${window.innerWidth * 1.6}px, 0px) perspective(900px) rotateY(75deg) translateZ(-100px) scale3d(0.85, 1, 1)`;
                             _updateTurnShade(1);
                         } else if (pageStage) {
                             pageStage.style.transform = `translate(${window.innerWidth}px, 0px) scale(1)`;
