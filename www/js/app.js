@@ -3449,7 +3449,7 @@ function initCanvasGestures() {
                     // SWIPE KIRI → halaman berikutnya
                     if (currentPdfDoc && currentCanvasPage < currentPdfDoc.numPages) {
                         _setRevealDirection(-1);
-                        if (pageStage) pageStage.style.transition = 'transform 0.3s cubic-bezier(0.2, 0, 0, 1), box-shadow 0.3s ease';
+                        if (pageStage) pageStage.style.transition = 'transform 0.6s cubic-bezier(0.25, 1, 0.5, 1), box-shadow 0.6s ease';
                         if (pageTurnAnimEnabled && pageStage) {
                             pageStage.style.transformOrigin = 'right center';
                             pageStage.style.transform = `translate(-${window.innerWidth * 1.6}px, 0px) perspective(1400px) rotateY(-75deg) translateZ(-100px) scale3d(0.85, 1, 1)`;
@@ -3495,7 +3495,7 @@ function initCanvasGestures() {
                             // Halaman sudah nyaris tak kasat mata (di luar layar + shadow sudah 0 lewat
                             // kurva bell) — sembunyikan sekejap dulu (fade super cepat) sebelum reset
                             // transform instan, supaya "loncatan" potongan animasi tidak kelihatan mata.
-                            setTimeout(finishSwap, 260);
+                            setTimeout(finishSwap, 500);
                         };
                         if (pageStage) {
                             pageStage.addEventListener('transitionend', function _te(ev) {
@@ -3504,7 +3504,7 @@ function initCanvasGestures() {
                                 _doSwap();
                             });
                         }
-                        setTimeout(_doSwap, 340); // fallback jika transitionend tidak fire
+                        setTimeout(_doSwap, 650); // fallback jika transitionend tidak fire
                     } else {
                         _snapSliderToCenter();
                     }
@@ -3514,7 +3514,7 @@ function initCanvasGestures() {
                     // SWIPE KANAN → halaman sebelumnya
                     if (currentPdfDoc && currentCanvasPage > 1) {
                         _setRevealDirection(1);
-                        if (pageStage) pageStage.style.transition = 'transform 0.3s cubic-bezier(0.2, 0, 0, 1), box-shadow 0.3s ease';
+                        if (pageStage) pageStage.style.transition = 'transform 0.6s cubic-bezier(0.25, 1, 0.5, 1), box-shadow 0.6s ease';
                         if (pageTurnAnimEnabled && pageStage) {
                             pageStage.style.transformOrigin = 'left center';
                             pageStage.style.transform = `translate(${window.innerWidth * 1.6}px, 0px) perspective(1400px) rotateY(75deg) translateZ(-100px) scale3d(0.85, 1, 1)`;
@@ -3556,7 +3556,7 @@ function initCanvasGestures() {
                                     });
                                 }
                             };
-                            setTimeout(finishSwap, 260);
+                            setTimeout(finishSwap, 500);
                         };
                         if (pageStage) {
                             pageStage.addEventListener('transitionend', function _te(ev) {
@@ -3565,7 +3565,7 @@ function initCanvasGestures() {
                                 _doSwap();
                             });
                         }
-                        setTimeout(_doSwap, 340); // fallback jika transitionend tidak fire
+                        setTimeout(_doSwap, 650); // fallback jika transitionend tidak fire
                     } else {
                         _snapSliderToCenter();
                     }
