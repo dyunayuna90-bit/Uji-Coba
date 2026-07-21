@@ -3226,142 +3226,6 @@ function initCanvasGestures() {
         if (pageStage)  pageStage.style.boxShadow = 'none';
     }
 
-    // ══════════════════════════════════════════════════════════════════
-    // CURL-STRIP SYSTEM: memecah halaman jadi beberapa segmen vertikal
-    // yang disambung berantai (nested chain), masing-masing diputar
-    // dikit demi dikit — jadi hasil akhirnya BENERAN melengkung (bukan
-    // satu bidang datar yang diputar rigid). Shadow juga dihitung PER
-    // SEGMEN mengikuti sudut lekukannya sendiri, jadi otomatis ngepas
-    // sama bentuk lengkung (gak ada celah lurus yang gak ketutup).
-    // ══════════════════════════════════════════════════════════════════
-    const CURL_STRIPS = 7;
-    let curlLayer     = null;
-    let curlStrips    = []; // { el, shadeEl, weight }
-    let curlBuilt     = false;
-    let curlPivotSide = null;
-    let curlW = 0, curlH = 0;
-
-    function _destroyCurl() {
-        if (curlLayer && curlLayer.parentNode) curlLayer.parentNode.removeChild(curlLayer);
-        curlLayer = null; curlStrips = []; curlBuilt = false; curlPivotSide = null;
-    }
-
-    // Bangun rantai segmen untuk sisi pivot tertentu ('left' / 'right').
-    // Dipanggil sekali di awal setiap gesture (atau saat arah drag berbalik).
-    function _buildCurlStrips(pivotSide) {
-        const srcCanvas = document.getElementById('pdf-canvas');
-        if (!pageStage || !srcCanvas || srcCanvas.width < 2) return false;
-        curlW = srcCanvas.clientWidth  || srcCanvas.width;
-        curlH = srcCanvas.clientHeight || srcCanvas.height;
-        if (curlW < 2 || curlH < 2) return false;
-
-        let dataUrl;
-        try { dataUrl = srcCanvas.toDataURL('image/png'); }
-        catch (err) { return false; } // fallback ke mode rotate datar lama kalau gagal
-
-        _destroyCurl();
-        curlLayer = document.createElement('div');
-        curlLayer.id = 'curl-strips-layer';
-        curlLayer.style.cssText = `position:absolute; top:0; ${pivotSide === 'left' ? 'left:0;' : 'right:0;'} width:${curlW}px; height:${curlH}px; pointer-events:none; z-index:5; transform-style:preserve-3d;`;
-
-        const stripW = curlW / CURL_STRIPS;
-        const originCss = pivotSide === 'left' ? 'left center' : 'right center';
-        let parentEl = curlLayer;
-
-        for (let i = 0; i < CURL_STRIPS; i++) {
-            // Slice ke berapa dari gambar asli yang ditampilkan potongan ini
-            const realIndex = pivotSide === 'left' ? i : (CURL_STRIPS - 1 - i);
-            const strip = document.createElement('div');
-            const attach = (i === 0)
-                ? (pivotSide === 'left' ? 'left:0;' : 'right:0;')
-                : (pivotSide === 'left' ? 'left:100%;' : 'right:100%;');
-            strip.style.cssText = `position:absolute; top:0; ${attach} width:${stripW}px; height:${curlH}px;
-                background-image:url(${dataUrl}); background-repeat:no-repeat;
-                background-size:${curlW}px ${curlH}px; background-position:-${(realIndex * stripW).toFixed(2)}px 0;
-                transform-origin:${originCss}; transform-style:preserve-3d; backface-visibility:hidden;
-                will-change:transform;`;
-            const shadeEl = document.createElement('div');
-            shadeEl.style.cssText = 'position:absolute; inset:0; background:#000; opacity:0; pointer-events:none;';
-            strip.appendChild(shadeEl);
-            parentEl.appendChild(strip);
-            curlStrips.push({ el: strip, shadeEl, weight: i + 1 });
-            parentEl = strip; // segmen berikutnya jadi anak dari segmen ini (rantai)
-        }
-
-        pageStage.appendChild(curlLayer);
-        curlBuilt = true;
-        curlPivotSide = pivotSide;
-        return true;
-    }
-
-    // Sembunyikan kanvas/textlayer asli, tampilkan lapisan curl-strip
-    function _showCurl() {
-        const srcCanvas      = document.getElementById('pdf-canvas');
-        const textLayer      = document.getElementById('canvas-text-layer');
-        const highlightLayer = document.getElementById('canvas-highlight-layer');
-        if (srcCanvas)      srcCanvas.style.visibility = 'hidden';
-        if (textLayer)      textLayer.style.visibility = 'hidden';
-        if (highlightLayer) highlightLayer.style.visibility = 'hidden';
-        if (foldShadow) foldShadow.style.opacity = 0; // diganti shading per-segmen
-        if (seamShadow) seamShadow.style.opacity = 0;
-    }
-
-    function _hideCurl() {
-        const srcCanvas      = document.getElementById('pdf-canvas');
-        const textLayer      = document.getElementById('canvas-text-layer');
-        const highlightLayer = document.getElementById('canvas-highlight-layer');
-        if (srcCanvas)      srcCanvas.style.visibility = '';
-        if (textLayer)      textLayer.style.visibility = '';
-        if (highlightLayer) highlightLayer.style.visibility = '';
-        _destroyCurl();
-    }
-
-    // Terapkan lekukan ke seluruh rantai segmen berdasarkan progress drag (0..1, arah sudah
-    // ditentukan lewat pivotSide saat _buildCurlStrips). maxArcDeg = total sudut lengkung
-    // kumulatif di ujung bebas halaman.
-    function _applyCurl(absP, maxArcDeg, withTransition) {
-        if (!curlBuilt || !curlStrips.length) return;
-        const dirSign   = curlPivotSide === 'left' ? 1 : -1;
-        const sumWeight = curlStrips.reduce((a, s) => a + s.weight, 0);
-        let cumulative  = 0;
-        curlStrips.forEach((s) => {
-            const increment = maxArcDeg * (s.weight / sumWeight);
-            cumulative += increment;
-            if (withTransition) {
-                s.el.style.transition = 'transform 0.32s cubic-bezier(0.2, 0, 0, 1)';
-                s.shadeEl.style.transition = 'opacity 0.32s ease';
-            } else {
-                s.el.style.transition = 'none';
-                s.shadeEl.style.transition = 'none';
-            }
-            s.el.style.transform = `rotateY(${(dirSign * increment).toFixed(2)}deg)`;
-            // Shading per-segmen: makin dalam ke ujung bebas (cumulative makin besar), makin gelap —
-            // otomatis mengikuti kelengkungan asli, gak ada garis lurus yang meleset dari bentuk halaman.
-            const shadeOpacity = Math.min(0.5, (cumulative / 95) * 0.5);
-            s.shadeEl.style.opacity = shadeOpacity.toFixed(2);
-        });
-    }
-
-    // Shadow "terangkat dari permukaan" + seam di pivot — dipakai bareng curl-strip
-    // (fold-shadow lama dimatikan karena shading kelengkungan kini ditangani per-segmen).
-    function _updateLiftShadow(progress) {
-        const absP = Math.min(1, Math.abs(progress));
-        const bell = Math.sin(absP * Math.PI); // naik di tengah, turun lagi mendekati akhir
-        if (pageStage) {
-            pageStage.style.boxShadow = `0 ${4 + bell * 10}px ${10 + bell * 20}px rgba(0,0,0,${(0.08 + bell * 0.12).toFixed(2)})`;
-        }
-        if (!seamShadow) return;
-        const seamOpacity = bell * 0.5;
-        seamShadow.style.opacity = seamOpacity.toFixed(2);
-        if (progress < 0) {
-            seamShadow.style.left = '100%'; seamShadow.style.right = 'auto';
-            seamShadow.style.background = 'linear-gradient(to right, rgba(0,0,0,.30) 0%, rgba(0,0,0,.12) 45%, transparent 100%)';
-        } else if (progress > 0) {
-            seamShadow.style.right = '100%'; seamShadow.style.left = 'auto';
-            seamShadow.style.background = 'linear-gradient(to left, rgba(0,0,0,.30) 0%, rgba(0,0,0,.12) 45%, transparent 100%)';
-        }
-    }
-
     wrapper.style.transformOrigin = 'center center';
     wrapper.style.willChange      = 'transform';
     wrapper.style.transition      = 'none';
@@ -3458,11 +3322,6 @@ function initCanvasGestures() {
                 // Pastikan tidak ada transisi saat dragging
                 wrapper.style.transition = 'none';
                 isPanning = false;
-                // Jaga-jaga kalau gesture sebelumnya sempat ke-interrupt di tengah animasi
-                if (pageStage) pageStage.style.transition = 'none';
-                // Bersihkan sisa curl-strip gesture sebelumnya (kalau ada) — akan dibangun ulang
-                // begitu arah drag pertama kali diketahui (di touchmove pertama).
-                if (curlBuilt) { _hideCurl(); }
             } else {
                 // Mode pan konten (sudah zoom)
                 isSwipingPage = false;
@@ -3510,31 +3369,17 @@ function initCanvasGestures() {
             const deltaX = e.touches[0].clientX - swipeStartX;
             _setRevealDirection(deltaX);
             if (pageTurnAnimEnabled && pageStage) {
-                const progress   = Math.max(-1, Math.min(1, deltaX / window.innerWidth));
-                const absP       = Math.abs(progress);
-                const pivotSide  = deltaX < 0 ? 'right' : 'left';
-
-                // Bangun rantai curl-strip begitu arah sudah diketahui (atau arah berbalik di tengah drag)
-                if (Math.abs(deltaX) > 3 && (!curlBuilt || curlPivotSide !== pivotSide)) {
-                    if (_buildCurlStrips(pivotSide)) _showCurl();
-                }
-
-                if (curlBuilt && curlPivotSide === pivotSide) {
-                    // Halaman cuma digeser lurus horizontal — SEMUA lekukan 3D dikerjakan oleh
-                    // rantai curl-strip (lihat _applyCurl), bukan rotateY satu bidang datar lagi.
-                    pageStage.style.transformOrigin = 'center center';
-                    pageStage.style.transform = `translate(${deltaX}px, 0px)`;
-                    _applyCurl(absP, absP * 70, false);
-                    _updateLiftShadow(progress);
-                } else {
-                    // Fallback: curl gagal dibangun (mis. canvas tainted) — pakai rotate datar lama
-                    const rotateY  = -progress * 34;
-                    const liftZ    = -absP * 50;
-                    const scaleXTo = 1 - absP * 0.06;
-                    pageStage.style.transformOrigin = deltaX < 0 ? 'right center' : 'left center';
-                    pageStage.style.transform = `translate(${deltaX}px, 0px) perspective(1000px) rotateY(${rotateY}deg) translateZ(${liftZ}px) scale3d(${scaleXTo}, 1, 1)`;
-                    _updateTurnShade(progress);
-                }
+                // Tilt 3D ala Play Books: makin jauh drag, makin miring & sedikit mengecil.
+                // HANYA pageStage yang gerak — canvas-prev/next diam total di belakang.
+                const progress = Math.max(-1, Math.min(1, deltaX / window.innerWidth));
+                const rotateY  = -progress * 34; // derajat maksimum (lebih besar = lebih 3D)
+                const liftZ    = -Math.abs(progress) * 50; // "terangkat" menjauh sedikit
+                // PENTING: tinggi kertas TIDAK boleh ikut menyusut — hanya scaleX (lebar) yang
+                // sedikit mengecil untuk mempertegas kesan lengkung 3D, scaleY tetap 1 (tinggi asli).
+                const scaleXTo = 1 - Math.abs(progress) * 0.06;
+                pageStage.style.transformOrigin = deltaX < 0 ? 'right center' : 'left center';
+                pageStage.style.transform = `translate(${deltaX}px, 0px) perspective(1000px) rotateY(${rotateY}deg) translateZ(${liftZ}px) scale3d(${scaleXTo}, 1, 1)`;
+                _updateTurnShade(progress);
             } else if (pageStage) {
                 pageStage.style.transform = `translate(${deltaX}px, 0px) scale(1)`;
             }
@@ -3555,15 +3400,7 @@ function initCanvasGestures() {
         if (!pageStage) return;
         pageStage.style.transition = 'transform 0.28s cubic-bezier(0.2, 0, 0, 1), box-shadow 0.28s ease';
         pageStage.style.transform  = 'translate(0px, 0px) scale(1)';
-        if (curlBuilt) {
-            // Luruskan lagi rantai curl-strip ke posisi rata sebelum disembunyikan,
-            // supaya balik ke tengah juga mulus (bukan cuma pageStage-nya doang).
-            _applyCurl(0, 0, true);
-            _updateLiftShadow(0);
-            setTimeout(() => { _hideCurl(); }, 300);
-        } else {
-            _resetTurnShade();
-        }
+        _resetTurnShade();
         setTimeout(() => { pageStage.style.transition = 'none'; pageStage.style.transformOrigin = 'center center'; }, 300);
     }
 
@@ -3601,23 +3438,10 @@ function initCanvasGestures() {
                     // SWIPE KIRI → halaman berikutnya
                     if (currentPdfDoc && currentCanvasPage < currentPdfDoc.numPages) {
                         _setRevealDirection(-1);
-                        if (!curlBuilt || curlPivotSide !== 'right') { if (_buildCurlStrips('right')) _showCurl(); }
-                        const useCurl = curlBuilt && curlPivotSide === 'right';
-
-                        if (pageStage) pageStage.style.transition = 'transform 0.32s cubic-bezier(0.2, 0, 0, 1), box-shadow 0.32s ease';
-                        if (pageTurnAnimEnabled && useCurl) {
-                            pageStage.style.transformOrigin = 'center center';
-                            pageStage.style.transform = `translate(-${window.innerWidth}px, 0px)`;
-                            // Lanjutkan arah lekukan yang SAMA seperti saat drag (bukan dibalik), makin
-                            // dalam sedikit sebagai "flourish" penutup — inilah yang bikin gak ada lagi
-                            // efek sentak/snap di detik-detik akhir.
-                            _applyCurl(1, 100, true);
-                            _updateLiftShadow(-1);
-                        } else if (pageTurnAnimEnabled && pageStage) {
-                            // Fallback rotate datar — arah rotasi diteruskan sama seperti saat drag
-                            // (dulu ada bug arahnya kebalik pas commit, itu penyebab "ngadet"-nya)
+                        if (pageStage) pageStage.style.transition = 'transform 0.3s cubic-bezier(0.2, 0, 0, 1), box-shadow 0.3s ease';
+                        if (pageTurnAnimEnabled && pageStage) {
                             pageStage.style.transformOrigin = 'right center';
-                            pageStage.style.transform = `translate(-${window.innerWidth}px, 0px) perspective(1000px) rotateY(65deg) translateZ(-60px) scale3d(0.94, 1, 1)`;
+                            pageStage.style.transform = `translate(-${window.innerWidth}px, 0px) perspective(1000px) rotateY(-40deg) translateZ(-60px) scale3d(0.94, 1, 1)`;
                             _updateTurnShade(-1);
                         } else if (pageStage) {
                             pageStage.style.transform = `translate(-${window.innerWidth}px, 0px) scale(1)`;
@@ -3639,7 +3463,6 @@ function initCanvasGestures() {
                                     ctxCurr.drawImage(cnNext, 0, 0);
                                     _canvasAlreadyCopied = true;
                                 }
-                                _hideCurl();
                                 if (pageStage) {
                                     pageStage.style.transition = 'none';
                                     pageStage.style.transform  = 'translate(0px, 0px) scale(1)';
@@ -3676,7 +3499,7 @@ function initCanvasGestures() {
                                 _doSwap();
                             });
                         }
-                        setTimeout(_doSwap, 380); // fallback jika transitionend tidak fire
+                        setTimeout(_doSwap, 340); // fallback jika transitionend tidak fire
                     } else {
                         _snapSliderToCenter();
                     }
@@ -3686,18 +3509,10 @@ function initCanvasGestures() {
                     // SWIPE KANAN → halaman sebelumnya
                     if (currentPdfDoc && currentCanvasPage > 1) {
                         _setRevealDirection(1);
-                        if (!curlBuilt || curlPivotSide !== 'left') { if (_buildCurlStrips('left')) _showCurl(); }
-                        const useCurl = curlBuilt && curlPivotSide === 'left';
-
-                        if (pageStage) pageStage.style.transition = 'transform 0.32s cubic-bezier(0.2, 0, 0, 1), box-shadow 0.32s ease';
-                        if (pageTurnAnimEnabled && useCurl) {
-                            pageStage.style.transformOrigin = 'center center';
-                            pageStage.style.transform = `translate(${window.innerWidth}px, 0px)`;
-                            _applyCurl(1, 100, true);
-                            _updateLiftShadow(1);
-                        } else if (pageTurnAnimEnabled && pageStage) {
+                        if (pageStage) pageStage.style.transition = 'transform 0.3s cubic-bezier(0.2, 0, 0, 1), box-shadow 0.3s ease';
+                        if (pageTurnAnimEnabled && pageStage) {
                             pageStage.style.transformOrigin = 'left center';
-                            pageStage.style.transform = `translate(${window.innerWidth}px, 0px) perspective(1000px) rotateY(-65deg) translateZ(-60px) scale3d(0.94, 1, 1)`;
+                            pageStage.style.transform = `translate(${window.innerWidth}px, 0px) perspective(1000px) rotateY(40deg) translateZ(-60px) scale3d(0.94, 1, 1)`;
                             _updateTurnShade(1);
                         } else if (pageStage) {
                             pageStage.style.transform = `translate(${window.innerWidth}px, 0px) scale(1)`;
@@ -3719,7 +3534,6 @@ function initCanvasGestures() {
                                     ctxCurr.drawImage(cnPrev, 0, 0);
                                     _canvasAlreadyCopied = true;
                                 }
-                                _hideCurl();
                                 if (pageStage) {
                                     pageStage.style.transition = 'none';
                                     pageStage.style.transform  = 'translate(0px, 0px) scale(1)';
@@ -3752,7 +3566,7 @@ function initCanvasGestures() {
                                 _doSwap();
                             });
                         }
-                        setTimeout(_doSwap, 380); // fallback jika transitionend tidak fire
+                        setTimeout(_doSwap, 340); // fallback jika transitionend tidak fire
                     } else {
                         _snapSliderToCenter();
                     }
