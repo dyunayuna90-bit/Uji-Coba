@@ -3200,30 +3200,41 @@ function initCanvasGestures() {
         // shadow sudah otomatis mendekati 0 SEBELUM animasi commit selesai, jadi tidak ada lagi
         // efek "kedip/pop" saat halaman di-swap instan di akhir animasi.
         const bell = Math.sin(absP * Math.PI); // 0 di awal → puncak di tengah → 0 lagi di akhir
-        const shadeP = bell * 0.65;
+        const shadeP = bell * 0.8;
         foldShadow.style.opacity = shadeP.toFixed(2);
-        seamShadow.style.opacity = shadeP.toFixed(2);
+        seamShadow.style.opacity = (shadeP * 0.9).toFixed(2);
         // Box-shadow dinamis di pageStage: kesan kertas terangkat dari permukaan (depth cue),
         // ikut kurva bell yang sama supaya menghilang mulus, bukan dipotong tiba-tiba
         if (pageStage) {
-            pageStage.style.boxShadow = `0 ${4 + bell * 10}px ${10 + bell * 20}px rgba(0,0,0,${(0.08 + bell * 0.12).toFixed(2)})`;
+            pageStage.style.boxShadow = `0 ${6 + bell * 16}px ${16 + bell * 28}px rgba(0,0,0,${(0.12 + bell * 0.18).toFixed(2)})`;
+            const curveStr = (bell * 28).toFixed(1) + '%';
+            if (progress < 0) {
+                pageStage.style.borderRadius = `0 ${curveStr} ${curveStr} 0`;
+            } else if (progress > 0) {
+                pageStage.style.borderRadius = `${curveStr} 0 0 ${curveStr}`;
+            } else {
+                pageStage.style.borderRadius = '0px';
+            }
         }
         if (progress < 0) {
             // ditarik ke kiri → pivot kanan, seam nempel di canvas-next (kanan)
-            foldShadow.style.background = 'linear-gradient(to right, transparent 0%, rgba(255,255,255,.22) 10%, rgba(0,0,0,.04) 24%, rgba(0,0,0,.32) 100%)';
+            foldShadow.style.background = 'radial-gradient(ellipse at right, rgba(0,0,0,0.5) 0%, rgba(255,255,255,0.1) 45%, transparent 80%)';
             seamShadow.style.left = '100%'; seamShadow.style.right = 'auto';
-            seamShadow.style.background = 'linear-gradient(to right, rgba(0,0,0,.30) 0%, rgba(0,0,0,.12) 45%, transparent 100%)';
+            seamShadow.style.background = 'linear-gradient(to right, rgba(0,0,0,.45) 0%, rgba(0,0,0,.15) 25%, transparent 100%)';
         } else if (progress > 0) {
             // ditarik ke kanan → pivot kiri, seam nempel di canvas-prev (kiri)
-            foldShadow.style.background = 'linear-gradient(to left, transparent 0%, rgba(255,255,255,.22) 10%, rgba(0,0,0,.04) 24%, rgba(0,0,0,.32) 100%)';
+            foldShadow.style.background = 'radial-gradient(ellipse at left, rgba(0,0,0,0.5) 0%, rgba(255,255,255,0.1) 45%, transparent 80%)';
             seamShadow.style.right = '100%'; seamShadow.style.left = 'auto';
-            seamShadow.style.background = 'linear-gradient(to left, rgba(0,0,0,.30) 0%, rgba(0,0,0,.12) 45%, transparent 100%)';
+            seamShadow.style.background = 'linear-gradient(to left, rgba(0,0,0,.45) 0%, rgba(0,0,0,.15) 25%, transparent 100%)';
         }
     }
     function _resetTurnShade() {
         if (foldShadow) foldShadow.style.opacity = 0;
         if (seamShadow) seamShadow.style.opacity = 0;
-        if (pageStage)  pageStage.style.boxShadow = 'none';
+        if (pageStage) {
+            pageStage.style.boxShadow = 'none';
+            pageStage.style.borderRadius = '0px';
+        }
     }
 
     wrapper.style.transformOrigin = 'center center';
@@ -3372,13 +3383,13 @@ function initCanvasGestures() {
                 // Tilt 3D ala Play Books: makin jauh drag, makin miring & sedikit mengecil.
                 // HANYA pageStage yang gerak — canvas-prev/next diam total di belakang.
                 const progress = Math.max(-1, Math.min(1, deltaX / window.innerWidth));
-                const rotateY  = -progress * 34; // derajat maksimum (lebih besar = lebih 3D)
-                const liftZ    = -Math.abs(progress) * 50; // "terangkat" menjauh sedikit
+                const rotateY  = -progress * 85; // derajat maksimum (lebih besar = lebih 3D)
+                const liftZ    = -Math.abs(progress) * 80; // "terangkat" menjauh sedikit
                 // PENTING: tinggi kertas TIDAK boleh ikut menyusut — hanya scaleX (lebar) yang
                 // sedikit mengecil untuk mempertegas kesan lengkung 3D, scaleY tetap 1 (tinggi asli).
-                const scaleXTo = 1 - Math.abs(progress) * 0.06;
+                const scaleXTo = 1 - Math.abs(progress) * 0.15;
                 pageStage.style.transformOrigin = deltaX < 0 ? 'right center' : 'left center';
-                pageStage.style.transform = `translate(${deltaX}px, 0px) perspective(1000px) rotateY(${rotateY}deg) translateZ(${liftZ}px) scale3d(${scaleXTo}, 1, 1)`;
+                pageStage.style.transform = `translate(${deltaX}px, 0px) perspective(1400px) rotateY(${rotateY}deg) translateZ(${liftZ}px) scale3d(${scaleXTo}, 1, 1)`;
                 _updateTurnShade(progress);
             } else if (pageStage) {
                 pageStage.style.transform = `translate(${deltaX}px, 0px) scale(1)`;
@@ -3441,7 +3452,7 @@ function initCanvasGestures() {
                         if (pageStage) pageStage.style.transition = 'transform 0.3s cubic-bezier(0.2, 0, 0, 1), box-shadow 0.3s ease';
                         if (pageTurnAnimEnabled && pageStage) {
                             pageStage.style.transformOrigin = 'right center';
-                            pageStage.style.transform = `translate(-${window.innerWidth}px, 0px) perspective(1000px) rotateY(-40deg) translateZ(-60px) scale3d(0.94, 1, 1)`;
+                            pageStage.style.transform = `translate(-${window.innerWidth}px, 0px) perspective(1400px) rotateY(-90deg) translateZ(-100px) scale3d(0.85, 1, 1)`;
                             _updateTurnShade(-1);
                         } else if (pageStage) {
                             pageStage.style.transform = `translate(-${window.innerWidth}px, 0px) scale(1)`;
@@ -3484,13 +3495,7 @@ function initCanvasGestures() {
                             // Halaman sudah nyaris tak kasat mata (di luar layar + shadow sudah 0 lewat
                             // kurva bell) — sembunyikan sekejap dulu (fade super cepat) sebelum reset
                             // transform instan, supaya "loncatan" potongan animasi tidak kelihatan mata.
-                            if (pageStage) {
-                                pageStage.style.transition = 'opacity 0.08s linear';
-                                pageStage.style.opacity = '0';
-                                setTimeout(finishSwap, 80);
-                            } else {
-                                finishSwap();
-                            }
+                            setTimeout(finishSwap, 250);
                         };
                         if (pageStage) {
                             pageStage.addEventListener('transitionend', function _te(ev) {
@@ -3512,7 +3517,7 @@ function initCanvasGestures() {
                         if (pageStage) pageStage.style.transition = 'transform 0.3s cubic-bezier(0.2, 0, 0, 1), box-shadow 0.3s ease';
                         if (pageTurnAnimEnabled && pageStage) {
                             pageStage.style.transformOrigin = 'left center';
-                            pageStage.style.transform = `translate(${window.innerWidth}px, 0px) perspective(1000px) rotateY(40deg) translateZ(-60px) scale3d(0.94, 1, 1)`;
+                            pageStage.style.transform = `translate(${window.innerWidth}px, 0px) perspective(1400px) rotateY(90deg) translateZ(-100px) scale3d(0.85, 1, 1)`;
                             _updateTurnShade(1);
                         } else if (pageStage) {
                             pageStage.style.transform = `translate(${window.innerWidth}px, 0px) scale(1)`;
@@ -3551,13 +3556,7 @@ function initCanvasGestures() {
                                     });
                                 }
                             };
-                            if (pageStage) {
-                                pageStage.style.transition = 'opacity 0.08s linear';
-                                pageStage.style.opacity = '0';
-                                setTimeout(finishSwap, 80);
-                            } else {
-                                finishSwap();
-                            }
+                            setTimeout(finishSwap, 250);
                         };
                         if (pageStage) {
                             pageStage.addEventListener('transitionend', function _te(ev) {
