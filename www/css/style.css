@@ -165,11 +165,10 @@ html, body {
 @keyframes skeleton-shimmer { 0% { background-position: 100% 50%; } 100% { background-position: 0% 50%; } }
 
 /* Animasi Pindah Halaman 3D (opsional, opt-in via Pengaturan) */
-.page-turn-3d { perspective: 900px; }
-#fold-shadow, #seam-shadow, #lift-shadow { transition: opacity .12s ease; will-change: opacity; }
+
+
 /* Box-shadow FIXED (dihitung sekali oleh browser saat CSS di-parse), yang dianimasikan cuma
    opacity elemen ini — jauh lebih murah daripada re-render box-shadow tiap frame drag. */
-.lift-shadow-fixed { box-shadow: 0 22px 46px rgba(0,0,0,0.4); }
 
 .ripple-container { position: relative; overflow: hidden; }
 .ripple-effect {
