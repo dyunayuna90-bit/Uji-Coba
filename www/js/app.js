@@ -3246,6 +3246,7 @@ function initCanvasGestures() {
     // State internal gesture — semua di sini, tidak pakai variabel global yang bisa
     // terpolusi antar-gesture
     let isAnimatingPage = false; // Gembok pelindung animasi
+    let forceFinishTurn = null; // Fungsi penuntas animasi instan
     let isPinching    = false;
     let pinchStartDist  = 0;
     let pinchStartScale = 1;
@@ -3293,7 +3294,9 @@ function initCanvasGestures() {
 
     // ── touchstart ──
     newVP.addEventListener('touchstart', (e) => {
-        if (isAnimatingPage) return; // Abaikan sentuhan baru jika animasi belum selesai
+        // FAST SWIPE: Jika user buru-buru tap/geser saat kertas masih terbang,
+        // langsung selesaikan animasi secara instan tanpa menunggu.
+        if (isAnimatingPage && forceFinishTurn) forceFinishTurn();
         // FIX BUG DRAG SELECTION: Matikan gesture aplikasi kalau ada teks yang lagi diblok
         if (window.getSelection().toString().trim().length > 0) {
             isPinching    = false;
@@ -3347,7 +3350,6 @@ function initCanvasGestures() {
 
     // ── touchmove ──
     newVP.addEventListener('touchmove', (e) => {
-        if (isAnimatingPage) return; // Abaikan sentuhan baru jika animasi belum selesai
         // FIX BUG DRAG SELECTION: Cegah halaman ikutan bergeser saat user menarik gagang seleksi
         if (window.getSelection().toString().trim().length > 0) {
             return;
@@ -3420,7 +3422,6 @@ function initCanvasGestures() {
 
     // ── touchend ──
     newVP.addEventListener('touchend', (e) => {
-        if (isAnimatingPage) return; // Abaikan sentuhan baru jika animasi belum selesai
         // Jari ke-2 terangkat → akhiri pinch, perbarui anchor pan agar tidak loncat
         if (e.touches.length === 1 && isPinching) {
             isPinching = false;
@@ -3452,7 +3453,7 @@ function initCanvasGestures() {
                 } else if (deltaX < -80) {
                     // SWIPE KIRI → halaman berikutnya
                     if (currentPdfDoc && currentCanvasPage < currentPdfDoc.numPages) {
-                        isAnimatingPage = true; // Kunci layar!
+                        isAnimatingPage = true;
                         _setRevealDirection(-1);
                         if (pageStage) pageStage.style.transition = 'transform 0.6s cubic-bezier(0.25, 1, 0.5, 1), box-shadow 0.6s ease';
                         if (pageTurnAnimEnabled && pageStage) {
@@ -3464,44 +3465,41 @@ function initCanvasGestures() {
                         }
 
                         let _swapped = false;
-                        const _doSwap = () => {
+                        let _swapTimer = null;
+                        const finishSwap = () => {
                             if (_swapped) return; _swapped = true;
-                            const finishSwap = () => {
-                                const cnNext = document.getElementById('canvas-next');
-                                const cnCurr = document.getElementById('pdf-canvas');
-                                if (cnNext && cnNext.width > 1 && cnCurr) {
-                                    cnCurr.width        = cnNext.width;
-                                    cnCurr.height       = cnNext.height;
-                                    cnCurr.style.width  = cnNext.style.width;
-                                    cnCurr.style.height = cnNext.style.height;
-                                    const ctxCurr = cnCurr.getContext('2d');
-                                    ctxCurr.imageSmoothingEnabled = false;
-                                    ctxCurr.drawImage(cnNext, 0, 0);
-                                    _canvasAlreadyCopied = true;
-                                }
-                                if (pageStage) {
-                                    pageStage.style.transition = 'none';
-                                    pageStage.style.transform  = 'translate(0px, 0px) scale(1)';
-                                    pageStage.style.transformOrigin = 'center center';
-                                }
-                                _resetTurnShade();
-                                currentCanvasPage++;
-                                _resetCanvasTransform();
-                                renderCanvasPage(currentCanvasPage);
-                                // Fade-in balik halaman baru — di-reflow dulu biar transisi opacity kepakai
-                                if (pageStage) {
-                                    void pageStage.offsetHeight;
-                                    requestAnimationFrame(() => {
-                                        pageStage.style.transition = 'opacity 0.12s ease';
-                                        pageStage.style.opacity = '1';
-                                    });
-                                }
-                                isAnimatingPage = false; // Lepas kunci layar
-                            };
-                            // Halaman sudah nyaris tak kasat mata (di luar layar + shadow sudah 0 lewat
-                            // kurva bell) — sembunyikan sekejap dulu (fade super cepat) sebelum reset
-                            // transform instan, supaya "loncatan" potongan animasi tidak kelihatan mata.
-                            setTimeout(finishSwap, 500);
+                            clearTimeout(_swapTimer);
+                            const cnNext = document.getElementById('canvas-next');
+                            const cnCurr = document.getElementById('pdf-canvas');
+                            if (cnNext && cnNext.width > 1 && cnCurr) {
+                                cnCurr.width        = cnNext.width;
+                                cnCurr.height       = cnNext.height;
+                                cnCurr.style.width  = cnNext.style.width;
+                                cnCurr.style.height = cnNext.style.height;
+                                const ctxCurr = cnCurr.getContext('2d');
+                                ctxCurr.imageSmoothingEnabled = false;
+                                ctxCurr.drawImage(cnNext, 0, 0);
+                                _canvasAlreadyCopied = true;
+                            }
+                            if (pageStage) {
+                                pageStage.style.transition = 'none';
+                                pageStage.style.transform  = 'translate(0px, 0px) scale(1)';
+                                pageStage.style.transformOrigin = 'center center';
+                                pageStage.style.opacity = '1';
+                            }
+                            _resetTurnShade();
+                            currentCanvasPage++;
+                            _resetCanvasTransform();
+                            renderCanvasPage(currentCanvasPage);
+                            isAnimatingPage = false;
+                            forceFinishTurn = null;
+                        };
+                        forceFinishTurn = () => {
+                            if (pageStage) pageStage.style.transition = 'none';
+                            finishSwap();
+                        };
+                        const _doSwap = () => {
+                            _swapTimer = setTimeout(finishSwap, 450);
                         };
                         if (pageStage) {
                             pageStage.addEventListener('transitionend', function _te(ev) {
@@ -3510,7 +3508,7 @@ function initCanvasGestures() {
                                 _doSwap();
                             });
                         }
-                        setTimeout(_doSwap, 650); // fallback jika transitionend tidak fire
+                        setTimeout(_doSwap, 650); // fallback
                     } else {
                         _snapSliderToCenter();
                     }
@@ -3519,7 +3517,7 @@ function initCanvasGestures() {
                 } else if (deltaX > 80) {
                     // SWIPE KANAN → halaman sebelumnya
                     if (currentPdfDoc && currentCanvasPage > 1) {
-                        isAnimatingPage = true; // Kunci layar!
+                        isAnimatingPage = true;
                         _setRevealDirection(1);
                         if (pageStage) pageStage.style.transition = 'transform 0.6s cubic-bezier(0.25, 1, 0.5, 1), box-shadow 0.6s ease';
                         if (pageTurnAnimEnabled && pageStage) {
@@ -3531,40 +3529,41 @@ function initCanvasGestures() {
                         }
 
                         let _swapped = false;
-                        const _doSwap = () => {
+                        let _swapTimer = null;
+                        const finishSwap = () => {
                             if (_swapped) return; _swapped = true;
-                            const finishSwap = () => {
-                                const cnPrev = document.getElementById('canvas-prev');
-                                const cnCurr = document.getElementById('pdf-canvas');
-                                if (cnPrev && cnPrev.width > 1 && cnCurr) {
-                                    cnCurr.width        = cnPrev.width;
-                                    cnCurr.height       = cnPrev.height;
-                                    cnCurr.style.width  = cnPrev.style.width;
-                                    cnCurr.style.height = cnPrev.style.height;
-                                    const ctxCurr = cnCurr.getContext('2d');
-                                    ctxCurr.imageSmoothingEnabled = false;
-                                    ctxCurr.drawImage(cnPrev, 0, 0);
-                                    _canvasAlreadyCopied = true;
-                                }
-                                if (pageStage) {
-                                    pageStage.style.transition = 'none';
-                                    pageStage.style.transform  = 'translate(0px, 0px) scale(1)';
-                                    pageStage.style.transformOrigin = 'center center';
-                                }
-                                _resetTurnShade();
-                                currentCanvasPage--;
-                                _resetCanvasTransform();
-                                renderCanvasPage(currentCanvasPage);
-                                if (pageStage) {
-                                    void pageStage.offsetHeight;
-                                    requestAnimationFrame(() => {
-                                        pageStage.style.transition = 'opacity 0.12s ease';
-                                        pageStage.style.opacity = '1';
-                                    });
-                                }
-                                isAnimatingPage = false; // Lepas kunci layar
-                            };
-                            setTimeout(finishSwap, 500);
+                            clearTimeout(_swapTimer);
+                            const cnPrev = document.getElementById('canvas-prev');
+                            const cnCurr = document.getElementById('pdf-canvas');
+                            if (cnPrev && cnPrev.width > 1 && cnCurr) {
+                                cnCurr.width        = cnPrev.width;
+                                cnCurr.height       = cnPrev.height;
+                                cnCurr.style.width  = cnPrev.style.width;
+                                cnCurr.style.height = cnPrev.style.height;
+                                const ctxCurr = cnCurr.getContext('2d');
+                                ctxCurr.imageSmoothingEnabled = false;
+                                ctxCurr.drawImage(cnPrev, 0, 0);
+                                _canvasAlreadyCopied = true;
+                            }
+                            if (pageStage) {
+                                pageStage.style.transition = 'none';
+                                pageStage.style.transform  = 'translate(0px, 0px) scale(1)';
+                                pageStage.style.transformOrigin = 'center center';
+                                pageStage.style.opacity = '1';
+                            }
+                            _resetTurnShade();
+                            currentCanvasPage--;
+                            _resetCanvasTransform();
+                            renderCanvasPage(currentCanvasPage);
+                            isAnimatingPage = false;
+                            forceFinishTurn = null;
+                        };
+                        forceFinishTurn = () => {
+                            if (pageStage) pageStage.style.transition = 'none';
+                            finishSwap();
+                        };
+                        const _doSwap = () => {
+                            _swapTimer = setTimeout(finishSwap, 450);
                         };
                         if (pageStage) {
                             pageStage.addEventListener('transitionend', function _te(ev) {
@@ -3573,7 +3572,7 @@ function initCanvasGestures() {
                                 _doSwap();
                             });
                         }
-                        setTimeout(_doSwap, 650); // fallback jika transitionend tidak fire
+                        setTimeout(_doSwap, 650); // fallback
                     } else {
                         _snapSliderToCenter();
                     }
